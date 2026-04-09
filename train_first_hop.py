@@ -458,114 +458,6 @@ def compute_rollout_losses(
     }
 
 
-def compute_cct_losses(
-    model: PETFlowDiTFirstHop,
-    main_batch: Dict[str, torch.Tensor],
-    cfg: Dict,
-    global_step: int,
-    rollout_times: list[float],
-) -> Dict[str, torch.Tensor]:
-    cct_cfg = cfg["training"].get("cct", {})
-    num_steps = max(len(rollout_times) - 1, 0)
-    if not bool(cct_cfg.get("enabled", False)) or num_steps <= 0:
-        z = main_batch["z_src"].new_zeros(())
-        return {
-            "loss_total": z,
-            "step_losses": [z for _ in range(num_steps)],
-            "lambda_cct": torch.tensor(0.0, device=z.device),
-        }
-
-    step_weights_cfg = cct_cfg.get("step_weights", None)
-    if step_weights_cfg is None:
-        step_weights = [1.0] * num_steps
-    else:
-        step_weights = list(step_weights_cfg)
-        if len(step_weights) != num_steps:
-            raise ValueError(
-                f"training.cct.step_weights length ({len(step_weights)}) must equal rollout steps ({num_steps})"
-            )
-
-    lambda_cct = get_linear_schedule_value(
-        global_step=global_step,
-        warmup_steps=int(cct_cfg.get("warmup_steps", 500)),
-        ramp_steps=int(cct_cfg.get("ramp_steps", 1000)),
-        start=float(cct_cfg.get("lambda_start", 0.0)),
-        end=float(cct_cfg.get("lambda_max", 0.05)),
-    )
-    loss_type = str(cct_cfg.get("loss_type", "mse")).lower()
-    if loss_type not in ("mse", "l1"):
-        raise ValueError(f"training.cct.loss_type must be 'mse' or 'l1', got {loss_type}")
-    detach_teacher = bool(cct_cfg.get("detach_teacher", True))
-
-    z_rollout = main_batch["z_rollout"]
-    if z_rollout.dim() != 5:
-        raise ValueError(f"Expected z_rollout in [B,T,C,H,W], got {tuple(z_rollout.shape)}")
-    if int(z_rollout.shape[1]) < num_steps + 1:
-        raise ValueError(
-            f"z_rollout length ({int(z_rollout.shape[1])}) is smaller than expected ({num_steps + 1})"
-        )
-
-    bsz = int(z_rollout.shape[0])
-    if bsz <= 0:
-        z = main_batch["z_src"].new_zeros(())
-        return {
-            "loss_total": z,
-            "step_losses": [z for _ in range(num_steps)],
-            "lambda_cct": torch.tensor(lambda_cct, device=z.device),
-        }
-
-    teacher_preds: list[torch.Tensor] = []
-    pure_preds: list[torch.Tensor] = []
-    z_curr_pred = z_rollout[:, 0]
-    x_rollout_first = main_batch.get("x_rollout_first")
-
-    for i in range(num_steps):
-        z_src_tf = z_rollout[:, i]
-        t_src = z_src_tf.new_full((bsz,), float(rollout_times[i]))
-        t_dst = z_src_tf.new_full((bsz,), float(rollout_times[i + 1]))
-        hop_idx = torch.full((bsz,), int(i), device=z_src_tf.device, dtype=torch.long)
-
-        x_cond = x_rollout_first if i == 0 else None
-        out_tf = model.predict_latent_step(
-            z_src=z_src_tf,
-            t_src=t_src,
-            t_dst=t_dst,
-            hop_idx=hop_idx,
-            x_src_img=x_cond,
-        )
-        out_pp = model.predict_latent_step(
-            z_src=z_curr_pred,
-            t_src=t_src,
-            t_dst=t_dst,
-            hop_idx=hop_idx,
-            x_src_img=x_cond,
-        )
-
-        z_tf = out_tf["z_pred"]
-        z_pp = out_pp["z_pred"]
-        teacher_preds.append(z_tf)
-        pure_preds.append(z_pp)
-        z_curr_pred = z_pp
-
-    weighted_losses: list[torch.Tensor] = []
-    for i in range(num_steps):
-        target = teacher_preds[i].detach() if detach_teacher else teacher_preds[i]
-        pred = pure_preds[i]
-        if loss_type == "l1":
-            step_loss = (pred - target).abs().mean()
-        else:
-            step_loss = F.mse_loss(pred, target)
-        weighted_losses.append(step_loss * float(step_weights[i]))
-
-    denom = max(float(sum(float(w) for w in step_weights)), 1.0e-12)
-    loss_total = torch.stack(weighted_losses).sum() / denom
-    return {
-        "loss_total": loss_total,
-        "step_losses": weighted_losses,
-        "lambda_cct": torch.tensor(lambda_cct, device=loss_total.device),
-    }
-
-
 def compute_hop0_image_losses(
     model: PETFlowDiTFirstHop,
     hop0_batch: Dict[str, torch.Tensor],
@@ -711,9 +603,6 @@ def evaluate(
         "val_pair_velocity": 0.0,
         "val_pair_endpoint": 0.0,
         "val_rollout_total": 0.0,
-        "val_cct_total": 0.0,
-        "val_cct_weighted": 0.0,
-        "val_cct_lambda": 0.0,
         "val_hop0_img_total": 0.0,
         "val_hop0_img_l1": 0.0,
         "val_hop0_img_ssim": 0.0,
@@ -725,7 +614,6 @@ def evaluate(
     }
     for i in range(num_steps):
         sums[f"val_rollout_step_{i}"] = 0.0
-        sums[f"val_cct_step_{i}"] = 0.0
 
     main_count = 0
     chain_samples = 0
@@ -763,19 +651,6 @@ def evaluate(
             sums["val_rollout_total"] += float(roll_out["loss_total"].item())
             for i, step_loss in enumerate(roll_out["step_losses"]):
                 sums[f"val_rollout_step_{i}"] += float(step_loss.item())
-
-        cct_losses = compute_cct_losses(
-            model=model,
-            main_batch=batch,
-            cfg=cfg,
-            global_step=global_step,
-            rollout_times=rollout_times,
-        )
-        sums["val_cct_total"] += float(cct_losses["loss_total"].item())
-        sums["val_cct_lambda"] += float(cct_losses["lambda_cct"].item())
-        sums["val_cct_weighted"] += float((cct_losses["lambda_cct"] * cct_losses["loss_total"]).item())
-        for i, step_loss in enumerate(cct_losses.get("step_losses", [])):
-            sums[f"val_cct_step_{i}"] += float(step_loss.item())
 
         if "x_rollout" in batch:
             if slice_idx_cpu is None:
@@ -1307,7 +1182,7 @@ def main() -> None:
         )
     if loss_balance_watch_patience <= 0:
         raise ValueError(f"training.loss_balance_watch_patience must be > 0, got {loss_balance_watch_patience}")
-    loss_balance_streak = {"pair": 0, "roll": 0, "img": 0, "cct": 0}
+    loss_balance_streak = {"pair": 0, "roll": 0, "img": 0}
 
     if resume_enabled:
         ckpt = torch.load(resume_path, map_location="cpu")
@@ -1518,19 +1393,10 @@ def main() -> None:
                 }
                 loss_img = zero
 
-            cct_losses = compute_cct_losses(
-                model=model,
-                main_batch=main_batch,
-                cfg=cfg,
-                global_step=step,
-                rollout_times=rollout_times,
-            )
-
             total_loss = (
                 pair_losses["total"]
                 + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
                 + float(lambda_img) * loss_img
-                + cct_losses["lambda_cct"] * cct_losses["loss_total"]
             )
 
             reg_cfg = cfg["loss"].get("regularizer", {})
@@ -1546,20 +1412,17 @@ def main() -> None:
             pair_weighted = pair_losses["total"]
             roll_weighted = rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
             img_weighted = pair_weighted.new_tensor(float(lambda_img)) * loss_img
-            cct_weighted = cct_losses["lambda_cct"] * cct_losses["loss_total"]
-            weighted_total = pair_weighted + roll_weighted + img_weighted + cct_weighted
+            weighted_total = pair_weighted + roll_weighted + img_weighted
             frac_denom = weighted_total.abs().clamp_min(1.0e-12)
             pair_frac_t = (pair_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             roll_frac_t = (roll_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             img_frac_t = (img_weighted / frac_denom).clamp(min=-10.0, max=10.0)
-            cct_frac_t = (cct_weighted / frac_denom).clamp(min=-10.0, max=10.0)
 
             if loss_balance_watch_enabled and step >= loss_balance_watch_warmup_steps:
                 frac_values = {
                     "pair": float(pair_frac_t.detach().item()),
                     "roll": float(roll_frac_t.detach().item()),
                     "img": float(img_frac_t.detach().item()),
-                    "cct": float(cct_frac_t.detach().item()),
                 }
                 for k, v in frac_values.items():
                     if v >= loss_balance_dominance_threshold:
@@ -1584,12 +1447,6 @@ def main() -> None:
             pair_v = pair_losses["total"].detach()
             roll_v = rollout_losses["loss_total"].detach()
             img_v = img_losses["total"].detach()
-            cct_v = cct_losses["loss_total"].detach()
-            cct_lambda_v = cct_losses["lambda_cct"].detach()
-            cct_step_vals = []
-            for sv in cct_losses.get("step_losses", []):
-                cct_step_vals.append(float(sv.detach().item()))
-            cct_step_summary = "[" + ", ".join([f"{v:.6g}" for v in cct_step_vals]) + "]"
             img_l1_v = img_losses["l1"].detach()
             img_ssim_v = img_losses["ssim"].detach()
             img_seam_v = img_losses["seam"].detach()
@@ -1600,16 +1457,13 @@ def main() -> None:
                 "[nonfinite] "
                 f"step={step} "
                 f"total={float(total_loss.detach().item())} "
-                f"pair={float(pair_v.item())} roll={float(roll_v.item())} img={float(img_v.item())} cct={float(cct_v.item())} "
-                f"lambda_cct={float(cct_lambda_v.item())} cct_steps={cct_step_summary} "
+                f"pair={float(pair_v.item())} roll={float(roll_v.item())} img={float(img_v.item())} "
                 f"img_l1={float(img_l1_v.item())} img_ssim={float(img_ssim_v.item())} img_seam={float(img_seam_v.item())} "
                 f"ssim_raw_mean={float(ssim_raw_mean_v.item())} "
                 f"ssim_raw_min={float(ssim_raw_min_v.item())} ssim_raw_max={float(ssim_raw_max_v.item())} "
                 f"finite_pair={bool(torch.isfinite(pair_v).all().item())} "
                 f"finite_roll={bool(torch.isfinite(roll_v).all().item())} "
                 f"finite_img={bool(torch.isfinite(img_v).all().item())} "
-                f"finite_cct={bool(torch.isfinite(cct_v).all().item())} "
-                f"finite_lambda_cct={bool(torch.isfinite(cct_lambda_v).all().item())} "
                 f"finite_img_ssim={bool(torch.isfinite(img_ssim_v).all().item())}",
                 flush=True,
             )
@@ -1701,15 +1555,6 @@ def main() -> None:
         if step % log_interval == 0:
             step_losses = rollout_losses["step_losses"]
             roll0 = float(step_losses[0].item()) if len(step_losses) > 0 else 0.0
-            cct_step_losses = cct_losses.get("step_losses", [])
-            cct0 = float(cct_step_losses[0].item()) if len(cct_step_losses) > 0 else 0.0
-            cct1 = float(cct_step_losses[1].item()) if len(cct_step_losses) > 1 else 0.0
-            cct2 = float(cct_step_losses[2].item()) if len(cct_step_losses) > 2 else 0.0
-            cct3 = float(cct_step_losses[3].item()) if len(cct_step_losses) > 3 else 0.0
-            cct = float(cct_losses["loss_total"].item())
-            lambda_cct = float(cct_losses["lambda_cct"].item())
-            cct_w = float(cct_weighted.detach().item())
-            cct_frac = float(cct_frac_t.detach().item())
             pix_delta_abs = float(main_out["pix_delta_abs"].item())
             v_hop_abs = float(main_out["v_hop_abs"].item())
             vel_raw = float(pair_losses.get("velocity_unweighted", pair_losses["velocity"]).item())
@@ -1759,12 +1604,6 @@ def main() -> None:
                 "ssim_over1_frac": ssim_over1_frac,
                 "ssim_below0_frac": ssim_below0_frac,
                 "ssim_clamped_mean": ssim_clamped_mean,
-                "cct": cct,
-                "cct_step_0": cct0,
-                "cct_step_1": cct1,
-                "cct_step_2": cct2,
-                "cct_step_3": cct3,
-                "lambda_cct": lambda_cct,
                 "lambda_roll": float(rollout_losses["lambda_roll"].item()),
                 "lambda_roll_base": lambda_roll_base,
                 "lambda_roll_scale": lambda_roll_scale,
@@ -1774,11 +1613,9 @@ def main() -> None:
                 "pair_w": pair_w,
                 "roll_w": roll_w,
                 "img_w": img_w,
-                "cct_w": cct_w,
                 "pair_frac": pair_frac,
                 "roll_frac": roll_frac,
                 "img_frac": img_frac,
-                "cct_frac": cct_frac,
                 "hop0_coverage": hop0_coverage,
                 "hop0_main_ratio": hop0_main_ratio,
                 "hop0_aux_ratio": hop0_aux_ratio,
@@ -1815,10 +1652,6 @@ def main() -> None:
                     pair=f"{float(pair_losses['total'].item()):.3e}",
                     roll=f"{float(rollout_losses['loss_total'].item()):.4e}",
                     img=f"{float(img_losses['total'].item()):.3e}",
-                    cct=f"{cct:.3e}",
-                    lcct=f"{lambda_cct:.3e}",
-                    cf=f"{cct_frac:.2f}",
-                    c0=f"{cct0:.2e}",
                     pf=f"{pair_frac:.2f}",
                     rf=f"{roll_frac:.2f}",
                     ifc=f"{img_frac:.2f}",
@@ -1858,14 +1691,6 @@ def main() -> None:
                         f"ssim_over1={ssim_over1_frac:.6f} "
                         f"ssim_below0={ssim_below0_frac:.6f} "
                         f"ssim_clamped_mean={ssim_clamped_mean:.6f} "
-                        f"cct={cct:.6f} "
-                        f"cct0={cct0:.6f} "
-                        f"cct1={cct1:.6f} "
-                        f"cct2={cct2:.6f} "
-                        f"cct3={cct3:.6f} "
-                        f"lambda_cct={lambda_cct:.6f} "
-                        f"cct_w={cct_w:.6f} "
-                        f"cct_frac={cct_frac:.3f} "
                         f"lambda_roll={float(rollout_losses['lambda_roll'].item()):.4f} "
                         f"lambda_roll_base={lambda_roll_base:.4f} "
                         f"lambda_roll_scale={lambda_roll_scale:.4f} "
@@ -1908,31 +1733,23 @@ def main() -> None:
                     f"img_seam={img_seam:.6f} "
                     f"ssim_raw_mean={ssim_raw_mean:.6f} "
                     f"ssim_raw_min={ssim_raw_min:.6f} "
-                        f"ssim_raw_max={ssim_raw_max:.6f} "
-                        f"ssim_over1={ssim_over1_frac:.6f} "
-                        f"ssim_below0={ssim_below0_frac:.6f} "
-                        f"ssim_clamped_mean={ssim_clamped_mean:.6f} "
-                        f"cct={cct:.6f} "
-                        f"cct0={cct0:.6f} "
-                        f"cct1={cct1:.6f} "
-                        f"cct2={cct2:.6f} "
-                        f"cct3={cct3:.6f} "
-                        f"lambda_cct={lambda_cct:.6f} "
-                        f"cct_w={cct_w:.6f} "
-                        f"cct_frac={cct_frac:.3f} "
-                        f"lambda_roll={float(rollout_losses['lambda_roll'].item()):.4f} "
-                        f"lambda_roll_base={lambda_roll_base:.4f} "
-                        f"lambda_roll_scale={lambda_roll_scale:.4f} "
-                        f"st={int(round(rollout_st))} "
-                        f"lambda_img={float(lambda_img):.4f} "
-                        f"alpha={float(rollout_losses['alpha_mix'].item()):.4f} "
-                        f"pair_w={pair_w:.6f} roll_w={roll_w:.6f} img_w={img_w:.6f} "
-                        f"pair_frac={pair_frac:.3f} roll_frac={roll_frac:.3f} img_frac={img_frac:.3f} "
-                        f"hop0_coverage={hop0_coverage:.3f} "
-                        f"hop0_main_ratio={hop0_main_ratio:.3f} "
-                        f"gate_pix={float(model.gate_pix_value().item()):.4f} "
-                        f"gate_pix_raw={gate_raw:.4f} "
-                        f"lambda_hop_0={lambda_h0:.4f} "
+                    f"ssim_raw_max={ssim_raw_max:.6f} "
+                    f"ssim_over1={ssim_over1_frac:.6f} "
+                    f"ssim_below0={ssim_below0_frac:.6f} "
+                    f"ssim_clamped_mean={ssim_clamped_mean:.6f} "
+                    f"lambda_roll={float(rollout_losses['lambda_roll'].item()):.4f} "
+                    f"lambda_roll_base={lambda_roll_base:.4f} "
+                    f"lambda_roll_scale={lambda_roll_scale:.4f} "
+                    f"st={int(round(rollout_st))} "
+                    f"lambda_img={float(lambda_img):.4f} "
+                    f"alpha={float(rollout_losses['alpha_mix'].item()):.4f} "
+                    f"pair_w={pair_w:.6f} roll_w={roll_w:.6f} img_w={img_w:.6f} "
+                    f"pair_frac={pair_frac:.3f} roll_frac={roll_frac:.3f} img_frac={img_frac:.3f} "
+                    f"hop0_coverage={hop0_coverage:.3f} "
+                    f"hop0_main_ratio={hop0_main_ratio:.3f} "
+                    f"gate_pix={float(model.gate_pix_value().item()):.4f} "
+                    f"gate_pix_raw={gate_raw:.4f} "
+                    f"lambda_hop_0={lambda_h0:.4f} "
                     f"lambda_hop_0_raw={lambda_h0_raw:.4f} "
                     f"gate_eff={gate_eff:.6f} "
                     f"lambda_eff_h0={lambda_eff_h0:.6f} "
@@ -1942,7 +1759,6 @@ def main() -> None:
                     f" v_hop_abs_hop0={v_hop_abs_hop0:.6f}"
                     f"{grad_suffix}"
                 )
-
         if step % save_interval == 0:
             save_checkpoint(
                 model,

@@ -4,7 +4,7 @@ Status:
 
 - current baseline
 - first-hop 方案的唯一实现基准
-- `Idea1 / CCT-224` 已在源代码与正式 `chainstable` 配置中落地
+- `Idea1 / CCT-224` 已移到测试分支 `idea1_cct_test`；master 保持原始 D50 hop0 baseline
 
 ## 0. Idea 管理（持续维护）
 
@@ -470,7 +470,6 @@ L_total =
     L_pair_latent
     + lambda_roll(step) * L_rollout_latent
     + lambda_img(step) * L_img_hop0
-    + lambda_cct(step) * L_cct
 ```
 
 ### 4.1 `L_pair_latent`
@@ -494,29 +493,7 @@ L_total =
 - 第一步 rollout 可使用 `x_rollout_first` 作为附加条件
 - 后三步严格不使用 pixel 条件
 
-### 4.3 `L_cct`
-
-`Idea1` 的核心一致性项：
-
-```python
-L_cct =
-    mean_hop(
-        w_cct(hop) * D(
-            z_pred_pure_pred(hop),
-            stopgrad(z_pred_teacher_forced(hop))
-        )
-    )
-```
-
-约束：
-
-- teacher-forced 路径与 pure-pred 路径必须共用统一的 `predict_latent_step(...)`
-- hop 0 的两条路径都允许接收同一个 `x_rollout_first`
-- 后三跳严格 latent-only
-- 默认 `stopgrad(teacher)`，避免双向牵引导致目标漂移
-- `D` 第一版只允许 `mse` 或 `l1`
-
-### 4.4 `L_img_hop0`
+### 4.3 `L_img_hop0`
 
 只对 `hop_idx == 0` 的 pair batch 元素计算：
 
@@ -536,26 +513,24 @@ L_img_hop0 =
 - decoder 冻结
 - `L_img_hop0` 只允许更新 shared trunk、`HopResidualVelocityHead`、`FirstHopPixelEncoder`、`g_pix`、`lambda_hop`
 
-### 4.5 权重与调度
+### 4.4 权重与调度
 
-必须提供三个 warmup：
+必须提供两个 warmup：
 
 - `lambda_roll(step)`
 - `lambda_img(step)`
-- `lambda_cct(step)`
 
 默认策略：
 
 - `lambda_roll` 复用现有 rollout warmup/ramp
 - `lambda_img` 从 `0` warm up 到小值
-- `lambda_cct` 从 `0` warm up 到小值
 
 默认建议：
 
 - `lambda_img_max` 小于 latent 主损失同量级
 - 第一版只允许 `0.01 ~ 0.10` 范围内搜索
 
-### 4.6 可选正则
+### 4.5 可选正则
 
 仅作为可选项：
 
@@ -624,11 +599,10 @@ L_img_hop0 =
 3. 断言 auxiliary batch 全部为 hop0
 4. 用 `main_loader` batch 通过统一 `predict_latent_step(...)` 计算 `L_pair_latent`
 5. 用 `main_loader` batch 通过统一 step helper 计算 `L_rollout_latent`
-6. 用同一 `main_loader` batch 计算 teacher-forced vs pure-pred 的 `L_cct`
-7. 只 decode `hop0_loader` 子批次的 `z_D20_pred`
-8. 用 hop0 auxiliary batch 计算 `L_img_hop0`
-9. 聚合总损失
-10. 反向传播
+6. 只 decode `hop0_loader` 子批次的 `z_D20_pred`
+7. 用 hop0 auxiliary batch 计算 `L_img_hop0`
+8. 聚合总损失
+9. 反向传播
 
 需要记录的指标：
 
@@ -637,9 +611,6 @@ L_img_hop0 =
 - `loss_endpoint`
 - `loss_rollout_total`
 - `loss_rollout_step_0/1/2/3`
-- `loss_cct`
-- `loss_cct_step_0/1/2/3`
-- `lambda_cct`
 - `loss_img_hop0`
 - `loss_img_l1`
 - `loss_img_ssim`
@@ -651,10 +622,9 @@ L_img_hop0 =
 
 ### 5.4 Validate
 
-验证必须同时输出四组结果：
+验证必须同时输出三组结果：
 
 - latent pair / rollout 指标
-- CCT 一致性指标
 - hop0 image auxiliary 指标
 - 全链路采样后的 decode 指标
 
@@ -753,24 +723,12 @@ z_n   = sample_one_step_first_hop(model, z_d4, 25.0, 100.0, hop_idx=3)
 - 把第一跳 decode 结构绑住
 - 检查是否改善第一跳后续误差积累
 
-### E4. 加入 CCT-224
+### E4. 采样与权重消融
 
-- 开启 `L_cct`
-- 显式记录 train/val 的 `cct_step_0/1/2/3`
-- 只允许在不改变 rollout state 的前提下增加 consistency 路径
-
-目标：
-
-- 对齐 teacher-forced 与 pure-pred 的分布
-- 降低部署时 pure-pred 级联漂移
-
-### E5. 采样与权重消融
-
-只在 E4 成立后做：
+只在 baseline 稳定后做：
 
 - hop0 上采样强度
 - `lambda_img_max`
-- `lambda_cct_max`
 - 注入层数 `2/3/4`
 - `g_pix` 标量门 vs 通道门
 

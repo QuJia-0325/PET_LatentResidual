@@ -139,19 +139,6 @@ training:
     lambda_start: 0.005
     lambda_max: 0.03
 
-  cct:
-    enabled: true
-    warmup_steps: 500
-    ramp_steps: 1000
-    lambda_start: 0.0
-    lambda_max: 0.05
-    loss_type: mse
-    detach_teacher: true
-    step_weights:
-      - 1.00
-      - 1.10
-      - 1.20
-      - 1.30
 
 optimizer:
   lr: 8.0e-5
