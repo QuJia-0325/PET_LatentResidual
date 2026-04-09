@@ -100,10 +100,10 @@
 
 ## 6) Required Artifacts（缺任意一项=FAIL）
 
-1. `outputs/clip3_eval/*/baseline/*.json`
-2. `outputs/clip3_eval/*/variant/*.json`
-3. `outputs/clip3_eval/*/baseline/*.csv`
-4. `outputs/clip3_eval/*/variant/*.csv`
+1. `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/baseline/*.json`
+2. `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/variant/*.json`
+3. `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/baseline/*.csv`
+4. `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/variant/*.csv`
 5. `tf_vs_pure_gap.json`
 6. `seam_strata_summary.csv`
 7. baseline/variant 配置快照
@@ -188,14 +188,14 @@
 
 #### Reviewer-C (repo verifier role)
 - Verified present evidence:
-  - `outputs/diagnostics/strict_best_full/hop_difficulty_clip3_val_strict_best_full.json`
-  - `outputs/diagnostics/chainstable50k_best_full/hop_difficulty_clip3_val_chainstable50k_best_full.json`
-  - `outputs/first_hop_224_10k_strict_eval_clip3_best/first_hop_224_val_clip3_eval.json`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/diagnostics/strict_best_full/hop_difficulty_clip3_val_strict_best_full.json`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/diagnostics/chainstable50k_best_full/hop_difficulty_clip3_val_chainstable50k_best_full.json`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_10k_strict_eval_clip3_best/first_hop_224_val_clip3_eval.json`
 - Missing required artifacts (hard fail now):
-  - `outputs/clip3_eval/*/baseline/*.json`
-  - `outputs/clip3_eval/*/variant/*.json`
-  - `outputs/clip3_eval/*/baseline/*.csv`
-  - `outputs/clip3_eval/*/variant/*.csv`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/baseline/*.json`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/variant/*.json`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/baseline/*.csv`
+  - `/data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/*/variant/*.csv`
   - `tf_vs_pure_gap.json`
   - `seam_strata_summary.csv`
 - Decision: Evidence Gate fail（结果可信性不足）。
@@ -230,7 +230,7 @@
 4. 按 anti-cherry-pick 规则同报失败实验与 checkpoint 选择逻辑。
 
 ### Evidence Index
-- `outputs/diagnostics/strict_best_full/hop_difficulty_clip3_val_strict_best_full.json` key: `summary.derived.tf_hop0_minus_no_transport_d20_db`
-- `outputs/diagnostics/chainstable50k_best_full/hop_difficulty_clip3_val_chainstable50k_best_full.json` key: `summary.autoregressive_chain.NORMAL.mean`
-- `outputs/first_hop_224_10k_strict_eval_clip3_best/first_hop_224_val_clip3_eval.json` key: `summary_psnr_clip3.D20.mean`
+- `/data_2/qujiaxiang/outputs/PET_LatentResidual/diagnostics/strict_best_full/hop_difficulty_clip3_val_strict_best_full.json` key: `summary.derived.tf_hop0_minus_no_transport_d20_db`
+- `/data_2/qujiaxiang/outputs/PET_LatentResidual/diagnostics/chainstable50k_best_full/hop_difficulty_clip3_val_chainstable50k_best_full.json` key: `summary.autoregressive_chain.NORMAL.mean`
+- `/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_10k_strict_eval_clip3_best/first_hop_224_val_clip3_eval.json` key: `summary_psnr_clip3.D20.mean`
 - `IDEA_REPORT.md` lines: 16-27, 46-55 (idea/gate definitions)

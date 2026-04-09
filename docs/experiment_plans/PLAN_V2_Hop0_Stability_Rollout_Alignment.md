@@ -40,7 +40,7 @@ training:
 ## Runbook
 ```bash
 python train_first_hop.py --config configs/pet_flow/pet_flow_first_hop_224_10k_v2_rollout_alignment.yaml
-python eval_first_hop_224_clip3.py --config configs/pet_flow/pet_flow_first_hop_224_10k_v2_rollout_alignment.yaml --checkpoint <v2_best.pt> --split val --max-slices 0 --out-dir outputs/clip3_eval/v2_variant
+python eval_first_hop_224_clip3.py --config configs/pet_flow/pet_flow_first_hop_224_10k_v2_rollout_alignment.yaml --checkpoint <v2_best.pt> --split val --max-slices 0 --out-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/v2_variant
 ```
 
 ## Primary Metrics

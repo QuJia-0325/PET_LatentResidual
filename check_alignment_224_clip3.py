@@ -23,6 +23,8 @@ from src.stage1.rae import RAE
 from src.utils.lora import inject_lora_into_dinov2_attention
 from src.utils.metrics import calc_psnr_clip3
 
+from pet_lr.path_guard import ensure_repo_local_outputs_absent, resolve_data_disk_dir
+
 
 TIMEPOINTS = ["D50", "D20", "D10", "D4", "NORMAL"]
 LORA_KEYWORDS = [
@@ -285,7 +287,8 @@ def flatten_rows(all_results: Dict[str, Dict[str, Dict[str, object]]]) -> List[D
 
 def main() -> None:
     args = parse_args()
-    out_dir = Path(args.out_dir)
+    ensure_repo_local_outputs_absent(Path(__file__).resolve().parent)
+    out_dir = resolve_data_disk_dir(args.out_dir, arg_name="--out-dir")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     rae = load_rae(args.rae_ckpt, args.device)

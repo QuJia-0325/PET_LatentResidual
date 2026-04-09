@@ -17,6 +17,7 @@ from tqdm import tqdm
 from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset
 from pet_lr.model_first_hop import PETFlowDiTFirstHop
 from pet_lr.rollout_first_hop import sample_chain_first_hop
+from pet_lr.path_guard import ensure_repo_local_outputs_absent, resolve_data_disk_dir
 
 # Canonical PSNR implementation (window to 3 first, then PSNR) from RAE repo.
 RAE_CODE_ROOT = "/home/qujiaxiang/project/RAE/code/RAE"
@@ -173,7 +174,8 @@ def main() -> None:
     args = parse_args()
     cfg = load_yaml(args.config)
     device = torch.device(args.device)
-    out_dir = Path(args.out_dir)
+    ensure_repo_local_outputs_absent(Path(__file__).resolve().parent)
+    out_dir = resolve_data_disk_dir(args.out_dir, arg_name="--out-dir")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     rollout_tps = cfg["data"].get("rollout_timepoints", TIMEPOINTS)

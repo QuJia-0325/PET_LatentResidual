@@ -24,6 +24,7 @@ from pet_lr.losses import (
 )
 from pet_lr.model import LatentResidualRefinementModel
 from pet_lr.rollout import get_rollout_alpha, rollout_latent_chain
+from pet_lr.path_guard import DEFAULT_OUTPUT_ROOT, ensure_repo_local_outputs_absent, resolve_data_disk_dir
 
 
 def load_config(path: str) -> Dict:
@@ -201,7 +202,12 @@ def main() -> None:
     device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
     torch.backends.cudnn.benchmark = True
 
-    output_root = Path(cfg.get("output_dir", "./outputs"))
+    repo_root = Path(__file__).resolve().parent
+    ensure_repo_local_outputs_absent(repo_root)
+    output_root = resolve_data_disk_dir(
+        cfg.get("output_dir", str(DEFAULT_OUTPUT_ROOT)),
+        arg_name="output_dir",
+    )
     run_name = cfg.get("run_name", datetime.now().strftime("%m%d_%H%M%S"))
     output_dir = output_root / run_name
     output_dir.mkdir(parents=True, exist_ok=True)

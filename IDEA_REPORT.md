@@ -12,7 +12,7 @@
 
 ## Implementation Status
 - `2026-04-09` 源代码状态：`Idea1 / CCT-224` 已在 `train_first_hop.py` 与正式 `chainstable` 源配置中完整接入。
-- 注意：更早的历史运行产物若落盘于本次修复前，`outputs/.../config.yaml` 可能不含 `training.cct`，应视为旧实验记录，而不是当前源实现状态。
+- 注意：更早的历史运行产物若落盘于本次修复前，`/data_2/qujiaxiang/outputs/PET_LatentResidual/.../config.yaml` 可能不含 `training.cct`，应视为旧实验记录，而不是当前源实现状态。
 
 ## Gate-1 Ranked Ideas (2026-04-09)
 

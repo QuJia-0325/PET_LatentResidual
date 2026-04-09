@@ -214,5 +214,6 @@ L_total = L_pair + lambda_roll * L_rollout + lambda_img * L_img_hop0 (+ optional
 
 - 所有训练、评估、诊断产物必须直接写入 `/data_2/qujiaxiang/outputs/PET_LatentResidual`
 - 不允许在仓库根目录保留 `outputs` 目录或符号链接
+- 历史遗留产物迁移脚本：`tools/migrate_repo_outputs_to_data_disk.sh`
 - 训练与评估请固定 conda 环境：`rae`
 - 如需新增架构改动，必须先经用户批准再实施。

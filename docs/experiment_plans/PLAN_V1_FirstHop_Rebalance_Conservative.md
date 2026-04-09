@@ -35,8 +35,8 @@ training:
 python train_first_hop.py --config configs/pet_flow/pet_flow_first_hop_224_10k_formal_v3_chainstable.yaml
 python train_first_hop.py --config configs/pet_flow/pet_flow_first_hop_224_10k_v1_rebalance_conservative.yaml
 
-python eval_first_hop_224_clip3.py --config configs/pet_flow/pet_flow_first_hop_224_10k_formal_v3_chainstable.yaml --checkpoint <baseline_best.pt> --split val --max-slices 0 --out-dir outputs/clip3_eval/v1_baseline
-python eval_first_hop_224_clip3.py --config configs/pet_flow/pet_flow_first_hop_224_10k_v1_rebalance_conservative.yaml --checkpoint <v1_best.pt> --split val --max-slices 0 --out-dir outputs/clip3_eval/v1_variant
+python eval_first_hop_224_clip3.py --config configs/pet_flow/pet_flow_first_hop_224_10k_formal_v3_chainstable.yaml --checkpoint <baseline_best.pt> --split val --max-slices 0 --out-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/v1_baseline
+python eval_first_hop_224_clip3.py --config configs/pet_flow/pet_flow_first_hop_224_10k_v1_rebalance_conservative.yaml --checkpoint <v1_best.pt> --split val --max-slices 0 --out-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/v1_variant
 ```
 
 ## Primary Metrics

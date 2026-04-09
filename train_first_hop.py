@@ -26,6 +26,7 @@ from pet_lr.rollout_first_hop import (
     rollout_multistep_losses_first_hop,
     sample_chain_first_hop,
 )
+from pet_lr.path_guard import DEFAULT_OUTPUT_ROOT, ensure_repo_local_outputs_absent, resolve_data_disk_dir
 
 
 def load_config(path: str) -> Dict:
@@ -1023,13 +1024,12 @@ def main() -> None:
             "Decoder unfreezing is not allowed in this trainer."
         )
 
-    output_root = Path(cfg.get("output_dir", "/data_2/qujiaxiang/outputs/PET_LatentResidual")).expanduser().resolve()
-    required_output_prefix = Path("/data_2").resolve()
-    if required_output_prefix != output_root and required_output_prefix not in output_root.parents:
-        raise RuntimeError(
-            f"output_dir must be under /data_2. got: {output_root}. "
-            "Please update config output_dir to /data_2/..."
-        )
+    repo_root = Path(__file__).resolve().parent
+    ensure_repo_local_outputs_absent(repo_root)
+    output_root = resolve_data_disk_dir(
+        cfg.get("output_dir", str(DEFAULT_OUTPUT_ROOT)),
+        arg_name="output_dir",
+    )
     run_name = cfg.get("run_name", datetime.now().strftime("%m%d_%H%M%S"))
     output_dir = output_root / run_name
     resume_path = str(args.resume).strip()
