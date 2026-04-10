@@ -4,6 +4,17 @@ output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual
 run_name: first_hop_224_50k_idea1_cct_seed2_gpu1
 seed: 2
 device: cuda:1
+wandb:
+  enabled: true
+  project: pet_first_hop_224
+  name: first_hop_224_50k_idea1_cct_seed2_gpu1
+  resume: allow
+  tags:
+  - first_hop
+  - 224
+  - idea1
+  - cct
+  - seed2
 data:
   latent_dir: /data_2/qujiaxiang/lowdose_pet_ct/latents_224
   raw_data_dir: /data_2/qujiaxiang

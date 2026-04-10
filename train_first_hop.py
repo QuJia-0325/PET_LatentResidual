@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import math
 import os
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -32,6 +33,106 @@ from pet_lr.path_guard import DEFAULT_OUTPUT_ROOT, ensure_repo_local_outputs_abs
 def load_config(path: str) -> Dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _finish_wandb_run(run: Any) -> None:
+    if run is None:
+        return
+    try:
+        run.finish()
+    except Exception as exc:  # pragma: no cover - best-effort cleanup only
+        print(f"[wandb][warn] finish failed: {exc}", flush=True)
+
+
+def init_wandb(cfg: Dict, output_dir: Path, run_name: str, resume_enabled: bool) -> Any:
+    wandb_cfg = cfg.get("wandb", {})
+    if wandb_cfg is None:
+        wandb_cfg = {}
+    if not isinstance(wandb_cfg, dict):
+        raise TypeError(f"wandb config must be a mapping, got {type(wandb_cfg)}")
+    if not bool(wandb_cfg.get("enabled", False)):
+        return None
+
+    try:
+        import wandb
+    except ImportError as exc:
+        raise RuntimeError("wandb.enabled=true but wandb is not installed in the current environment") from exc
+
+    project = str(wandb_cfg.get("project", cfg.get("project_name", "pet_first_hop_224"))).strip()
+    if not project:
+        raise ValueError("wandb.project must be non-empty when wandb.enabled=true")
+    name = str(wandb_cfg.get("name", run_name)).strip() or run_name
+    mode = str(wandb_cfg.get("mode", "online")).strip() or "online"
+    if mode == "disabled":
+        print("[wandb] disabled via wandb.mode=disabled", flush=True)
+        return None
+
+    run_id_path = output_dir / "wandb_run_id.txt"
+    run_id = str(wandb_cfg.get("id", "")).strip()
+    if run_id_path.exists():
+        existing_run_id = run_id_path.read_text(encoding="utf-8").strip()
+        if existing_run_id:
+            run_id = existing_run_id
+    if not run_id:
+        run_id = wandb.util.generate_id()
+
+    init_kwargs = {
+        "project": project,
+        "name": name,
+        "config": cfg,
+        "dir": str(output_dir),
+        "id": run_id,
+        "resume": str(wandb_cfg.get("resume", "allow" if resume_enabled else "never")),
+        "mode": mode,
+    }
+    entity = str(wandb_cfg.get("entity", "")).strip()
+    if entity:
+        init_kwargs["entity"] = entity
+    group = str(wandb_cfg.get("group", "")).strip()
+    if group:
+        init_kwargs["group"] = group
+    job_type = str(wandb_cfg.get("job_type", "")).strip()
+    if job_type:
+        init_kwargs["job_type"] = job_type
+    notes = str(wandb_cfg.get("notes", "")).strip()
+    if notes:
+        init_kwargs["notes"] = notes
+    tags = wandb_cfg.get("tags", None)
+    if tags is not None:
+        if not isinstance(tags, (list, tuple)):
+            raise TypeError(f"wandb.tags must be a list/tuple, got {type(tags)}")
+        init_kwargs["tags"] = [str(tag) for tag in tags]
+
+    run = wandb.init(**init_kwargs)
+    if run is None:
+        raise RuntimeError("wandb.init returned None while wandb.enabled=true")
+
+    run_id_path.write_text(f"{run.id}\n", encoding="utf-8")
+    run_meta = {
+        "project": project,
+        "name": run.name,
+        "id": run.id,
+        "entity": getattr(run, "entity", None),
+        "url": getattr(run, "url", None),
+        "dir": str(output_dir),
+    }
+    (output_dir / "wandb_run.json").write_text(
+        json.dumps(run_meta, ensure_ascii=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    run.config.update({"resolved_output_dir": str(output_dir)}, allow_val_change=True)
+    print(f"[wandb] enabled: project={project} name={run.name} id={run.id} mode={mode}", flush=True)
+    if run_meta["url"]:
+        print(f"[wandb] url: {run_meta['url']}", flush=True)
+    atexit.register(_finish_wandb_run, run)
+    return run
+
+
+def maybe_wandb_log(run: Any, payload: Dict) -> None:
+    if run is None:
+        return
+    step = int(payload.get("step", 0))
+    run.log(dict(payload), step=step)
 
 
 def set_seed(seed: int, deterministic: bool = False) -> None:
@@ -1067,6 +1168,13 @@ def main() -> None:
     if resume_enabled:
         print(f"[startup] resume from: {resume_path}", flush=True)
 
+    wandb_run = init_wandb(
+        cfg=cfg,
+        output_dir=output_dir,
+        run_name=str(run_name),
+        resume_enabled=resume_enabled,
+    )
+
     main_train_loader, hop0_train_loader, main_val_loader, hop0_val_loader = build_dataloaders(cfg)
     if len(main_train_loader) <= 0:
         raise RuntimeError("main_train_loader is empty")
@@ -1408,6 +1516,11 @@ def main() -> None:
             if pbar is not None:
                 pbar.close()
             return
+
+    if wandb_run is not None:
+        wandb_run.summary["resume_enabled"] = int(resume_enabled)
+        wandb_run.summary["start_step"] = int(start_step)
+        wandb_run.summary["output_dir"] = str(output_dir)
 
     if pbar is not None and start_step > 0:
         pbar.update(start_step)
@@ -1801,6 +1914,7 @@ def main() -> None:
             if metrics_fp is not None:
                 metrics_fp.write(json.dumps(metrics_payload, ensure_ascii=True) + "\n")
                 metrics_fp.flush()
+            maybe_wandb_log(wandb_run, metrics_payload)
             grad_suffix = ""
             if log_grad_norms:
                 grad_suffix = (
@@ -1970,12 +2084,13 @@ def main() -> None:
             key, key_name = resolve_best_selection_score(metrics, train_cfg)
             best_metric_name_for_ckpt = key_name
             metrics["val_select_score"] = float(key)
+            val_payload = {"event": "val", "step": int(step)}
+            for k, v in metrics.items():
+                val_payload[k] = float(v)
             if metrics_fp is not None:
-                val_payload = {"event": "val", "step": int(step)}
-                for k, v in metrics.items():
-                    val_payload[k] = float(v)
                 metrics_fp.write(json.dumps(val_payload, ensure_ascii=True) + "\n")
                 metrics_fp.flush()
+            maybe_wandb_log(wandb_run, val_payload)
             summary = " ".join([f"{k}={v:.6f}" for k, v in metrics.items()])
             print(f"[val] step={step:05d} {summary}")
 
@@ -1993,6 +2108,10 @@ def main() -> None:
                     best_metric_name=best_metric_name_for_ckpt,
                     best_metric_signature=best_metric_signature,
                 )
+                if wandb_run is not None:
+                    wandb_run.summary["best_val"] = float(best_val)
+                    wandb_run.summary["best_metric_name"] = str(best_metric_name_for_ckpt)
+                    wandb_run.summary["best_step"] = int(step)
                 print(f"[val] new best {key_name}={best_val:.6f} at step={step}")
         if pbar is not None:
             pbar.update(1)
@@ -2001,6 +2120,9 @@ def main() -> None:
         pbar.close()
     if metrics_fp is not None:
         metrics_fp.close()
+    if wandb_run is not None and math.isfinite(best_val):
+        wandb_run.summary["best_val"] = float(best_val)
+        wandb_run.summary["best_metric_name"] = str(best_metric_name_for_ckpt)
     save_checkpoint(
         model,
         optimizer,
@@ -2013,6 +2135,9 @@ def main() -> None:
         best_metric_name=best_metric_name_for_ckpt,
         best_metric_signature=best_metric_signature,
     )
+    if wandb_run is not None:
+        wandb_run.summary["completed_steps"] = int(max_steps)
+        _finish_wandb_run(wandb_run)
     print(f"Training done. Outputs at: {output_dir}")
 
 
