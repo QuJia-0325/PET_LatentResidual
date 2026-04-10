@@ -135,6 +135,19 @@ def maybe_wandb_log(run: Any, payload: Dict) -> None:
     run.log(dict(payload), step=step)
 
 
+def is_launcher_artifact(path: Path) -> bool:
+    name = path.name
+    if name in {"latest_stdout.log", "latest_stderr.log", "latest_launch.txt"}:
+        return True
+    if name.startswith("train_") and (name.endswith(".stdout.log") or name.endswith(".stderr.log")):
+        return True
+    if name.startswith("launch_") and name.endswith(".txt"):
+        return True
+    if name.startswith("exit_code_") and name.endswith(".txt"):
+        return True
+    return False
+
+
 def set_seed(seed: int, deterministic: bool = False) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -1140,11 +1153,14 @@ def main() -> None:
     if resume_enabled and not os.path.exists(resume_path):
         raise FileNotFoundError(f"--resume checkpoint not found: {resume_path}")
     require_fresh_output_dir = bool(train_cfg_boot.get("require_fresh_output_dir", False))
-    if output_dir.exists() and require_fresh_output_dir and any(output_dir.iterdir()) and not resume_enabled:
-        raise RuntimeError(
-            f"Output dir already exists and is not empty: {output_dir}. "
-            "Please change run_name or clean the directory."
-        )
+    if output_dir.exists() and require_fresh_output_dir and not resume_enabled:
+        blocking_entries = [p for p in output_dir.iterdir() if not is_launcher_artifact(p)]
+        if blocking_entries:
+            preview = ", ".join(sorted(p.name for p in blocking_entries[:8]))
+            raise RuntimeError(
+                f"Output dir already exists and contains non-launcher files: {output_dir}. "
+                f"Examples: {preview}. Please change run_name or clean the directory."
+            )
     output_dir.mkdir(parents=True, exist_ok=True)
     config_path = output_dir / "config.yaml"
     if resume_enabled and config_path.exists():
