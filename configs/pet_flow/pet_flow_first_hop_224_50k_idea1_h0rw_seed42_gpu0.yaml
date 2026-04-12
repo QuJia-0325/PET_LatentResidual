@@ -1,7 +1,7 @@
 project_name: pet_first_hop_224
 rae_root: /home/qujiaxiang/project/RAE
 output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual
-run_name: first_hop_224_50k_idea1_h0rw_seed42_gpu0
+run_name: first_hop_224_50k_idea1_h0rw_fix1_seed42_gpu0
 seed: 42
 device: cuda:0
 

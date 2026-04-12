@@ -402,6 +402,7 @@ def compute_pair_losses(
     out: Dict[str, torch.Tensor],
     batch: Dict[str, torch.Tensor],
     cfg: Dict,
+    sample_mask: torch.Tensor | None = None,
 ) -> Dict[str, torch.Tensor]:
     pair_cfg = cfg["loss"].get("pair", {})
     transport_cfg = cfg.get("transport", {})
@@ -410,22 +411,60 @@ def compute_pair_losses(
     endpoint_pair_weighting = bool(transport_cfg.get("endpoint_pair_weighting", False))
     endpoint_dt_normalize = bool(transport_cfg.get("endpoint_dt_normalize", False))
 
-    dt = (batch["t_dst"] - batch["t_src"]).view(-1, 1, 1, 1).clamp_min(1e-8)
-    v_target_raw = (batch["z_dst"] - batch["z_src"]) / dt
+    hop_idx_full = batch["hop_idx"].long()
+    if sample_mask is not None:
+        if sample_mask.dtype != torch.bool:
+            sample_mask = sample_mask.bool()
+        if sample_mask.dim() != 1 or sample_mask.shape[0] != hop_idx_full.shape[0]:
+            raise ValueError(
+                "sample_mask must be 1D and match batch size, "
+                f"got {tuple(sample_mask.shape)} vs {tuple(hop_idx_full.shape)}"
+            )
+        if not torch.any(sample_mask):
+            zero = out["z_pred"].new_zeros(())
+            return {
+                "total": zero,
+                "velocity": zero,
+                "endpoint": zero,
+                "velocity_unweighted": zero,
+                "endpoint_unweighted": zero,
+                "velocity_weight_eff": torch.tensor(0.0, device=zero.device, dtype=zero.dtype),
+                "endpoint_weight_eff": torch.tensor(0.0, device=zero.device, dtype=zero.dtype),
+                "velocity_rebalance_scale": torch.tensor(1.0, device=zero.device, dtype=zero.dtype),
+                "count": torch.tensor(0.0, device=zero.device, dtype=zero.dtype),
+            }
+        z_src = batch["z_src"][sample_mask]
+        z_dst = batch["z_dst"][sample_mask]
+        z_pred = out["z_pred"][sample_mask]
+        v_total_raw = out["v_total_raw"][sample_mask]
+        t_src = batch["t_src"][sample_mask]
+        t_dst = batch["t_dst"][sample_mask]
+        hop_idx = hop_idx_full[sample_mask]
+    else:
+        z_src = batch["z_src"]
+        z_dst = batch["z_dst"]
+        z_pred = out["z_pred"]
+        v_total_raw = out["v_total_raw"]
+        t_src = batch["t_src"]
+        t_dst = batch["t_dst"]
+        hop_idx = hop_idx_full
+
+    dt = (t_dst - t_src).view(-1, 1, 1, 1).clamp_min(1e-8)
+    v_target_raw = (z_dst - z_src) / dt
     if model.target_normalize:
-        sigma = model.sigma_for_hop(batch["hop_idx"]).clamp_min(1e-8)
+        sigma = model.sigma_for_hop(hop_idx).clamp_min(1e-8)
         v_target = v_target_raw / sigma
     else:
         v_target = v_target_raw
 
-    vel_err = (out["v_total_raw"] - v_target).pow(2).mean(dim=(1, 2, 3))
+    vel_err = (v_total_raw - v_target).pow(2).mean(dim=(1, 2, 3))
     if endpoint_dt_normalize:
-        end_err = ((out["z_pred"] - batch["z_dst"]) / dt).pow(2).mean(dim=(1, 2, 3))
+        end_err = ((z_pred - z_dst) / dt).pow(2).mean(dim=(1, 2, 3))
     else:
-        end_err = (out["z_pred"] - batch["z_dst"]).pow(2).mean(dim=(1, 2, 3))
+        end_err = (z_pred - z_dst).pow(2).mean(dim=(1, 2, 3))
     vel_err_unweighted = vel_err.mean()
     end_err_unweighted = end_err.mean()
-    sample_weights = _resolve_pair_loss_weights(cfg, num_pairs=int(model.num_hops), hop_idx=batch["hop_idx"])
+    sample_weights = _resolve_pair_loss_weights(cfg, num_pairs=int(model.num_hops), hop_idx=hop_idx)
     if sample_weights is None:
         loss_velocity = vel_err_unweighted
     else:
@@ -456,6 +495,7 @@ def compute_pair_losses(
 
     velocity_weight_eff = v_weight * rebalance_scale
     total = velocity_weight_eff * loss_velocity + endpoint_weight * loss_endpoint
+    sample_count = torch.tensor(float(hop_idx.shape[0]), device=loss_velocity.device, dtype=loss_velocity.dtype)
     return {
         "total": total,
         "velocity": loss_velocity,
@@ -465,6 +505,7 @@ def compute_pair_losses(
         "velocity_weight_eff": torch.tensor(velocity_weight_eff, device=loss_velocity.device, dtype=loss_velocity.dtype),
         "endpoint_weight_eff": torch.tensor(endpoint_weight, device=loss_velocity.device, dtype=loss_velocity.dtype),
         "velocity_rebalance_scale": torch.tensor(rebalance_scale, device=loss_velocity.device, dtype=loss_velocity.dtype),
+        "count": sample_count,
     }
 
 
@@ -475,47 +516,18 @@ def compute_pair_hop0_losses(
     cfg: Dict,
 ) -> Dict[str, torch.Tensor]:
     """Compute auxiliary pair loss on hop0 samples only (D50->D20)."""
-    mask = batch["hop_idx"].long() == 0
-    zero = out["z_pred"].new_zeros(())
-    if not torch.any(mask):
-        return {
-            "total": zero,
-            "velocity": zero,
-            "endpoint": zero,
-            "count": torch.tensor(0.0, device=zero.device, dtype=zero.dtype),
-        }
-
-    pair_cfg = cfg["loss"].get("pair", {})
-    transport_cfg = cfg.get("transport", {})
-    v_weight = float(transport_cfg.get("velocity_loss_weight", pair_cfg.get("velocity_weight", 1.0)))
-    endpoint_weight = float(transport_cfg.get("endpoint_loss_weight", pair_cfg.get("endpoint_weight", 1.0)))
-    endpoint_dt_normalize = bool(transport_cfg.get("endpoint_dt_normalize", False))
-
-    z_src = batch["z_src"][mask]
-    z_dst = batch["z_dst"][mask]
-    z_pred = out["z_pred"][mask]
-    v_total_raw = out["v_total_raw"][mask]
-    hop_idx = batch["hop_idx"][mask]
-
-    dt = (batch["t_dst"][mask] - batch["t_src"][mask]).view(-1, 1, 1, 1).clamp_min(1e-8)
-    v_target_raw = (z_dst - z_src) / dt
-    if model.target_normalize:
-        sigma = model.sigma_for_hop(hop_idx).clamp_min(1e-8)
-        v_target = v_target_raw / sigma
-    else:
-        v_target = v_target_raw
-
-    loss_velocity = (v_total_raw - v_target).pow(2).mean()
-    if endpoint_dt_normalize:
-        loss_endpoint = ((z_pred - z_dst) / dt).pow(2).mean()
-    else:
-        loss_endpoint = (z_pred - z_dst).pow(2).mean()
-    total = float(v_weight) * loss_velocity + float(endpoint_weight) * loss_endpoint
+    losses = compute_pair_losses(
+        model=model,
+        out=out,
+        batch=batch,
+        cfg=cfg,
+        sample_mask=(batch["hop_idx"].long() == 0),
+    )
     return {
-        "total": total,
-        "velocity": loss_velocity,
-        "endpoint": loss_endpoint,
-        "count": mask.float().sum(),
+        "total": losses["total"],
+        "velocity": losses["velocity"],
+        "endpoint": losses["endpoint"],
+        "count": losses["count"],
     }
 
 
@@ -1584,7 +1596,7 @@ def main() -> None:
         )
     if loss_balance_watch_patience <= 0:
         raise ValueError(f"training.loss_balance_watch_patience must be > 0, got {loss_balance_watch_patience}")
-    loss_balance_streak = {"pair": 0, "roll": 0, "img": 0, "cct": 0}
+    loss_balance_streak = {"pair": 0, "roll": 0, "img": 0, "cct": 0, "h0rw": 0}
 
     if resume_enabled:
         ckpt = torch.load(resume_path, map_location="cpu")
@@ -1814,7 +1826,15 @@ def main() -> None:
                 rollout_losses=rollout_losses,
             )
             if bool(hop0_reweight_meta["enabled"]):
-                hop0_pair_aux = compute_pair_hop0_losses(model, main_out, main_batch, cfg)
+                # Use dedicated hop0 auxiliary batch to guarantee per-step hop0 signal.
+                hop0_pair_out = model.predict_latent_step(
+                    z_src=hop0_batch["z_src"],
+                    t_src=hop0_batch["t_src"],
+                    t_dst=hop0_batch["t_dst"],
+                    hop_idx=hop0_batch["hop_idx"],
+                    x_src_img=hop0_batch["x_src"],
+                )
+                hop0_pair_aux = compute_pair_hop0_losses(model, hop0_pair_out, hop0_batch, cfg)
                 hop0_roll0_aux = (
                     rollout_losses["step_losses"][0]
                     if len(rollout_losses.get("step_losses", [])) > 0
@@ -1872,6 +1892,7 @@ def main() -> None:
                     "roll": float(roll_frac_t.detach().item()),
                     "img": float(img_frac_t.detach().item()),
                     "cct": float(cct_frac_t.detach().item()),
+                    "h0rw": float(h0rw_frac_t.detach().item()),
                 }
                 for k, v in frac_values.items():
                     if v >= loss_balance_dominance_threshold:
