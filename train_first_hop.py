@@ -725,16 +725,118 @@ def compute_cct_losses(
     cfg: Dict,
     global_step: int,
     rollout_times: list[float],
+    rollout_alpha: float | None = None,
 ) -> Dict[str, torch.Tensor]:
+    def _zero_return(z: torch.Tensor, num_steps: int, lambda_cct: float = 0.0) -> Dict[str, torch.Tensor]:
+        z0 = z.new_zeros(())
+        return {
+            "loss_total": z0,
+            "loss_consistency": z0,
+            "loss_matching": z0,
+            "step_losses": [z0 for _ in range(num_steps)],
+            "step_losses_consistency": [z0 for _ in range(num_steps)],
+            "step_losses_matching": [z0 for _ in range(num_steps)],
+            "lambda_cct": torch.tensor(float(lambda_cct), device=z.device),
+            "curriculum_progress": torch.tensor(0.0, device=z.device),
+            "consistency_scale": torch.tensor(1.0, device=z.device),
+            "matching_scale": torch.tensor(0.0, device=z.device),
+            "conflict_ratio": torch.tensor(0.0, device=z.device),
+            "conflict_damp": torch.tensor(1.0, device=z.device),
+        }
+
+    def _resolve_cct_curriculum(cct_cfg: Dict, global_step: int, rollout_alpha: float | None) -> Dict[str, float]:
+        alpha_cfg = cct_cfg.get("alpha_curriculum", {})
+        enabled = bool(alpha_cfg.get("enabled", False))
+        if not enabled:
+            return {
+                "enabled": False,
+                "progress": 0.0,
+                "consistency_scale": 1.0,
+                "matching_scale": 0.0,
+                "conflict_damp_enabled": False,
+                "conflict_target": 1.0,
+                "conflict_gamma": 0.0,
+                "conflict_min_scale": 1.0,
+            }
+
+        mode = str(alpha_cfg.get("progress_mode", "rollout_alpha")).lower()
+        if mode in ("rollout_alpha", "alpha"):
+            if rollout_alpha is None:
+                progress = get_linear_schedule_value(
+                    global_step=global_step,
+                    warmup_steps=int(alpha_cfg.get("warmup_steps", 500)),
+                    ramp_steps=int(alpha_cfg.get("ramp_steps", 1000)),
+                    start=0.0,
+                    end=1.0,
+                )
+            else:
+                progress = max(0.0, min(1.0, float(rollout_alpha)))
+        elif mode in ("schedule", "steps"):
+            progress = get_linear_schedule_value(
+                global_step=global_step,
+                warmup_steps=int(alpha_cfg.get("warmup_steps", 500)),
+                ramp_steps=int(alpha_cfg.get("ramp_steps", 1000)),
+                start=0.0,
+                end=1.0,
+            )
+        else:
+            raise ValueError(
+                "training.cct.alpha_curriculum.progress_mode must be one of "
+                "{rollout_alpha, alpha, schedule, steps}"
+            )
+
+        consistency_start = float(alpha_cfg.get("consistency_scale_start", 0.2))
+        consistency_end = float(alpha_cfg.get("consistency_scale_end", 1.0))
+        matching_start = float(alpha_cfg.get("matching_scale_start", 1.0))
+        matching_end = float(alpha_cfg.get("matching_scale_end", 0.2))
+        for key, value in (
+            ("consistency_scale_start", consistency_start),
+            ("consistency_scale_end", consistency_end),
+            ("matching_scale_start", matching_start),
+            ("matching_scale_end", matching_end),
+        ):
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"training.cct.alpha_curriculum.{key} must be finite and >= 0, got {value}")
+        consistency_scale = consistency_start + (consistency_end - consistency_start) * float(progress)
+        matching_scale = matching_start + (matching_end - matching_start) * float(progress)
+
+        if bool(alpha_cfg.get("normalize_scales", True)):
+            denom = max(consistency_scale + matching_scale, 1.0e-12)
+            consistency_scale /= denom
+            matching_scale /= denom
+
+        conflict_damp_enabled = bool(alpha_cfg.get("conflict_damp_enabled", False))
+        conflict_target = float(alpha_cfg.get("conflict_target", 1.0))
+        conflict_gamma = float(alpha_cfg.get("conflict_gamma", 0.5))
+        conflict_min_scale = float(alpha_cfg.get("conflict_min_scale", 0.5))
+        if not math.isfinite(conflict_target) or conflict_target < 0.0:
+            raise ValueError(
+                f"training.cct.alpha_curriculum.conflict_target must be finite and >= 0, got {conflict_target}"
+            )
+        if not math.isfinite(conflict_gamma) or conflict_gamma < 0.0:
+            raise ValueError(
+                f"training.cct.alpha_curriculum.conflict_gamma must be finite and >= 0, got {conflict_gamma}"
+            )
+        if not math.isfinite(conflict_min_scale):
+            raise ValueError(
+                f"training.cct.alpha_curriculum.conflict_min_scale must be finite, got {conflict_min_scale}"
+            )
+        conflict_min_scale = max(0.0, min(1.0, conflict_min_scale))
+        return {
+            "enabled": True,
+            "progress": float(progress),
+            "consistency_scale": float(consistency_scale),
+            "matching_scale": float(matching_scale),
+            "conflict_damp_enabled": conflict_damp_enabled,
+            "conflict_target": conflict_target,
+            "conflict_gamma": conflict_gamma,
+            "conflict_min_scale": conflict_min_scale,
+        }
+
     cct_cfg = cfg["training"].get("cct", {})
     num_steps = max(len(rollout_times) - 1, 0)
     if not bool(cct_cfg.get("enabled", False)) or num_steps <= 0:
-        z = main_batch["z_src"].new_zeros(())
-        return {
-            "loss_total": z,
-            "step_losses": [z for _ in range(num_steps)],
-            "lambda_cct": torch.tensor(0.0, device=z.device),
-        }
+        return _zero_return(main_batch["z_src"], num_steps=num_steps, lambda_cct=0.0)
 
     step_weights_cfg = cct_cfg.get("step_weights", None)
     if step_weights_cfg is None:
@@ -757,6 +859,12 @@ def compute_cct_losses(
     if loss_type not in ("mse", "l1"):
         raise ValueError(f"training.cct.loss_type must be 'mse' or 'l1', got {loss_type}")
     detach_teacher = bool(cct_cfg.get("detach_teacher", True))
+    detach_teacher_matching = bool(cct_cfg.get("detach_teacher_matching", detach_teacher))
+    curriculum = _resolve_cct_curriculum(
+        cct_cfg=cct_cfg,
+        global_step=global_step,
+        rollout_alpha=rollout_alpha,
+    )
 
     z_rollout = main_batch["z_rollout"]
     if z_rollout.dim() != 5:
@@ -768,15 +876,11 @@ def compute_cct_losses(
 
     bsz = int(z_rollout.shape[0])
     if bsz <= 0:
-        z = main_batch["z_src"].new_zeros(())
-        return {
-            "loss_total": z,
-            "step_losses": [z for _ in range(num_steps)],
-            "lambda_cct": torch.tensor(lambda_cct, device=z.device),
-        }
+        return _zero_return(main_batch["z_src"], num_steps=num_steps, lambda_cct=lambda_cct)
 
     teacher_preds: list[torch.Tensor] = []
     pure_preds: list[torch.Tensor] = []
+    gt_targets: list[torch.Tensor] = []
     z_curr_pred = z_rollout[:, 0]
     x_rollout_first = main_batch.get("x_rollout_first")
 
@@ -806,24 +910,61 @@ def compute_cct_losses(
         z_pp = out_pp["z_pred"]
         teacher_preds.append(z_tf)
         pure_preds.append(z_pp)
+        gt_targets.append(z_rollout[:, i + 1])
         z_curr_pred = z_pp
 
-    weighted_losses: list[torch.Tensor] = []
+    weighted_cons_losses: list[torch.Tensor] = []
+    weighted_match_losses: list[torch.Tensor] = []
     for i in range(num_steps):
-        target = teacher_preds[i].detach() if detach_teacher else teacher_preds[i]
+        target_tf = teacher_preds[i].detach() if detach_teacher else teacher_preds[i]
+        target_match = teacher_preds[i].detach() if detach_teacher_matching else teacher_preds[i]
         pred = pure_preds[i]
+        gt = gt_targets[i]
         if loss_type == "l1":
-            step_loss = (pred - target).abs().mean()
+            cons_step_loss = (pred - target_tf).abs().mean()
+            match_step_loss = (target_match - gt).abs().mean()
         else:
-            step_loss = F.mse_loss(pred, target)
-        weighted_losses.append(step_loss * float(step_weights[i]))
+            cons_step_loss = F.mse_loss(pred, target_tf)
+            match_step_loss = F.mse_loss(target_match, gt)
+        weighted_cons_losses.append(cons_step_loss * float(step_weights[i]))
+        weighted_match_losses.append(match_step_loss * float(step_weights[i]))
 
     denom = max(float(sum(float(w) for w in step_weights)), 1.0e-12)
-    loss_total = torch.stack(weighted_losses).sum() / denom
+    loss_consistency = torch.stack(weighted_cons_losses).sum() / denom
+    loss_matching = torch.stack(weighted_match_losses).sum() / denom
+
+    conflict_ratio = (loss_consistency.detach() + 1.0e-12) / (loss_matching.detach() + 1.0e-12)
+    conflict_ratio = conflict_ratio.clamp(min=0.0, max=1.0e6)
+    conflict_damp = loss_consistency.new_tensor(1.0)
+    if bool(curriculum["conflict_damp_enabled"]):
+        target = float(curriculum["conflict_target"])
+        gamma = max(float(curriculum["conflict_gamma"]), 0.0)
+        min_scale = float(curriculum["conflict_min_scale"])
+        over = (conflict_ratio - target).clamp(min=0.0)
+        conflict_damp = 1.0 / (1.0 + gamma * over)
+        conflict_damp = conflict_damp.clamp(min=min_scale, max=1.0)
+
+    consistency_scale = loss_consistency.new_tensor(float(curriculum["consistency_scale"])) * conflict_damp
+    matching_scale = loss_consistency.new_tensor(float(curriculum["matching_scale"]))
+    loss_total = consistency_scale * loss_consistency + matching_scale * loss_matching
+    combined_step_losses = [
+        consistency_scale * c + matching_scale * m
+        for c, m in zip(weighted_cons_losses, weighted_match_losses)
+    ]
+
     return {
         "loss_total": loss_total,
-        "step_losses": weighted_losses,
+        "loss_consistency": loss_consistency,
+        "loss_matching": loss_matching,
+        "step_losses": combined_step_losses,
+        "step_losses_consistency": weighted_cons_losses,
+        "step_losses_matching": weighted_match_losses,
         "lambda_cct": torch.tensor(lambda_cct, device=loss_total.device),
+        "curriculum_progress": torch.tensor(float(curriculum["progress"]), device=loss_total.device),
+        "consistency_scale": consistency_scale,
+        "matching_scale": matching_scale,
+        "conflict_ratio": conflict_ratio,
+        "conflict_damp": conflict_damp,
     }
 
 
@@ -948,6 +1089,8 @@ def evaluate(
         window_mode=window_mode,
     )
     roll_cfg = cfg["training"].get("rollout", {})
+    cct_cfg = cfg["training"].get("cct", {})
+    cct_eval_use_train_rollout_alpha = bool(cct_cfg.get("eval_use_train_rollout_alpha", True))
     eval_chain_on_all_samples = bool(cfg["training"].get("eval_chain_on_all_samples", True))
     eval_chain_unique_slices = bool(cfg["training"].get("eval_chain_unique_slices", True))
     eval_chain_max_unique_slices = int(cfg["training"].get("eval_chain_max_unique_slices", 0))
@@ -973,8 +1116,15 @@ def evaluate(
         "val_pair_endpoint": 0.0,
         "val_rollout_total": 0.0,
         "val_cct_total": 0.0,
+        "val_cct_consistency": 0.0,
+        "val_cct_matching": 0.0,
         "val_cct_weighted": 0.0,
         "val_cct_lambda": 0.0,
+        "val_cct_progress": 0.0,
+        "val_cct_consistency_scale": 0.0,
+        "val_cct_matching_scale": 0.0,
+        "val_cct_conflict_ratio": 0.0,
+        "val_cct_conflict_damp": 0.0,
         "val_hop0_img_total": 0.0,
         "val_hop0_img_l1": 0.0,
         "val_hop0_img_ssim": 0.0,
@@ -1008,6 +1158,7 @@ def evaluate(
         sums["val_pair_velocity"] += float(pair_losses["velocity"].item())
         sums["val_pair_endpoint"] += float(pair_losses["endpoint"].item())
 
+        cct_rollout_alpha = None
         if bool(roll_cfg.get("enabled", True)):
             eval_alpha = roll_cfg.get("eval_alpha", roll_cfg.get("alpha_end", 1.0))
             eval_straight_through = resolve_rollout_straight_through(roll_cfg=roll_cfg, alpha=float(eval_alpha))
@@ -1021,6 +1172,16 @@ def evaluate(
                 loss_type=str(roll_cfg.get("loss_type", "mse")),
                 step_weights=step_weights,
             )
+            if cct_eval_use_train_rollout_alpha:
+                cct_rollout_alpha = get_linear_schedule_value(
+                    global_step=global_step,
+                    warmup_steps=int(roll_cfg.get("warmup_steps", 500)),
+                    ramp_steps=int(roll_cfg.get("ramp_steps", 1000)),
+                    start=float(roll_cfg.get("alpha_start", 0.0)),
+                    end=float(roll_cfg.get("alpha_end", 1.0)),
+                )
+            else:
+                cct_rollout_alpha = float(eval_alpha)
             sums["val_rollout_total"] += float(roll_out["loss_total"].item())
             for i, step_loss in enumerate(roll_out["step_losses"]):
                 sums[f"val_rollout_step_{i}"] += float(step_loss.item())
@@ -1031,10 +1192,18 @@ def evaluate(
             cfg=cfg,
             global_step=global_step,
             rollout_times=rollout_times,
+            rollout_alpha=cct_rollout_alpha,
         )
         sums["val_cct_total"] += float(cct_losses["loss_total"].item())
+        sums["val_cct_consistency"] += float(cct_losses["loss_consistency"].item())
+        sums["val_cct_matching"] += float(cct_losses["loss_matching"].item())
         sums["val_cct_lambda"] += float(cct_losses["lambda_cct"].item())
         sums["val_cct_weighted"] += float((cct_losses["lambda_cct"] * cct_losses["loss_total"]).item())
+        sums["val_cct_progress"] += float(cct_losses["curriculum_progress"].item())
+        sums["val_cct_consistency_scale"] += float(cct_losses["consistency_scale"].item())
+        sums["val_cct_matching_scale"] += float(cct_losses["matching_scale"].item())
+        sums["val_cct_conflict_ratio"] += float(cct_losses["conflict_ratio"].item())
+        sums["val_cct_conflict_damp"] += float(cct_losses["conflict_damp"].item())
         for i, step_loss in enumerate(cct_losses.get("step_losses", [])):
             sums[f"val_cct_step_{i}"] += float(step_loss.item())
 
@@ -1818,6 +1987,11 @@ def main() -> None:
                 cfg=cfg,
                 global_step=step,
                 rollout_times=rollout_times,
+                rollout_alpha=(
+                    float(rollout_losses["alpha_mix"].item())
+                    if bool(cfg["training"].get("rollout", {}).get("enabled", True))
+                    else None
+                ),
             )
 
             hop0_reweight_meta = resolve_hop0_targeted_reweight(
@@ -1918,8 +2092,15 @@ def main() -> None:
             roll_v = rollout_losses["loss_total"].detach()
             img_v = img_losses["total"].detach()
             cct_v = cct_losses["loss_total"].detach()
+            cct_cons_v = cct_losses["loss_consistency"].detach()
+            cct_match_v = cct_losses["loss_matching"].detach()
             h0rw_v = hop0_reweight_extra.detach()
             cct_lambda_v = cct_losses["lambda_cct"].detach()
+            cct_cons_scale_v = cct_losses["consistency_scale"].detach()
+            cct_match_scale_v = cct_losses["matching_scale"].detach()
+            cct_progress_v = cct_losses["curriculum_progress"].detach()
+            cct_conflict_v = cct_losses["conflict_ratio"].detach()
+            cct_damp_v = cct_losses["conflict_damp"].detach()
             cct_step_vals = []
             for sv in cct_losses.get("step_losses", []):
                 cct_step_vals.append(float(sv.detach().item()))
@@ -1934,8 +2115,11 @@ def main() -> None:
                 "[nonfinite] "
                 f"step={step} "
                 f"total={float(total_loss.detach().item())} "
-                f"pair={float(pair_v.item())} roll={float(roll_v.item())} img={float(img_v.item())} cct={float(cct_v.item())} h0rw={float(h0rw_v.item())} "
+                f"pair={float(pair_v.item())} roll={float(roll_v.item())} img={float(img_v.item())} cct={float(cct_v.item())} "
+                f"cct_cons={float(cct_cons_v.item())} cct_match={float(cct_match_v.item())} h0rw={float(h0rw_v.item())} "
                 f"lambda_cct={float(cct_lambda_v.item())} cct_steps={cct_step_summary} "
+                f"cct_cons_scale={float(cct_cons_scale_v.item())} cct_match_scale={float(cct_match_scale_v.item())} "
+                f"cct_prog={float(cct_progress_v.item())} cct_conflict={float(cct_conflict_v.item())} cct_damp={float(cct_damp_v.item())} "
                 f"img_l1={float(img_l1_v.item())} img_ssim={float(img_ssim_v.item())} img_seam={float(img_seam_v.item())} "
                 f"ssim_raw_mean={float(ssim_raw_mean_v.item())} "
                 f"ssim_raw_min={float(ssim_raw_min_v.item())} ssim_raw_max={float(ssim_raw_max_v.item())} "
@@ -1943,6 +2127,8 @@ def main() -> None:
                 f"finite_roll={bool(torch.isfinite(roll_v).all().item())} "
                 f"finite_img={bool(torch.isfinite(img_v).all().item())} "
                 f"finite_cct={bool(torch.isfinite(cct_v).all().item())} "
+                f"finite_cct_cons={bool(torch.isfinite(cct_cons_v).all().item())} "
+                f"finite_cct_match={bool(torch.isfinite(cct_match_v).all().item())} "
                 f"finite_lambda_cct={bool(torch.isfinite(cct_lambda_v).all().item())} "
                 f"finite_img_ssim={bool(torch.isfinite(img_ssim_v).all().item())}",
                 flush=True,
@@ -2036,12 +2222,29 @@ def main() -> None:
             step_losses = rollout_losses["step_losses"]
             roll0 = float(step_losses[0].item()) if len(step_losses) > 0 else 0.0
             cct_step_losses = cct_losses.get("step_losses", [])
+            cct_cons_step_losses = cct_losses.get("step_losses_consistency", [])
+            cct_match_step_losses = cct_losses.get("step_losses_matching", [])
             cct0 = float(cct_step_losses[0].item()) if len(cct_step_losses) > 0 else 0.0
             cct1 = float(cct_step_losses[1].item()) if len(cct_step_losses) > 1 else 0.0
             cct2 = float(cct_step_losses[2].item()) if len(cct_step_losses) > 2 else 0.0
             cct3 = float(cct_step_losses[3].item()) if len(cct_step_losses) > 3 else 0.0
+            cct_cons0 = float(cct_cons_step_losses[0].item()) if len(cct_cons_step_losses) > 0 else 0.0
+            cct_cons1 = float(cct_cons_step_losses[1].item()) if len(cct_cons_step_losses) > 1 else 0.0
+            cct_cons2 = float(cct_cons_step_losses[2].item()) if len(cct_cons_step_losses) > 2 else 0.0
+            cct_cons3 = float(cct_cons_step_losses[3].item()) if len(cct_cons_step_losses) > 3 else 0.0
+            cct_match0 = float(cct_match_step_losses[0].item()) if len(cct_match_step_losses) > 0 else 0.0
+            cct_match1 = float(cct_match_step_losses[1].item()) if len(cct_match_step_losses) > 1 else 0.0
+            cct_match2 = float(cct_match_step_losses[2].item()) if len(cct_match_step_losses) > 2 else 0.0
+            cct_match3 = float(cct_match_step_losses[3].item()) if len(cct_match_step_losses) > 3 else 0.0
             cct = float(cct_losses["loss_total"].item())
+            cct_cons = float(cct_losses["loss_consistency"].item())
+            cct_match = float(cct_losses["loss_matching"].item())
             lambda_cct = float(cct_losses["lambda_cct"].item())
+            cct_progress = float(cct_losses["curriculum_progress"].item())
+            cct_cons_scale = float(cct_losses["consistency_scale"].item())
+            cct_match_scale = float(cct_losses["matching_scale"].item())
+            cct_conflict_ratio = float(cct_losses["conflict_ratio"].item())
+            cct_conflict_damp = float(cct_losses["conflict_damp"].item())
             cct_w = float(cct_weighted.detach().item())
             cct_frac = float(cct_frac_t.detach().item())
             pix_delta_abs = float(main_out["pix_delta_abs"].item())
@@ -2103,11 +2306,26 @@ def main() -> None:
                 "ssim_below0_frac": ssim_below0_frac,
                 "ssim_clamped_mean": ssim_clamped_mean,
                 "cct": cct,
+                "cct_cons": cct_cons,
+                "cct_match": cct_match,
                 "cct_step_0": cct0,
                 "cct_step_1": cct1,
                 "cct_step_2": cct2,
                 "cct_step_3": cct3,
+                "cct_cons_step_0": cct_cons0,
+                "cct_cons_step_1": cct_cons1,
+                "cct_cons_step_2": cct_cons2,
+                "cct_cons_step_3": cct_cons3,
+                "cct_match_step_0": cct_match0,
+                "cct_match_step_1": cct_match1,
+                "cct_match_step_2": cct_match2,
+                "cct_match_step_3": cct_match3,
                 "lambda_cct": lambda_cct,
+                "cct_progress": cct_progress,
+                "cct_cons_scale": cct_cons_scale,
+                "cct_match_scale": cct_match_scale,
+                "cct_conflict_ratio": cct_conflict_ratio,
+                "cct_conflict_damp": cct_conflict_damp,
                 "lambda_roll": float(rollout_losses["lambda_roll"].item()),
                 "lambda_roll_base": lambda_roll_base,
                 "lambda_roll_scale": lambda_roll_scale,
@@ -2169,8 +2387,12 @@ def main() -> None:
                     roll=f"{float(rollout_losses['loss_total'].item()):.4e}",
                     img=f"{float(img_losses['total'].item()):.3e}",
                     cct=f"{cct:.3e}",
+                    ccs=f"{cct_cons:.2e}",
+                    ccm=f"{cct_match:.2e}",
                     lcct=f"{lambda_cct:.3e}",
                     cf=f"{cct_frac:.2f}",
+                    ctp=f"{cct_progress:.2f}",
+                    ccd=f"{cct_conflict_damp:.2f}",
                     c0=f"{cct0:.2e}",
                     pf=f"{pair_frac:.2f}",
                     rf=f"{roll_frac:.2f}",
@@ -2212,11 +2434,18 @@ def main() -> None:
                         f"ssim_below0={ssim_below0_frac:.6f} "
                         f"ssim_clamped_mean={ssim_clamped_mean:.6f} "
                         f"cct={cct:.6f} "
+                        f"cct_cons={cct_cons:.6f} "
+                        f"cct_match={cct_match:.6f} "
                         f"cct0={cct0:.6f} "
                         f"cct1={cct1:.6f} "
                         f"cct2={cct2:.6f} "
                         f"cct3={cct3:.6f} "
                         f"lambda_cct={lambda_cct:.6f} "
+                        f"cct_progress={cct_progress:.4f} "
+                        f"cct_cons_scale={cct_cons_scale:.4f} "
+                        f"cct_match_scale={cct_match_scale:.4f} "
+                        f"cct_conflict_ratio={cct_conflict_ratio:.4f} "
+                        f"cct_conflict_damp={cct_conflict_damp:.4f} "
                         f"cct_w={cct_w:.6f} "
                         f"cct_frac={cct_frac:.3f} "
                         f"lambda_roll={float(rollout_losses['lambda_roll'].item()):.4f} "
@@ -2266,11 +2495,18 @@ def main() -> None:
                         f"ssim_below0={ssim_below0_frac:.6f} "
                         f"ssim_clamped_mean={ssim_clamped_mean:.6f} "
                         f"cct={cct:.6f} "
+                        f"cct_cons={cct_cons:.6f} "
+                        f"cct_match={cct_match:.6f} "
                         f"cct0={cct0:.6f} "
                         f"cct1={cct1:.6f} "
                         f"cct2={cct2:.6f} "
                         f"cct3={cct3:.6f} "
                         f"lambda_cct={lambda_cct:.6f} "
+                        f"cct_progress={cct_progress:.4f} "
+                        f"cct_cons_scale={cct_cons_scale:.4f} "
+                        f"cct_match_scale={cct_match_scale:.4f} "
+                        f"cct_conflict_ratio={cct_conflict_ratio:.4f} "
+                        f"cct_conflict_damp={cct_conflict_damp:.4f} "
                         f"cct_w={cct_w:.6f} "
                         f"cct_frac={cct_frac:.3f} "
                         f"lambda_roll={float(rollout_losses['lambda_roll'].item()):.4f} "
