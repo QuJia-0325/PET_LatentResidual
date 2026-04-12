@@ -1,0 +1,17 @@
+cat > .gitignore <<'EOF'
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+outputs/
+checkpoints/
+EOF
+
+find . -type d -name "__pycache__" -exec rm -rf {} +
+find . -type f -name "*.pyc" -delete
+git rm -r --cached . >/dev/null 2>&1
+git add .
+git commit -m "add gitignore and remove cache files"
+git push
