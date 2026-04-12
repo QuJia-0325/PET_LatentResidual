@@ -468,6 +468,141 @@ def compute_pair_losses(
     }
 
 
+def compute_pair_hop0_losses(
+    model: PETFlowDiTFirstHop,
+    out: Dict[str, torch.Tensor],
+    batch: Dict[str, torch.Tensor],
+    cfg: Dict,
+) -> Dict[str, torch.Tensor]:
+    """Compute auxiliary pair loss on hop0 samples only (D50->D20)."""
+    mask = batch["hop_idx"].long() == 0
+    zero = out["z_pred"].new_zeros(())
+    if not torch.any(mask):
+        return {
+            "total": zero,
+            "velocity": zero,
+            "endpoint": zero,
+            "count": torch.tensor(0.0, device=zero.device, dtype=zero.dtype),
+        }
+
+    pair_cfg = cfg["loss"].get("pair", {})
+    transport_cfg = cfg.get("transport", {})
+    v_weight = float(transport_cfg.get("velocity_loss_weight", pair_cfg.get("velocity_weight", 1.0)))
+    endpoint_weight = float(transport_cfg.get("endpoint_loss_weight", pair_cfg.get("endpoint_weight", 1.0)))
+    endpoint_dt_normalize = bool(transport_cfg.get("endpoint_dt_normalize", False))
+
+    z_src = batch["z_src"][mask]
+    z_dst = batch["z_dst"][mask]
+    z_pred = out["z_pred"][mask]
+    v_total_raw = out["v_total_raw"][mask]
+    hop_idx = batch["hop_idx"][mask]
+
+    dt = (batch["t_dst"][mask] - batch["t_src"][mask]).view(-1, 1, 1, 1).clamp_min(1e-8)
+    v_target_raw = (z_dst - z_src) / dt
+    if model.target_normalize:
+        sigma = model.sigma_for_hop(hop_idx).clamp_min(1e-8)
+        v_target = v_target_raw / sigma
+    else:
+        v_target = v_target_raw
+
+    loss_velocity = (v_total_raw - v_target).pow(2).mean()
+    if endpoint_dt_normalize:
+        loss_endpoint = ((z_pred - z_dst) / dt).pow(2).mean()
+    else:
+        loss_endpoint = (z_pred - z_dst).pow(2).mean()
+    total = float(v_weight) * loss_velocity + float(endpoint_weight) * loss_endpoint
+    return {
+        "total": total,
+        "velocity": loss_velocity,
+        "endpoint": loss_endpoint,
+        "count": mask.float().sum(),
+    }
+
+
+def resolve_hop0_targeted_reweight(
+    cfg: Dict,
+    global_step: int,
+    rollout_losses: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor | float | bool]:
+    """Adaptive hop0 emphasis driven by rollout step-0 difficulty."""
+    h0rw_cfg = cfg.get("training", {}).get("hop0_targeted_reweight", {})
+    step_losses = rollout_losses.get("step_losses", [])
+    if not step_losses:
+        z = rollout_losses["loss_total"].new_zeros(())
+        return {
+            "enabled": False,
+            "progress": 0.0,
+            "ratio": z,
+            "pressure": 0.0,
+            "pair_scale": 0.0,
+            "roll_scale": 0.0,
+            "trigger": float(h0rw_cfg.get("ratio_trigger", 1.0)),
+            "cap": float(h0rw_cfg.get("ratio_cap", 3.0)),
+        }
+
+    z = step_losses[0].new_zeros(())
+    enabled = bool(h0rw_cfg.get("enabled", False))
+    if not enabled:
+        return {
+            "enabled": False,
+            "progress": 0.0,
+            "ratio": z,
+            "pressure": 0.0,
+            "pair_scale": 0.0,
+            "roll_scale": 0.0,
+            "trigger": float(h0rw_cfg.get("ratio_trigger", 1.0)),
+            "cap": float(h0rw_cfg.get("ratio_cap", 3.0)),
+        }
+
+    warmup_steps = int(h0rw_cfg.get("warmup_steps", 0))
+    ramp_steps = int(h0rw_cfg.get("ramp_steps", 1))
+    progress = get_linear_schedule_value(
+        global_step=global_step,
+        warmup_steps=warmup_steps,
+        ramp_steps=ramp_steps,
+        start=0.0,
+        end=1.0,
+    )
+
+    eps = float(h0rw_cfg.get("eps", 1.0e-12))
+    trigger = float(h0rw_cfg.get("ratio_trigger", 1.0))
+    cap = float(h0rw_cfg.get("ratio_cap", 3.0))
+    if cap <= trigger:
+        raise ValueError(f"training.hop0_targeted_reweight.ratio_cap must be > ratio_trigger, got {cap} <= {trigger}")
+
+    step0 = step_losses[0].detach()
+    if len(step_losses) > 1:
+        tail = torch.stack([x.detach() for x in step_losses[1:]], dim=0).mean()
+    else:
+        tail = step0
+    ratio = (step0 + eps) / (tail + eps)
+
+    pressure = ((ratio - trigger) / max(cap - trigger, 1.0e-8)).clamp(min=0.0, max=1.0)
+    pressure_mode = str(h0rw_cfg.get("pressure_mode", "linear")).lower()
+    if pressure_mode == "sqrt":
+        pressure = torch.sqrt(pressure)
+    elif pressure_mode in ("square", "quadratic"):
+        pressure = pressure * pressure
+    elif pressure_mode != "linear":
+        raise ValueError("training.hop0_targeted_reweight.pressure_mode must be one of {linear, sqrt, square, quadratic}")
+
+    pressure_scalar = float(pressure.item())
+    pair_scale_max = float(h0rw_cfg.get("pair_scale_max", 0.0))
+    roll_scale_max = float(h0rw_cfg.get("roll_scale_max", 0.0))
+    pair_scale = float(progress) * pair_scale_max * pressure_scalar
+    roll_scale = float(progress) * roll_scale_max * pressure_scalar
+    return {
+        "enabled": True,
+        "progress": float(progress),
+        "ratio": ratio,
+        "pressure": pressure_scalar,
+        "pair_scale": pair_scale,
+        "roll_scale": roll_scale,
+        "trigger": trigger,
+        "cap": cap,
+    }
+
+
 def resolve_rollout_straight_through(roll_cfg: Dict, alpha: float) -> bool:
     base = bool(roll_cfg.get("straight_through", True))
     mode = str(roll_cfg.get("straight_through_mode", "fixed")).lower()
@@ -1288,6 +1423,7 @@ def main() -> None:
 
     roll_cfg_runtime = train_cfg.get("rollout", {})
     image_aux_cfg = train_cfg.get("image_aux", {})
+    hop0_reweight_cfg = train_cfg.get("hop0_targeted_reweight", {})
 
     rollout_warmup_steps = _resolve_schedule_steps(
         total_steps=max_steps,
@@ -1317,12 +1453,28 @@ def main() -> None:
         ratio_key="ramp_ratio",
         default_steps=600,
     )
+    hop0_reweight_warmup_steps = _resolve_schedule_steps(
+        total_steps=max_steps,
+        section=hop0_reweight_cfg,
+        steps_key="warmup_steps",
+        ratio_key="warmup_ratio",
+        default_steps=0,
+    )
+    hop0_reweight_ramp_steps = _resolve_schedule_steps(
+        total_steps=max_steps,
+        section=hop0_reweight_cfg,
+        steps_key="ramp_steps",
+        ratio_key="ramp_ratio",
+        default_steps=1000,
+    )
 
     # Persist resolved values into runtime cfg so helper functions use one source of truth.
     roll_cfg_runtime["warmup_steps"] = rollout_warmup_steps
     roll_cfg_runtime["ramp_steps"] = rollout_ramp_steps
     image_aux_cfg["warmup_steps"] = image_warmup_steps
     image_aux_cfg["ramp_steps"] = image_ramp_steps
+    hop0_reweight_cfg["warmup_steps"] = hop0_reweight_warmup_steps
+    hop0_reweight_cfg["ramp_steps"] = hop0_reweight_ramp_steps
 
     lr_cfg = cfg.get("lr_schedule", {})
     lr_sched_enabled = bool(lr_cfg.get("enabled", True))
@@ -1359,7 +1511,8 @@ def main() -> None:
         print("[lr_schedule] disabled: constant lr", flush=True)
     print(
         f"[schedule] rollout warmup={rollout_warmup_steps} ramp={rollout_ramp_steps}; "
-        f"image warmup={image_warmup_steps} ramp={image_ramp_steps}",
+        f"image warmup={image_warmup_steps} ramp={image_ramp_steps}; "
+        f"hop0_reweight warmup={hop0_reweight_warmup_steps} ramp={hop0_reweight_ramp_steps}",
         flush=True,
     )
 
@@ -1655,11 +1808,39 @@ def main() -> None:
                 rollout_times=rollout_times,
             )
 
+            hop0_reweight_meta = resolve_hop0_targeted_reweight(
+                cfg=cfg,
+                global_step=step,
+                rollout_losses=rollout_losses,
+            )
+            if bool(hop0_reweight_meta["enabled"]):
+                hop0_pair_aux = compute_pair_hop0_losses(model, main_out, main_batch, cfg)
+                hop0_roll0_aux = (
+                    rollout_losses["step_losses"][0]
+                    if len(rollout_losses.get("step_losses", [])) > 0
+                    else pair_losses["total"].new_zeros(())
+                )
+            else:
+                zero_aux = pair_losses["total"].new_zeros(())
+                hop0_pair_aux = {
+                    "total": zero_aux,
+                    "velocity": zero_aux,
+                    "endpoint": zero_aux,
+                    "count": zero_aux,
+                }
+                hop0_roll0_aux = zero_aux
+            hop0_pair_scale = pair_losses["total"].new_tensor(float(hop0_reweight_meta["pair_scale"]))
+            hop0_roll_scale = pair_losses["total"].new_tensor(float(hop0_reweight_meta["roll_scale"]))
+            hop0_pair_extra = hop0_pair_scale * hop0_pair_aux["total"]
+            hop0_roll_extra = hop0_roll_scale * hop0_roll0_aux
+            hop0_reweight_extra = hop0_pair_extra + hop0_roll_extra
+
             total_loss = (
                 pair_losses["total"]
                 + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
                 + float(lambda_img) * loss_img
                 + cct_losses["lambda_cct"] * cct_losses["loss_total"]
+                + hop0_reweight_extra
             )
 
             reg_cfg = cfg["loss"].get("regularizer", {})
@@ -1676,12 +1857,14 @@ def main() -> None:
             roll_weighted = rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
             img_weighted = pair_weighted.new_tensor(float(lambda_img)) * loss_img
             cct_weighted = cct_losses["lambda_cct"] * cct_losses["loss_total"]
-            weighted_total = pair_weighted + roll_weighted + img_weighted + cct_weighted
+            h0rw_weighted = hop0_reweight_extra
+            weighted_total = pair_weighted + roll_weighted + img_weighted + cct_weighted + h0rw_weighted
             frac_denom = weighted_total.abs().clamp_min(1.0e-12)
             pair_frac_t = (pair_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             roll_frac_t = (roll_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             img_frac_t = (img_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             cct_frac_t = (cct_weighted / frac_denom).clamp(min=-10.0, max=10.0)
+            h0rw_frac_t = (h0rw_weighted / frac_denom).clamp(min=-10.0, max=10.0)
 
             if loss_balance_watch_enabled and step >= loss_balance_watch_warmup_steps:
                 frac_values = {
@@ -1714,6 +1897,7 @@ def main() -> None:
             roll_v = rollout_losses["loss_total"].detach()
             img_v = img_losses["total"].detach()
             cct_v = cct_losses["loss_total"].detach()
+            h0rw_v = hop0_reweight_extra.detach()
             cct_lambda_v = cct_losses["lambda_cct"].detach()
             cct_step_vals = []
             for sv in cct_losses.get("step_losses", []):
@@ -1729,7 +1913,7 @@ def main() -> None:
                 "[nonfinite] "
                 f"step={step} "
                 f"total={float(total_loss.detach().item())} "
-                f"pair={float(pair_v.item())} roll={float(roll_v.item())} img={float(img_v.item())} cct={float(cct_v.item())} "
+                f"pair={float(pair_v.item())} roll={float(roll_v.item())} img={float(img_v.item())} cct={float(cct_v.item())} h0rw={float(h0rw_v.item())} "
                 f"lambda_cct={float(cct_lambda_v.item())} cct_steps={cct_step_summary} "
                 f"img_l1={float(img_l1_v.item())} img_ssim={float(img_ssim_v.item())} img_seam={float(img_seam_v.item())} "
                 f"ssim_raw_mean={float(ssim_raw_mean_v.item())} "
@@ -1849,9 +2033,18 @@ def main() -> None:
             pair_w = float(pair_weighted.detach().item())
             roll_w = float(roll_weighted.detach().item())
             img_w = float(img_weighted.detach().item())
+            h0rw_w = float(h0rw_weighted.detach().item())
             pair_frac = float(pair_frac_t.detach().item())
             roll_frac = float(roll_frac_t.detach().item())
             img_frac = float(img_frac_t.detach().item())
+            h0rw_frac = float(h0rw_frac_t.detach().item())
+            h0rw_ratio = float(hop0_reweight_meta["ratio"].detach().item()) if torch.is_tensor(hop0_reweight_meta["ratio"]) else 0.0
+            h0rw_pressure = float(hop0_reweight_meta["pressure"])
+            h0rw_progress = float(hop0_reweight_meta["progress"])
+            h0rw_pair_scale = float(hop0_reweight_meta["pair_scale"])
+            h0rw_roll_scale = float(hop0_reweight_meta["roll_scale"])
+            h0rw_pair_aux = float(hop0_pair_aux["total"].detach().item())
+            h0rw_roll0_aux = float(hop0_roll0_aux.detach().item())
             lambda_roll_base = float(rollout_losses.get("lambda_roll_base", rollout_losses["lambda_roll"]).item())
             lambda_roll_scale = float(rollout_losses.get("lambda_roll_scale", torch.tensor(1.0, device=device)).item())
             rollout_st = float(rollout_losses.get("straight_through", torch.tensor(1.0, device=device)).item())
@@ -1904,10 +2097,19 @@ def main() -> None:
                 "roll_w": roll_w,
                 "img_w": img_w,
                 "cct_w": cct_w,
+                "h0rw_w": h0rw_w,
                 "pair_frac": pair_frac,
                 "roll_frac": roll_frac,
                 "img_frac": img_frac,
                 "cct_frac": cct_frac,
+                "h0rw_frac": h0rw_frac,
+                "h0rw_ratio": h0rw_ratio,
+                "h0rw_pressure": h0rw_pressure,
+                "h0rw_progress": h0rw_progress,
+                "h0rw_pair_scale": h0rw_pair_scale,
+                "h0rw_roll_scale": h0rw_roll_scale,
+                "h0rw_pair_aux": h0rw_pair_aux,
+                "h0rw_roll0_aux": h0rw_roll0_aux,
                 "hop0_coverage": hop0_coverage,
                 "hop0_main_ratio": hop0_main_ratio,
                 "hop0_aux_ratio": hop0_aux_ratio,
