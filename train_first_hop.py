@@ -1214,6 +1214,25 @@ def main() -> None:
     foc_cfg_runtime["warmup_steps"] = foc_warmup_steps
     foc_cfg_runtime["ramp_steps"] = foc_ramp_steps
 
+    align_cfg_runtime = cfg.get("first_hop", {}).get("alignment", {})
+    if bool(align_cfg_runtime.get("enabled", False)):
+        align_warmup = _resolve_schedule_steps(
+            total_steps=max_steps,
+            section=align_cfg_runtime,
+            steps_key="warmup_steps",
+            ratio_key="warmup_ratio",
+            default_steps=500,
+        )
+        align_ramp = _resolve_schedule_steps(
+            total_steps=max_steps,
+            section=align_cfg_runtime,
+            steps_key="ramp_steps",
+            ratio_key="ramp_ratio",
+            default_steps=2000,
+        )
+        align_cfg_runtime["warmup_steps"] = align_warmup
+        align_cfg_runtime["ramp_steps"] = align_ramp
+
     lr_cfg = cfg.get("lr_schedule", {})
     lr_sched_enabled = bool(lr_cfg.get("enabled", True))
     lr_warmup_steps = _resolve_schedule_steps(
@@ -1541,11 +1560,41 @@ def main() -> None:
                 rollout_times=rollout_times,
             )
 
+            # --- iREPA alignment loss (Scheme A) ---
+            align_cfg = cfg.get("first_hop", {}).get("alignment", {})
+            align_enabled = bool(align_cfg.get("enabled", False))
+            loss_align = main_out["z_pred"].new_zeros(())
+            lambda_align = 0.0
+            if align_enabled and main_out.get("align_proj") is not None:
+                lambda_align = get_linear_schedule_value(
+                    global_step=step,
+                    warmup_steps=int(align_cfg.get("warmup_steps", 500)),
+                    ramp_steps=int(align_cfg.get("ramp_steps", 2000)),
+                    start=float(align_cfg.get("lambda_start", 0.0)),
+                    end=float(align_cfg.get("lambda_max", 0.10)),
+                )
+                # Reference: GT target latent reshaped to spatial 2D
+                z_gt = main_batch["z_dst"]  # [B, C, H, W]
+                align_proj = main_out["align_proj"]  # [B, C_out, H, W]
+                # Crop or project reference to match projector output channels
+                if z_gt.shape[1] != align_proj.shape[1]:
+                    # Use 1x1 conv cached on first call
+                    if not hasattr(model, "_align_ref_proj"):
+                        model._align_ref_proj = nn.Conv2d(
+                            z_gt.shape[1], align_proj.shape[1], 1, bias=False
+                        ).to(z_gt.device)
+                        nn.init.eye_(model._align_ref_proj.weight[:, :, 0, 0].data[:min(z_gt.shape[1], align_proj.shape[1])])
+                    z_ref = model._align_ref_proj(z_gt)
+                else:
+                    z_ref = z_gt
+                loss_align = F.mse_loss(align_proj, z_ref.detach())
+
             total_loss = (
                 pair_losses["total"]
                 + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
                 + float(lambda_img) * loss_img
                 + foc_losses["lambda_foc"] * foc_losses["loss_total"]
+                + float(lambda_align) * loss_align
             )
 
             reg_cfg = cfg["loss"].get("regularizer", {})
@@ -1787,6 +1836,8 @@ def main() -> None:
                 "foc": float(foc_losses["loss_total"].item()),
                 "foc_gap": float(foc_losses["gap_norm"].item()),
                 "lambda_foc": float(foc_losses["lambda_foc"].item()),
+                "align": float(loss_align.item()),
+                "lambda_align": float(lambda_align),
             }
             if metrics_fp is not None:
                 metrics_fp.write(json.dumps(metrics_payload, ensure_ascii=True) + "\n")

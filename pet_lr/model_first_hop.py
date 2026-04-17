@@ -66,6 +66,52 @@ class FirstHopPixelEncoder(nn.Module):
         return self.proj(h)
 
 
+class SpatialAlignmentProjector(nn.Module):
+    """iREPA-style spatial projector for representation alignment.
+
+    Unlike the original REPA which uses an MLP projector (losing spatial structure),
+    this uses Conv2d to preserve and leverage spatial relationships between tokens.
+    For PET imaging where anatomical structure preservation is critical, the spatial
+    projector provides better alignment quality.
+
+    Reference: iREPA (improved REPA) — spatial-aware projector for dense prediction.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 384,
+        out_channels: int = 768,
+        hidden_channels: int = 256,
+        spatial_size: int = 16,
+    ) -> None:
+        super().__init__()
+        self.spatial_size = spatial_size
+        self.projector = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.GroupNorm(8, hidden_channels),
+            nn.SiLU(),
+            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.GroupNorm(8, hidden_channels),
+            nn.SiLU(),
+            nn.Conv2d(hidden_channels, out_channels, kernel_size=1),
+        )
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        """Project backbone hidden state to alignment space.
+
+        Args:
+            h: Hidden state [B, N, D] (token sequence) or [B, D, H, W] (spatial)
+
+        Returns:
+            Projected features [B, out_channels, H, W]
+        """
+        if h.dim() == 3:
+            b, n, d = h.shape
+            s = self.spatial_size
+            h = h.transpose(1, 2).reshape(b, d, s, s)
+        return self.projector(h)
+
+
 class HopResidualVelocityHead(nn.Module):
     """Small hop-specific residual correction on top of shared velocity output."""
 
@@ -203,6 +249,24 @@ class PETFlowDiTFirstHop(nn.Module):
             raise ValueError(f"pair_v_std length ({len(pair_v_std)}) must equal num_hops ({self.num_hops})")
         self.register_buffer("pair_v_std", torch.tensor(pair_v_std, dtype=torch.float32), persistent=False)
 
+        # --- iREPA-style spatial alignment (Scheme A) ---
+        align_cfg = first_cfg.get("alignment", {})
+        self.alignment_enabled = bool(align_cfg.get("enabled", False))
+        self._hook_handle = None
+        self._hooked_hidden = None
+        if self.alignment_enabled:
+            backbone_hidden = int(model_cfg.get("hidden_size", [384, 2048])[0])
+            align_out = int(align_cfg.get("proj_out_channels", self.latent_channels))
+            align_hidden = int(align_cfg.get("proj_hidden_channels", 256))
+            self.alignment_projector = SpatialAlignmentProjector(
+                in_channels=backbone_hidden,
+                out_channels=align_out,
+                hidden_channels=align_hidden,
+                spatial_size=self.latent_size,
+            )
+            self._align_layer_idx = int(align_cfg.get("layer_idx", 6))
+            self._install_backbone_hook()
+
     def _assert_pixel_encoder_capacity(self, first_cfg: Dict) -> None:
         max_ratio = float(first_cfg.get("pixel_encoder_max_ratio", 0.05))
         if max_ratio <= 0.0:
@@ -218,6 +282,43 @@ class PETFlowDiTFirstHop(nn.Module):
                 f"{pixel_params} params / {backbone_params} backbone params = {ratio:.4%}, "
                 f"max allowed = {max_ratio:.4%}"
             )
+
+    def _install_backbone_hook(self) -> None:
+        """Install a forward hook on a backbone DiT block to capture hidden states.
+
+        Uses a non-invasive hook so that the backbone code (in the RAE repo)
+        does not need any modification.
+        """
+        target_idx = self._align_layer_idx
+        # DiT^DH backbone stores blocks as self.blocks (ModuleList)
+        blocks = None
+        for attr in ("blocks", "layers", "dit_blocks"):
+            if hasattr(self.backbone, attr):
+                blocks = getattr(self.backbone, attr)
+                break
+        if blocks is None:
+            raise RuntimeError(
+                "Cannot find backbone block list for alignment hook. "
+                "Expected one of: backbone.blocks, backbone.layers, backbone.dit_blocks"
+            )
+        if target_idx >= len(blocks):
+            raise ValueError(
+                f"alignment.layer_idx={target_idx} but backbone only has {len(blocks)} blocks"
+            )
+
+        def _hook_fn(module, input, output):
+            # DiT blocks typically output a tensor [B, N, D] or tuple.
+            if isinstance(output, tuple):
+                self._hooked_hidden = output[0]
+            else:
+                self._hooked_hidden = output
+
+        self._hook_handle = blocks[target_idx].register_forward_hook(_hook_fn)
+        print(
+            f"[alignment] installed hook on backbone block[{target_idx}] "
+            f"(out of {len(blocks)} blocks)",
+            flush=True,
+        )
 
     @property
     def g_pix(self) -> torch.Tensor:
@@ -293,6 +394,12 @@ class PETFlowDiTFirstHop(nn.Module):
 
         pix_delta = z_in - z_src
 
+        # --- iREPA alignment output ---
+        align_proj = None
+        if self.alignment_enabled and self._hooked_hidden is not None:
+            align_proj = self.alignment_projector(self._hooked_hidden)
+            self._hooked_hidden = None  # clear for next call
+
         return {
             "z_pred": z_pred,
             "z_in": z_in,
@@ -305,6 +412,7 @@ class PETFlowDiTFirstHop(nn.Module):
             "lambda_hop_raw": self.hop_residual_head.lambda_hop_raw,
             "pix_delta_abs": pix_delta.abs().mean(),
             "v_hop_abs": v_hop.abs().mean(),
+            "align_proj": align_proj,
         }
 
     def decode_crop(self, z: torch.Tensor, crop_size: int | None = None) -> torch.Tensor:
