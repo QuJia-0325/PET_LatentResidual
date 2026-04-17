@@ -458,6 +458,118 @@ def compute_rollout_losses(
     }
 
 
+def compute_foc_losses(
+    model: PETFlowDiTFirstHop,
+    hop0_batch: Dict[str, torch.Tensor],
+    cfg: Dict,
+    global_step: int,
+    rollout_times: list[float],
+) -> Dict[str, torch.Tensor]:
+    """FOC-lite: First-Order ODE Calibration for hop0.
+
+    Compares full-step prediction with two half-step predictions on hop0
+    (D50→D20). If the velocity field is accurate, both should agree.
+    Penalizing the discrepancy reduces the numerical integration error
+    of the first hop — the dominant bottleneck in the cascade.
+
+    Reference: Consistency Flow Matching (Yang et al., arXiv 2407.02398, 2024)
+
+    Full step:  z_full = z_D50 + v(z_D50, t_D50, t_D20) × dt
+    Half steps: z_mid  = z_D50 + v(z_D50, t_D50, t_mid) × dt/2
+                z_half = z_mid + v(z_mid, t_mid, t_D20) × dt/2
+    Loss:       L_foc  = MSE(z_full, sg(z_half))   [sg = stop-gradient]
+    """
+    foc_cfg = cfg["training"].get("foc", {})
+    device = hop0_batch["z_src"].device
+
+    def _zero():
+        z = hop0_batch["z_src"].new_zeros(())
+        return {
+            "loss_total": z,
+            "loss_consistency": z,
+            "lambda_foc": torch.tensor(0.0, device=device),
+            "z_full_norm": z,
+            "z_half_norm": z,
+            "gap_norm": z,
+        }
+
+    if not bool(foc_cfg.get("enabled", False)):
+        return _zero()
+
+    # Schedule
+    lambda_foc = get_linear_schedule_value(
+        global_step=global_step,
+        warmup_steps=int(foc_cfg.get("warmup_steps", 500)),
+        ramp_steps=int(foc_cfg.get("ramp_steps", 2000)),
+        start=float(foc_cfg.get("lambda_start", 0.0)),
+        end=float(foc_cfg.get("lambda_max", 0.08)),
+    )
+
+    if len(rollout_times) < 2:
+        return _zero()
+
+    t_src_val = float(rollout_times[0])  # D50 = 2.0
+    t_dst_val = float(rollout_times[1])  # D20 = 5.0
+    t_mid_val = (t_src_val + t_dst_val) / 2.0  # midpoint = 3.5
+
+    bsz = hop0_batch["z_src"].shape[0]
+    z_src = hop0_batch["z_src"]
+    x_src = hop0_batch.get("x_src")  # pixel conditioning for hop0
+    hop_idx = torch.zeros(bsz, device=device, dtype=torch.long)
+
+    # Time tensors
+    t_src = torch.full((bsz,), t_src_val, device=device)
+    t_dst = torch.full((bsz,), t_dst_val, device=device)
+    t_mid = torch.full((bsz,), t_mid_val, device=device)
+
+    # --- Full step: D50 → D20 ---
+    out_full = model.predict_latent_step(
+        z_src=z_src, t_src=t_src, t_dst=t_dst,
+        hop_idx=hop_idx, x_src_img=x_src,
+    )
+    z_full = out_full["z_pred"]
+
+    # --- Half step 1: D50 → mid ---
+    out_half1 = model.predict_latent_step(
+        z_src=z_src, t_src=t_src, t_dst=t_mid,
+        hop_idx=hop_idx, x_src_img=x_src,
+    )
+    z_mid = out_half1["z_pred"]
+
+    # --- Half step 2: mid → D20 ---
+    # Note: at mid-point, pixel conditioning still uses x_D50 (same hop0 source).
+    out_half2 = model.predict_latent_step(
+        z_src=z_mid, t_src=t_mid, t_dst=t_dst,
+        hop_idx=hop_idx, x_src_img=x_src,
+    )
+    z_half = out_half2["z_pred"]
+
+    # --- Consistency loss ---
+    detach_target = bool(foc_cfg.get("detach_target", True))
+    loss_type = str(foc_cfg.get("loss_type", "mse")).lower()
+
+    target = z_half.detach() if detach_target else z_half
+    if loss_type == "l1":
+        loss_consistency = F.l1_loss(z_full, target)
+    else:
+        loss_consistency = F.mse_loss(z_full, target)
+
+    # Diagnostic norms
+    with torch.no_grad():
+        z_full_norm = z_full.detach().abs().mean()
+        z_half_norm = z_half.detach().abs().mean()
+        gap_norm = (z_full.detach() - z_half.detach()).abs().mean()
+
+    return {
+        "loss_total": loss_consistency,
+        "loss_consistency": loss_consistency,
+        "lambda_foc": torch.tensor(lambda_foc, device=device),
+        "z_full_norm": z_full_norm,
+        "z_half_norm": z_half_norm,
+        "gap_norm": gap_norm,
+    }
+
+
 def compute_hop0_image_losses(
     model: PETFlowDiTFirstHop,
     hop0_batch: Dict[str, torch.Tensor],
@@ -607,6 +719,8 @@ def evaluate(
         "val_hop0_img_l1": 0.0,
         "val_hop0_img_ssim": 0.0,
         "val_hop0_img_seam": 0.0,
+        "val_foc_total": 0.0,
+        "val_foc_gap": 0.0,
         "val_chain_d20_mse": 0.0,
         "val_chain_d10_mse": 0.0,
         "val_chain_d4_mse": 0.0,
@@ -738,6 +852,13 @@ def evaluate(
         sums["val_hop0_img_l1"] += float(img_losses["l1"].item())
         sums["val_hop0_img_ssim"] += float(img_losses["ssim"].item())
         sums["val_hop0_img_seam"] += float(img_losses["seam"].item())
+        # FOC-lite eval on hop0 batches
+        foc_losses = compute_foc_losses(
+            model=model, hop0_batch=batch, cfg=cfg,
+            global_step=global_step, rollout_times=rollout_times,
+        )
+        sums["val_foc_total"] += float(foc_losses["loss_total"].item())
+        sums["val_foc_gap"] += float(foc_losses["gap_norm"].item())
         hop0_count += 1
 
     require_chain_metrics = bool(cfg["training"].get("require_chain_metrics", True))
@@ -750,7 +871,7 @@ def evaluate(
     model.train()
     out = {}
     for k, v in sums.items():
-        if k.startswith("val_hop0"):
+        if k.startswith("val_hop0") or k.startswith("val_foc"):
             out[k] = v / max(hop0_count, 1)
         elif k.startswith("val_chain"):
             out[k] = v / max(chain_samples, 1)
@@ -1075,6 +1196,24 @@ def main() -> None:
     image_aux_cfg["warmup_steps"] = image_warmup_steps
     image_aux_cfg["ramp_steps"] = image_ramp_steps
 
+    foc_cfg_runtime = train_cfg.get("foc", {})
+    foc_warmup_steps = _resolve_schedule_steps(
+        total_steps=max_steps,
+        section=foc_cfg_runtime,
+        steps_key="warmup_steps",
+        ratio_key="warmup_ratio",
+        default_steps=500,
+    )
+    foc_ramp_steps = _resolve_schedule_steps(
+        total_steps=max_steps,
+        section=foc_cfg_runtime,
+        steps_key="ramp_steps",
+        ratio_key="ramp_ratio",
+        default_steps=2000,
+    )
+    foc_cfg_runtime["warmup_steps"] = foc_warmup_steps
+    foc_cfg_runtime["ramp_steps"] = foc_ramp_steps
+
     lr_cfg = cfg.get("lr_schedule", {})
     lr_sched_enabled = bool(lr_cfg.get("enabled", True))
     lr_warmup_steps = _resolve_schedule_steps(
@@ -1393,10 +1532,20 @@ def main() -> None:
                 }
                 loss_img = zero
 
+            # --- FOC-lite: hop0 sub-stepping consistency ---
+            foc_losses = compute_foc_losses(
+                model=model,
+                hop0_batch=hop0_batch,
+                cfg=cfg,
+                global_step=step,
+                rollout_times=rollout_times,
+            )
+
             total_loss = (
                 pair_losses["total"]
                 + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
                 + float(lambda_img) * loss_img
+                + foc_losses["lambda_foc"] * foc_losses["loss_total"]
             )
 
             reg_cfg = cfg["loss"].get("regularizer", {})
@@ -1412,7 +1561,8 @@ def main() -> None:
             pair_weighted = pair_losses["total"]
             roll_weighted = rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
             img_weighted = pair_weighted.new_tensor(float(lambda_img)) * loss_img
-            weighted_total = pair_weighted + roll_weighted + img_weighted
+            foc_weighted = foc_losses["lambda_foc"] * foc_losses["loss_total"]
+            weighted_total = pair_weighted + roll_weighted + img_weighted + foc_weighted
             frac_denom = weighted_total.abs().clamp_min(1.0e-12)
             pair_frac_t = (pair_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             roll_frac_t = (roll_weighted / frac_denom).clamp(min=-10.0, max=10.0)
@@ -1634,6 +1784,9 @@ def main() -> None:
                 "dead_branch_observed_steps": int(dead_branch_observed_steps),
                 "lr_firsthop": float(lr_now * first_hop_lr_mult),
                 "lr_backbone": float(lr_now * backbone_lr_mult),
+                "foc": float(foc_losses["loss_total"].item()),
+                "foc_gap": float(foc_losses["gap_norm"].item()),
+                "lambda_foc": float(foc_losses["lambda_foc"].item()),
             }
             if metrics_fp is not None:
                 metrics_fp.write(json.dumps(metrics_payload, ensure_ascii=True) + "\n")
@@ -1666,6 +1819,8 @@ def main() -> None:
                     vh=f"{v_hop_abs:.1e}",
                     vh0=f"{v_hop_abs_hop0:.1e}",
                     reb=f"{vel_reb:.2f}",
+                    foc=f"{float(foc_losses['loss_total'].item()):.2e}",
+                    fgap=f"{float(foc_losses['gap_norm'].item()):.2e}",
                 )
                 if print_train_line_with_pbar:
                     print(
