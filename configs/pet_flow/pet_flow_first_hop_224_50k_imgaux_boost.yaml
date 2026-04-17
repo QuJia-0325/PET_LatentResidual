@@ -1,0 +1,278 @@
+project_name: pet_first_hop_224
+rae_root: /home/qujiaxiang/project/RAE
+output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual
+run_name: first_hop_224_50k_imgaux_boost
+seed: 42
+device: cuda:0
+
+data:
+  latent_dir: /data_2/qujiaxiang/lowdose_pet_ct/latents_224
+  raw_data_dir: /data_2/qujiaxiang
+  clamp_max: 10.0
+  image_size: 224
+  num_workers: 0
+  batch_size: 8
+  hop0_aux_batch_size: 2
+  verify_alignment: true
+  alignment_check_num_samples: 16
+  alignment_audit_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/alignment_224_audit/alignment_224_clip3_audit.json
+  train_include_x_rollout_first: true
+  train_include_full_x_rollout: false
+  val_include_x_rollout_first: true
+  val_include_full_x_rollout: true
+  # Keep validation deterministic for stable chain-based best-metric selection.
+  val_shuffle: false
+  rollout_timepoints:
+    - D50
+    - D20
+    - D10
+    - D4
+    - NORMAL
+  t_map:
+    D50: 2.0
+    D20: 5.0
+    D10: 10.0
+    D4: 25.0
+    NORMAL: 100.0
+
+training:
+  max_steps: 50000
+  log_interval: 50
+  eval_interval: 400
+  save_interval: 10000
+  max_val_batches: 64
+  max_hop0_val_batches: 64
+  val_window_mode: rolling
+  amp: false
+  grad_clip: 0.5
+  deterministic: true
+  require_fresh_output_dir: true
+  metrics_jsonl_mode: write
+  require_chain_metrics: true
+  loss_balance_watch_enabled: true
+  loss_balance_watch_warn: true
+  loss_balance_watch_enforce: false
+  loss_balance_watch_warmup_steps: 1200
+  loss_balance_watch_patience: 200
+  loss_balance_dominance_threshold: 0.85
+  freeze_backbone: false
+  freeze_rae: true
+
+  # Chain-quality-oriented selection.
+  best_metric: val_multi_objective
+  best_metric_terms:
+    - name: val_chain_d20_mse
+      weight: 0.15
+    - name: val_chain_d10_mse
+      weight: 0.45
+    - name: val_chain_d4_mse
+      weight: 0.90
+    - name: val_chain_normal_mse
+      weight: 1.50
+
+  # Evaluate chain on all validation samples (not only hop0 rows).
+  eval_chain_on_all_samples: true
+  eval_chain_unique_slices: true
+  eval_chain_max_unique_slices: 0
+
+  hop0_coverage_target:
+    - 0.15
+    - 0.60
+  gate_explosion_watch_steps: 800
+  gate_abs_max: 2.0
+  lambda_hop0_abs_max: 2.0
+  dead_branch_watch_steps: 10000
+  dead_branch_patience: 120
+  dead_branch_gate_eps: 0.0005
+  dead_branch_lambda_eps: 0.0005
+  img_loss_zero_eps: 0.0005
+  img_loss_zero_patience: 120
+  progress_bar: true
+  print_train_line_with_pbar: false
+  log_grad_norms: false
+  grad_finite_check: true
+  strict_resume_compat: true
+  resume_allow_metric_mismatch: false
+  resume_allow_config_mismatch: false
+  resume_allow_missing_compat_metadata: false
+  metrics_jsonl: true
+
+  rollout:
+    enabled: true
+    path:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    # 10k run: finish forcing transition earlier.
+    warmup_ratio: 0.10
+    ramp_ratio: 0.30
+    alpha_start: 0.0
+    alpha_end: 1.00
+    # Solve forward/backward semantics mismatch at alpha<1:
+    # ST is disabled until alpha is effectively 1.
+    straight_through_mode: alpha_gated
+    straight_through_alpha_min: 0.999
+    # Make validation rollout open-loop to match deployment chain.
+    eval_alpha: 1.00
+    lambda_start: 0.02
+    lambda_end: 0.25
+    # Reduce rollout weight when alpha is low to align value/gradient pressure.
+    lambda_scale_mode: alpha_floor
+    lambda_scale_alpha_floor: 0.10
+    endpoint_loss_weight: 0.25
+    loss_type: mse
+    straight_through: true
+    # Shift pressure from hop0 to later hops.
+    step_weights:
+      - 1.00
+      - 1.10
+      - 1.20
+      - 1.30
+
+  image_aux:
+    enabled: true
+    # Scheme C: Boost image_aux to give pixel-level gradient signal
+    # more influence over velocity prediction. E1 showed transport error
+    # dominates (96.3% of gap), but image_aux at 0.03 only contributes ~2-3%
+    # of total loss — the pixel forcing mechanism is "starved" of feedback.
+    warmup_ratio: 0.05
+    ramp_ratio: 0.15
+    lambda_start: 0.005
+    lambda_max: 0.12
+
+
+optimizer:
+  lr: 8.0e-5
+  weight_decay: 0.01
+  betas:
+    - 0.9
+    - 0.95
+  backbone_lr_mult: 0.4
+  first_hop_lr_mult: 3.5
+
+lr_schedule:
+  enabled: true
+  warmup_ratio: 0.15
+  min_lr: 2.0e-6
+
+transport:
+  method: mean_flow
+  loss_type: mse
+  velocity_loss_weight: 1.0
+  endpoint_loss_weight: 1.0
+  endpoint_pair_weighting: true
+  endpoint_dt_normalize: true
+  # Uniform pair sampling to avoid implicit hop0 bias.
+  pair_sample_probs:
+    - 0.25
+    - 0.25
+    - 0.25
+    - 0.25
+  pair_weighting: manual
+  # Slight tail emphasis.
+  pair_loss_weights:
+    - 1.00
+    - 1.05
+    - 1.10
+    - 1.20
+
+backbone:
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke/best.pt
+  model:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size:
+      - 384
+      - 2048
+    depth:
+      - 12
+      - 2
+    num_heads:
+      - 6
+      - 16
+    mlp_ratio: 4.0
+  data:
+    timepoints:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    t_map:
+      D50: 2.0
+      D20: 5.0
+      D10: 10.0
+      D4: 25.0
+      NORMAL: 100.0
+
+rae:
+  encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_input_size: 224
+  dinov2_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_mean:
+    - 0.0
+    - 0.0
+    - 0.0
+  encoder_std:
+    - 1.0
+    - 1.0
+    - 1.0
+  decoder_config_path: /home/qujiaxiang/project/RAE/vit-mae
+  decoder_patch_size: 14
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target_keywords:
+    - attention.qkv
+    - attention.projection
+    - attention.attention.query
+    - attention.attention.key
+    - attention.attention.value
+    - attention.output.dense
+    - .mlp.fc1
+    - .mlp.fc2
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+
+first_hop:
+  num_hops: 4
+  pixel_encoder_stem_channels: 32
+  pixel_encoder_hidden_channels: 64
+  pixel_encoder_max_ratio: 0.05
+  hop_residual_hidden_channels: 192
+  pixel_gate_init: 0.02
+  pixel_gate_floor: 0.001
+  lambda_hop_init: 0.01
+  lambda_hop_floor: 0.001
+  pixel_proj_init_std: 0.002
+  hop_residual_last_init_std: 0.002
+  pair_v_std:
+    - 0.009634
+    - 0.002946
+    - 0.000775
+    - 0.000141
+
+loss:
+  pair:
+    velocity_weight: 1.0
+    endpoint_weight: 1.0
+    velocity_rebalance:
+      enabled: false
+      mode: sqrt_ratio
+      clip_min: 1.0
+      clip_max: 4.0
+      eps: 1.0e-12
+  image_aux:
+    l1_weight: 1.0
+    ssim_weight: 0.25
+    seam_weight: 0.1
+    border_width: 14
+    border_weight: 2.0
+    seam_patch_size: 14
+  regularizer:
+    enabled: false
+    lambda_hop_l2_weight: 0.0
+    gate_pix_l2_weight: 0.0
