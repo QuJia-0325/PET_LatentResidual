@@ -397,7 +397,9 @@ class PETFlowDiTFirstHop(nn.Module):
         # --- iREPA alignment output ---
         align_proj = None
         if self.alignment_enabled and self._hooked_hidden is not None:
-            align_proj = self.alignment_projector(self._hooked_hidden)
+            # Ensure float32 for projector even if AMP produces float16 hidden states
+            hooked = self._hooked_hidden.float()
+            align_proj = self.alignment_projector(hooked)
             self._hooked_hidden = None  # clear for next call
 
         return {

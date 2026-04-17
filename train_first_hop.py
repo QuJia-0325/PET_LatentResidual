@@ -12,6 +12,7 @@ from typing import Dict
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, RandomSampler, WeightedRandomSampler
@@ -1573,21 +1574,14 @@ def main() -> None:
                     start=float(align_cfg.get("lambda_start", 0.0)),
                     end=float(align_cfg.get("lambda_max", 0.10)),
                 )
-                # Reference: GT target latent reshaped to spatial 2D
-                z_gt = main_batch["z_dst"]  # [B, C, H, W]
+                # Reference: GT target latent [B, C, H, W]
+                z_ref = main_batch["z_dst"].detach()
                 align_proj = main_out["align_proj"]  # [B, C_out, H, W]
-                # Crop or project reference to match projector output channels
-                if z_gt.shape[1] != align_proj.shape[1]:
-                    # Use 1x1 conv cached on first call
-                    if not hasattr(model, "_align_ref_proj"):
-                        model._align_ref_proj = nn.Conv2d(
-                            z_gt.shape[1], align_proj.shape[1], 1, bias=False
-                        ).to(z_gt.device)
-                        nn.init.eye_(model._align_ref_proj.weight[:, :, 0, 0].data[:min(z_gt.shape[1], align_proj.shape[1])])
-                    z_ref = model._align_ref_proj(z_gt)
-                else:
-                    z_ref = z_gt
-                loss_align = F.mse_loss(align_proj, z_ref.detach())
+                # The projector output channels should match the latent channels
+                # (both default to 768). If not, truncate the reference to match.
+                if z_ref.shape[1] != align_proj.shape[1]:
+                    z_ref = z_ref[:, :align_proj.shape[1]]
+                loss_align = F.mse_loss(align_proj.float(), z_ref.float())
 
             total_loss = (
                 pair_losses["total"]
