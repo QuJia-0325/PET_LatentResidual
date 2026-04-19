@@ -728,6 +728,8 @@ def evaluate(
         "val_chain_d10_mse": 0.0,
         "val_chain_d4_mse": 0.0,
         "val_chain_normal_mse": 0.0,
+        "val_chain_d20_raw_mse": 0.0,
+        "val_chain_normal_raw_mse": 0.0,
     }
     for i in range(num_steps):
         sums[f"val_rollout_step_{i}"] = 0.0
@@ -834,15 +836,22 @@ def evaluate(
                         "first-hop evaluation expects at least 5 rollout points "
                         "(D50, D20, D10, D4, NORMAL)"
                     )
-                x_d20_pred = model.decode_crop(z_chain[1], crop_size=int(cfg["data"].get("image_size", 224)))
-                x_d10_pred = model.decode_crop(z_chain[2], crop_size=int(cfg["data"].get("image_size", 224)))
-                x_d4_pred = model.decode_crop(z_chain[3], crop_size=int(cfg["data"].get("image_size", 224)))
-                x_n_pred = model.decode_crop(z_chain[-1], crop_size=int(cfg["data"].get("image_size", 224)))
+                _cs = int(cfg["data"].get("image_size", 224))
+                x_d20_pred = model.decode_crop(z_chain[1], crop_size=_cs)
+                x_d10_pred = model.decode_crop(z_chain[2], crop_size=_cs)
+                x_d4_pred = model.decode_crop(z_chain[3], crop_size=_cs)
+                x_n_pred = model.decode_crop(z_chain[-1], crop_size=_cs)
                 n = int(z_d50.shape[0])
                 sums["val_chain_d20_mse"] += float(F.mse_loss(x_d20_pred, x_roll[:, 1]).item()) * n
                 sums["val_chain_d10_mse"] += float(F.mse_loss(x_d10_pred, x_roll[:, 2]).item()) * n
                 sums["val_chain_d4_mse"] += float(F.mse_loss(x_d4_pred, x_roll[:, 3]).item()) * n
                 sums["val_chain_normal_mse"] += float(F.mse_loss(x_n_pred, x_roll[:, -1]).item()) * n
+                # Raw decode metrics (skip refiner) for causal attribution
+                if model.seam_refiner_enabled:
+                    x_d20_raw = model.decode_crop(z_chain[1], crop_size=_cs, apply_refiner=False)
+                    x_n_raw = model.decode_crop(z_chain[-1], crop_size=_cs, apply_refiner=False)
+                    sums["val_chain_d20_raw_mse"] += float(F.mse_loss(x_d20_raw, x_roll[:, 1]).item()) * n
+                    sums["val_chain_normal_raw_mse"] += float(F.mse_loss(x_n_raw, x_roll[:, -1]).item()) * n
                 chain_samples += n
 
         main_count += 1
@@ -1376,10 +1385,22 @@ def main() -> None:
                     f"{allowed_missing[:10]}{'...' if len(allowed_missing) > 10 else ''}",
                     flush=True,
                 )
-        if "optimizer" in ckpt and ckpt["optimizer"] is not None:
-            optimizer.load_state_dict(ckpt["optimizer"])
-        if "scaler" in ckpt and ckpt["scaler"] is not None:
-            scaler.load_state_dict(ckpt["scaler"])
+                # Architecture changed: skip optimizer/scaler restore to avoid state mismatch
+                print(
+                    "[resume][warn] architecture has new modules — skipping optimizer/scaler restore "
+                    "and resetting best_val/step to avoid stale state.",
+                    flush=True,
+                )
+                _arch_changed = True
+            else:
+                _arch_changed = False
+        else:
+            _arch_changed = False
+        if not _arch_changed:
+            if "optimizer" in ckpt and ckpt["optimizer"] is not None:
+                optimizer.load_state_dict(ckpt["optimizer"])
+            if "scaler" in ckpt and ckpt["scaler"] is not None:
+                scaler.load_state_dict(ckpt["scaler"])
 
         strict_resume_compat = bool(train_cfg.get("strict_resume_compat", True))
         allow_metric_mismatch = bool(train_cfg.get("resume_allow_metric_mismatch", False))
