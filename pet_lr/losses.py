@@ -137,48 +137,59 @@ def extended_seam_loss(
     2. Uses distance-decaying weights within the zone
     3. Adds second-order derivative continuity (curvature matching)
     4. Compares against GT in the seam zone (not just self-consistency)
+
+    Vectorized implementation (no Python loops over pixels).
     """
     H, W = pred.shape[-2:]
-    seam_x = list(range(patch_size, W, patch_size))
-    seam_y = list(range(patch_size, H, patch_size))
     loss = pred.new_zeros(())
     count = 0
 
-    for x in seam_x:
-        if x >= W:
-            continue
-        for offset in range(-zone_width, zone_width + 1):
-            col = x + offset
-            if col < 1 or col >= W - 1:
-                continue
-            w = 1.0 / (1.0 + abs(offset))  # distance decay
-            # First-order: pred gradient vs GT gradient at seam zone
-            pred_grad = pred[:, :, :, col + 1] - pred[:, :, :, col - 1]
-            gt_grad = gt[:, :, :, col + 1] - gt[:, :, :, col - 1]
-            loss = loss + w * F.l1_loss(pred_grad, gt_grad)
-            # Second-order: curvature continuity
-            if col >= 2 and col < W - 2:
-                pred_curv = pred[:, :, :, col + 1] + pred[:, :, :, col - 1] - 2 * pred[:, :, :, col]
-                gt_curv = gt[:, :, :, col + 1] + gt[:, :, :, col - 1] - 2 * gt[:, :, :, col]
-                loss = loss + 0.5 * w * F.l1_loss(pred_curv, gt_curv)
-            count += 1
+    # Build seam column/row indices
+    seam_x = torch.arange(patch_size, W, patch_size, device=pred.device)
+    seam_y = torch.arange(patch_size, H, patch_size, device=pred.device)
+    offsets = torch.arange(-zone_width, zone_width + 1, device=pred.device)
+    # Distance-decaying weights: 1/(1+|offset|)
+    weights = 1.0 / (1.0 + offsets.abs().float())
 
-    for y in seam_y:
-        if y >= H:
+    # --- Horizontal seams (vertical boundaries at seam_x) ---
+    for i, off in enumerate(offsets.tolist()):
+        cols = seam_x + off
+        valid = (cols >= 1) & (cols < W - 1)
+        if not valid.any():
             continue
-        for offset in range(-zone_width, zone_width + 1):
-            row = y + offset
-            if row < 1 or row >= H - 1:
-                continue
-            w = 1.0 / (1.0 + abs(offset))
-            pred_grad = pred[:, :, row + 1, :] - pred[:, :, row - 1, :]
-            gt_grad = gt[:, :, row + 1, :] - gt[:, :, row - 1, :]
-            loss = loss + w * F.l1_loss(pred_grad, gt_grad)
-            if row >= 2 and row < H - 2:
-                pred_curv = pred[:, :, row + 1, :] + pred[:, :, row - 1, :] - 2 * pred[:, :, row, :]
-                gt_curv = gt[:, :, row + 1, :] + gt[:, :, row - 1, :] - 2 * gt[:, :, row, :]
-                loss = loss + 0.5 * w * F.l1_loss(pred_curv, gt_curv)
-            count += 1
+        cols_v = cols[valid]
+        w = float(weights[i].item())
+        # First-order gradient matching
+        pred_grad = pred[:, :, :, cols_v + 1] - pred[:, :, :, cols_v - 1]
+        gt_grad = gt[:, :, :, cols_v + 1] - gt[:, :, :, cols_v - 1]
+        loss = loss + w * F.l1_loss(pred_grad, gt_grad)
+        count += 1
+        # Second-order curvature matching
+        valid2 = (cols_v >= 2) & (cols_v < W - 2)
+        if valid2.any():
+            cols_v2 = cols_v[valid2]
+            pred_curv = pred[:, :, :, cols_v2 + 1] + pred[:, :, :, cols_v2 - 1] - 2 * pred[:, :, :, cols_v2]
+            gt_curv = gt[:, :, :, cols_v2 + 1] + gt[:, :, :, cols_v2 - 1] - 2 * gt[:, :, :, cols_v2]
+            loss = loss + 0.5 * w * F.l1_loss(pred_curv, gt_curv)
+
+    # --- Vertical seams (horizontal boundaries at seam_y) ---
+    for i, off in enumerate(offsets.tolist()):
+        rows = seam_y + off
+        valid = (rows >= 1) & (rows < H - 1)
+        if not valid.any():
+            continue
+        rows_v = rows[valid]
+        w = float(weights[i].item())
+        pred_grad = pred[:, :, rows_v + 1, :] - pred[:, :, rows_v - 1, :]
+        gt_grad = gt[:, :, rows_v + 1, :] - gt[:, :, rows_v - 1, :]
+        loss = loss + w * F.l1_loss(pred_grad, gt_grad)
+        count += 1
+        valid2 = (rows_v >= 2) & (rows_v < H - 2)
+        if valid2.any():
+            rows_v2 = rows_v[valid2]
+            pred_curv = pred[:, :, rows_v2 + 1, :] + pred[:, :, rows_v2 - 1, :] - 2 * pred[:, :, rows_v2, :]
+            gt_curv = gt[:, :, rows_v2 + 1, :] + gt[:, :, rows_v2 - 1, :] - 2 * gt[:, :, rows_v2, :]
+            loss = loss + 0.5 * w * F.l1_loss(pred_curv, gt_curv)
 
     return loss / max(count, 1)
 

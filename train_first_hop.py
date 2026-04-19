@@ -1349,7 +1349,21 @@ def main() -> None:
         ckpt = torch.load(resume_path, map_location="cpu")
         if "model" not in ckpt:
             raise KeyError(f"Resume checkpoint missing 'model': {resume_path}")
-        model.load_state_dict(ckpt["model"], strict=True)
+        # Allow missing keys for newly added modules (e.g. seam_refiner, alignment_projector)
+        # while still catching unexpected keys that indicate a real mismatch.
+        load_result = model.load_state_dict(ckpt["model"], strict=False)
+        if load_result.unexpected_keys:
+            raise RuntimeError(
+                f"Resume checkpoint has unexpected keys (possible architecture mismatch): "
+                f"{load_result.unexpected_keys}"
+            )
+        if load_result.missing_keys:
+            print(
+                f"[resume][info] {len(load_result.missing_keys)} missing keys in checkpoint "
+                f"(new modules initialized from scratch): "
+                f"{load_result.missing_keys[:10]}{'...' if len(load_result.missing_keys) > 10 else ''}",
+                flush=True,
+            )
         if "optimizer" in ckpt and ckpt["optimizer"] is not None:
             optimizer.load_state_dict(ckpt["optimizer"])
         if "scaler" in ckpt and ckpt["scaler"] is not None:

@@ -137,18 +137,19 @@ class SeamRefiner(nn.Module):
         super().__init__()
         self.max_residual = float(max_residual)
         pad = kernel_size // 2
+        gn_groups = min(8, hidden_channels)  # safe: avoids crash if channels < 8
 
         # Stem: 1 → hidden
         self.stem = nn.Sequential(
             nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.GroupNorm(8, hidden_channels),
+            nn.GroupNorm(gn_groups, hidden_channels),
             nn.SiLU(),
         )
 
         # Body: depthwise-separable residual blocks with large kernels
         blocks = []
         for _ in range(num_blocks):
-            blocks.append(self._make_dw_block(hidden_channels, kernel_size, pad))
+            blocks.append(self._make_dw_block(hidden_channels, kernel_size, pad, gn_groups))
         self.body = nn.Sequential(*blocks)
 
         # Tail: hidden → 1 (zero-init for safety)
@@ -157,15 +158,15 @@ class SeamRefiner(nn.Module):
         nn.init.zeros_(self.tail.bias)
 
     @staticmethod
-    def _make_dw_block(channels: int, kernel_size: int, pad: int) -> nn.Module:
+    def _make_dw_block(channels: int, kernel_size: int, pad: int, gn_groups: int = 8) -> nn.Module:
         return nn.Sequential(
             # Depthwise conv (large kernel, spans patch boundaries)
             nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=pad, groups=channels),
-            nn.GroupNorm(8, channels),
+            nn.GroupNorm(gn_groups, channels),
             nn.SiLU(),
             # Pointwise conv (channel mixing)
             nn.Conv2d(channels, channels, kernel_size=1),
-            nn.GroupNorm(8, channels),
+            nn.GroupNorm(gn_groups, channels),
             nn.SiLU(),
         )
 
