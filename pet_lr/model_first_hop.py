@@ -137,7 +137,8 @@ class SeamRefiner(nn.Module):
         super().__init__()
         self.max_residual = float(max_residual)
         pad = kernel_size // 2
-        gn_groups = min(8, hidden_channels)  # safe: avoids crash if channels < 8
+        # Safe GroupNorm groups: largest divisor of hidden_channels that is <= 8
+        gn_groups = max(g for g in range(1, min(8, hidden_channels) + 1) if hidden_channels % g == 0)
 
         # Stem: 1 → hidden
         self.stem = nn.Sequential(
@@ -504,7 +505,17 @@ class PETFlowDiTFirstHop(nn.Module):
             "align_proj": align_proj,
         }
 
-    def decode_crop(self, z: torch.Tensor, crop_size: int | None = None) -> torch.Tensor:
+    def decode_crop(
+        self, z: torch.Tensor, crop_size: int | None = None, apply_refiner: bool | None = None,
+    ) -> torch.Tensor:
+        """Decode latent to image with optional seam refinement.
+
+        Args:
+            z: Latent tensor [B, C, H, W]
+            crop_size: Target spatial size (default: self.image_size)
+            apply_refiner: If None, uses self.seam_refiner_enabled (default behavior).
+                           Explicitly pass False to get raw decode output for causal comparison.
+        """
         x = self.rae.decode(z)
         if x.shape[1] > 1:
             x = x[:, 0:1]
@@ -518,8 +529,9 @@ class PETFlowDiTFirstHop(nn.Module):
             top = (h - target) // 2
             left = (w - target) // 2
             out = x[:, :, top:top + target, left:left + target]
-        # Apply seam refiner if enabled
-        if self.seam_refiner_enabled:
+        # Apply seam refiner: controlled by explicit flag or module default
+        use_refiner = self.seam_refiner_enabled if apply_refiner is None else apply_refiner
+        if use_refiner and self.seam_refiner_enabled:
             out = self.seam_refiner(out)
         return out
 

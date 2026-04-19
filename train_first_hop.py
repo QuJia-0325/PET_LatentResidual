@@ -1349,8 +1349,9 @@ def main() -> None:
         ckpt = torch.load(resume_path, map_location="cpu")
         if "model" not in ckpt:
             raise KeyError(f"Resume checkpoint missing 'model': {resume_path}")
-        # Allow missing keys for newly added modules (e.g. seam_refiner, alignment_projector)
-        # while still catching unexpected keys that indicate a real mismatch.
+        # Allow missing keys ONLY for known new-module prefixes.
+        # Unexpected keys or unknown missing keys → hard fail.
+        _KNOWN_NEW_MODULE_PREFIXES = ("seam_refiner.", "alignment_projector.")
         load_result = model.load_state_dict(ckpt["model"], strict=False)
         if load_result.unexpected_keys:
             raise RuntimeError(
@@ -1358,12 +1359,23 @@ def main() -> None:
                 f"{load_result.unexpected_keys}"
             )
         if load_result.missing_keys:
-            print(
-                f"[resume][info] {len(load_result.missing_keys)} missing keys in checkpoint "
-                f"(new modules initialized from scratch): "
-                f"{load_result.missing_keys[:10]}{'...' if len(load_result.missing_keys) > 10 else ''}",
-                flush=True,
-            )
+            allowed_missing = [
+                k for k in load_result.missing_keys
+                if any(k.startswith(pfx) for pfx in _KNOWN_NEW_MODULE_PREFIXES)
+            ]
+            unknown_missing = [k for k in load_result.missing_keys if k not in allowed_missing]
+            if unknown_missing:
+                raise RuntimeError(
+                    f"Resume checkpoint is missing {len(unknown_missing)} keys that are NOT known "
+                    f"new modules (architecture drift?): {unknown_missing[:10]}"
+                    f"{'...' if len(unknown_missing) > 10 else ''}"
+                )
+            if allowed_missing:
+                print(
+                    f"[resume][info] {len(allowed_missing)} new-module keys initialized from scratch: "
+                    f"{allowed_missing[:10]}{'...' if len(allowed_missing) > 10 else ''}",
+                    flush=True,
+                )
         if "optimizer" in ckpt and ckpt["optimizer"] is not None:
             optimizer.load_state_dict(ckpt["optimizer"])
         if "scaler" in ckpt and ckpt["scaler"] is not None:
