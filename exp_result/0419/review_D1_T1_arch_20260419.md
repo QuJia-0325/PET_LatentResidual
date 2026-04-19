@@ -54,3 +54,9 @@
 2. T1a (`lambda_max=0.18`) only.
 3. D1 only (after loss-path fix or explicit claim downgrade).
 4. T1b (`lambda_max=0.25`) only if T1a is non-regressive.
+
+## Update (same day, latest commit)
+- New remote head moved to `origin/foc_lite_hop0@a6dafa5` (`fix: resolve all 4 audit issues`).
+- The previous top issue (extended seam loss not wired) has been fixed.
+- A follow-up review note is recorded in:
+  - `exp_result/0419/research_review_D1_T1_arch_api_a6dafa5_20260419.md`
