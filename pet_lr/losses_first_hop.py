@@ -16,6 +16,8 @@ def compute_first_hop_image_loss(
     w_ssim: float = 0.25,
     w_seam: float = 0.10,
     seam_patch_size: int = 14,
+    use_extended_seam: bool = False,
+    seam_zone_width: int = 3,
 ) -> Dict[str, torch.Tensor]:
     """Compute hop0 image auxiliary loss on cropped image tensors."""
     if x_pred.shape != x_gt.shape:
@@ -34,7 +36,14 @@ def compute_first_hop_image_loss(
 
     loss_l1 = weighted_l1_loss(x_pred, x_gt, border_map)
     loss_ssim, ssim_stats = ssim_loss(x_pred, x_gt, return_stats=True)
-    loss_seam = seam_consistency_loss(x_pred, patch_size=int(seam_patch_size))
+    if use_extended_seam:
+        loss_seam = extended_seam_loss(
+            x_pred, x_gt,
+            patch_size=int(seam_patch_size),
+            zone_width=int(seam_zone_width),
+        )
+    else:
+        loss_seam = seam_consistency_loss(x_pred, patch_size=int(seam_patch_size))
     total = float(w_l1) * loss_l1 + float(w_ssim) * loss_ssim + float(w_seam) * loss_seam
 
     return {

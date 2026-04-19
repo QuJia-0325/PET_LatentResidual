@@ -594,6 +594,8 @@ def compute_hop0_image_losses(
         w_ssim=float(img_cfg.get("ssim_weight", 0.25)),
         w_seam=float(img_cfg.get("seam_weight", 0.10)),
         seam_patch_size=int(img_cfg.get("seam_patch_size", 14)),
+        use_extended_seam=bool(img_cfg.get("use_extended_seam", False)),
+        seam_zone_width=int(img_cfg.get("seam_zone_width", 3)),
     )
     return {
         "total": loss_dict["total"],

@@ -281,10 +281,12 @@ loss:
   image_aux:
     l1_weight: 1.0
     ssim_weight: 0.25
-    seam_weight: 0.1
+    seam_weight: 0.20       # Increased seam weight for D1 (was 0.1)
     border_width: 14
     border_weight: 2.0
     seam_patch_size: 14
+    use_extended_seam: true  # D1: use extended_seam_loss (GT-referenced, ±3px zone)
+    seam_zone_width: 3
   regularizer:
     enabled: false
     lambda_hop_l2_weight: 0.0
