@@ -729,6 +729,8 @@ def evaluate(
         "val_chain_d4_mse": 0.0,
         "val_chain_normal_mse": 0.0,
         "val_chain_d20_raw_mse": 0.0,
+        "val_chain_d10_raw_mse": 0.0,
+        "val_chain_d4_raw_mse": 0.0,
         "val_chain_normal_raw_mse": 0.0,
     }
     for i in range(num_steps):
@@ -849,8 +851,12 @@ def evaluate(
                 # Raw decode metrics (skip refiner) for causal attribution
                 if model.seam_refiner_enabled:
                     x_d20_raw = model.decode_crop(z_chain[1], crop_size=_cs, apply_refiner=False)
+                    x_d10_raw = model.decode_crop(z_chain[2], crop_size=_cs, apply_refiner=False)
+                    x_d4_raw = model.decode_crop(z_chain[3], crop_size=_cs, apply_refiner=False)
                     x_n_raw = model.decode_crop(z_chain[-1], crop_size=_cs, apply_refiner=False)
                     sums["val_chain_d20_raw_mse"] += float(F.mse_loss(x_d20_raw, x_roll[:, 1]).item()) * n
+                    sums["val_chain_d10_raw_mse"] += float(F.mse_loss(x_d10_raw, x_roll[:, 2]).item()) * n
+                    sums["val_chain_d4_raw_mse"] += float(F.mse_loss(x_d4_raw, x_roll[:, 3]).item()) * n
                     sums["val_chain_normal_raw_mse"] += float(F.mse_loss(x_n_raw, x_roll[:, -1]).item()) * n
                 chain_samples += n
 
@@ -1455,28 +1461,40 @@ def main() -> None:
 
         start_step = int(ckpt.get("step", 0))
         best_val_ckpt = ckpt.get("best_val", None)
-        if best_state_compatible and best_val_ckpt is not None:
-            best_val = float(best_val_ckpt)
-            best_metric_name_for_ckpt = str(ckpt.get("best_metric_name", best_metric_name_for_ckpt))
-        else:
+        if _arch_changed:
+            # Warm-start mode: new modules exist, treat as fresh training from step 0
+            start_step = 0
             best_val = float("inf")
             best_metric_name_for_ckpt = str(train_cfg.get("best_metric", "val_rollout_total"))
+            # Do NOT restore rng_state — fresh randomness for new architecture
+            print(
+                f"[resume][warm-start] architecture changed → reset step=0, best_val=inf, "
+                f"fresh optimizer/scaler/rng (model weights warm-started from checkpoint)",
+                flush=True,
+            )
+        else:
+            if best_state_compatible and best_val_ckpt is not None:
+                best_val = float(best_val_ckpt)
+                best_metric_name_for_ckpt = str(ckpt.get("best_metric_name", best_metric_name_for_ckpt))
+            else:
+                best_val = float("inf")
+                best_metric_name_for_ckpt = str(train_cfg.get("best_metric", "val_rollout_total"))
 
-        rng_state = ckpt.get("rng_state", None)
-        if isinstance(rng_state, dict):
-            try:
-                if "python" in rng_state:
-                    random.setstate(rng_state["python"])
-                if "numpy" in rng_state:
-                    np.random.set_state(rng_state["numpy"])
-                if "torch" in rng_state:
-                    torch.set_rng_state(rng_state["torch"])
-                if "cuda" in rng_state and torch.cuda.is_available():
-                    cuda_state = rng_state["cuda"]
-                    if isinstance(cuda_state, (list, tuple)) and len(cuda_state) > 0:
-                        torch.cuda.set_rng_state_all(cuda_state)
-            except Exception as e:
-                print(f"[resume][warn] failed to restore rng_state: {e}", flush=True)
+            rng_state = ckpt.get("rng_state", None)
+            if isinstance(rng_state, dict):
+                try:
+                    if "python" in rng_state:
+                        random.setstate(rng_state["python"])
+                    if "numpy" in rng_state:
+                        np.random.set_state(rng_state["numpy"])
+                    if "torch" in rng_state:
+                        torch.set_rng_state(rng_state["torch"])
+                    if "cuda" in rng_state and torch.cuda.is_available():
+                        cuda_state = rng_state["cuda"]
+                        if isinstance(cuda_state, (list, tuple)) and len(cuda_state) > 0:
+                            torch.cuda.set_rng_state_all(cuda_state)
+                except Exception as e:
+                    print(f"[resume][warn] failed to restore rng_state: {e}", flush=True)
         print(
             f"[resume] loaded step={start_step}, best_val={best_val:.6f}, best_metric_name={best_metric_name_for_ckpt}",
             flush=True,

@@ -63,6 +63,13 @@ def parse_args() -> argparse.Namespace:
         default="/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_eval_clip3",
         help="Directory for JSON/CSV artifacts",
     )
+    p.add_argument(
+        "--decode-mode",
+        choices=["default", "raw", "both"],
+        default="default",
+        help="Decode mode: 'default'=use model default (refined if refiner enabled), "
+             "'raw'=force skip refiner, 'both'=output both raw and refined PSNR",
+    )
     return p.parse_args()
 
 
@@ -130,8 +137,20 @@ def evaluate(
     eval_indices: torch.Tensor,
     image_size: int,
     device: torch.device,
+    decode_mode: str = "default",
 ) -> tuple[Dict[str, Dict[str, float]], List[Dict[str, object]]]:
-    per_tp: Dict[str, List[float]] = {tp: [] for tp in dataset.rollout_timepoints}
+    # Determine decode modes to evaluate
+    modes = []
+    if decode_mode in ("default", "both"):
+        modes.append(("", None))  # suffix="", apply_refiner=None (model default)
+    if decode_mode in ("raw", "both"):
+        modes.append(("_raw", False))  # suffix="_raw", apply_refiner=False
+
+    per_tp: Dict[str, Dict[str, List[float]]] = {}
+    for tp in dataset.rollout_timepoints:
+        per_tp[tp] = {}
+        for suffix, _ in modes:
+            per_tp[tp][suffix] = []
     row_map: Dict[int, Dict[str, object]] = {}
 
     total = int(eval_indices.numel())
@@ -142,18 +161,23 @@ def evaluate(
         z_chain = sample_chain_first_hop(model, z_d50, x_d50, rollout_times=rollout_times)
 
         for tp_i, tp in enumerate(dataset.rollout_timepoints):
-            x_pred = model.decode_crop(z_chain[tp_i], crop_size=image_size).detach().cpu()
             x_gt = dataset.images[tp][idx].float().cpu()
+            for suffix, refiner_flag in modes:
+                x_pred = model.decode_crop(
+                    z_chain[tp_i], crop_size=image_size, apply_refiner=refiner_flag,
+                ).detach().cpu()
+                for b in range(x_pred.shape[0]):
+                    psnr_v = float(calc_psnr_clip3(x_pred[b : b + 1], x_gt[b : b + 1]))
+                    per_tp[tp][suffix].append(psnr_v)
+                    slice_idx = int(idx[b].item())
+                    row = row_map.setdefault(slice_idx, {"slice_idx": slice_idx})
+                    row[f"psnr{suffix}_{tp}"] = psnr_v
 
-            for b in range(x_pred.shape[0]):
-                psnr_v = float(calc_psnr_clip3(x_pred[b : b + 1], x_gt[b : b + 1]))
-                per_tp[tp].append(psnr_v)
-
-                slice_idx = int(idx[b].item())
-                row = row_map.setdefault(slice_idx, {"slice_idx": slice_idx})
-                row[f"psnr_{tp}"] = psnr_v
-
-    summary = {tp: summarize(per_tp[tp]) for tp in dataset.rollout_timepoints}
+    summary = {}
+    for tp in dataset.rollout_timepoints:
+        for suffix, _ in modes:
+            key = f"{tp}{suffix}" if suffix else tp
+            summary[key] = summarize(per_tp[tp][suffix])
     rows = [row_map[k] for k in sorted(row_map.keys())]
     return summary, rows
 
@@ -194,6 +218,7 @@ def main() -> None:
         eval_indices=eval_indices,
         image_size=image_size,
         device=device,
+        decode_mode=args.decode_mode,
     )
 
     payload = {
@@ -207,6 +232,7 @@ def main() -> None:
             "batch_size": int(args.batch_size),
             "device": str(device),
             "rollout_timepoints": rollout_tps,
+            "decode_mode": args.decode_mode,
         },
         "summary_psnr_clip3": summary,
         "per_slice": rows,
