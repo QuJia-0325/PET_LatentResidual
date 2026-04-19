@@ -183,14 +183,21 @@ def evaluate(
 
 
 def write_csv(path: Path, split: str, rows: List[Dict[str, object]], rollout_tps: List[str]) -> None:
-    fieldnames = ["split", "slice_idx"] + [f"psnr_{tp}" for tp in rollout_tps]
+    # Dynamically detect columns from the first row's keys to handle all decode modes
+    psnr_keys = []
+    if rows:
+        psnr_keys = sorted(k for k in rows[0] if k.startswith("psnr"))
+    if not psnr_keys:
+        # Fallback for default mode
+        psnr_keys = [f"psnr_{tp}" for tp in rollout_tps]
+    fieldnames = ["split", "slice_idx"] + psnr_keys
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             out_row = {"split": split, "slice_idx": row["slice_idx"]}
-            for tp in rollout_tps:
-                out_row[f"psnr_{tp}"] = row.get(f"psnr_{tp}", "")
+            for k in psnr_keys:
+                out_row[k] = row.get(k, "")
             writer.writerow(out_row)
 
 
