@@ -15,6 +15,7 @@ import yaml
 from tqdm import tqdm
 
 from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset
+from pet_lr.losses import extended_seam_loss, seam_consistency_loss
 from pet_lr.model_first_hop import PETFlowDiTFirstHop
 from pet_lr.rollout_first_hop import sample_chain_first_hop
 from pet_lr.path_guard import ensure_repo_local_outputs_absent, resolve_data_disk_dir
@@ -138,7 +139,9 @@ def evaluate(
     image_size: int,
     device: torch.device,
     decode_mode: str = "default",
-) -> tuple[Dict[str, Dict[str, float]], List[Dict[str, object]]]:
+    seam_patch_size: int = 14,
+    seam_zone_width: int = 3,
+) -> tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]], Dict[str, Dict[str, float]], List[Dict[str, object]]]:
     # Determine decode modes to evaluate
     modes = []
     if decode_mode in ("default", "both"):
@@ -147,10 +150,19 @@ def evaluate(
         modes.append(("_raw", False))  # suffix="_raw", apply_refiner=False
 
     per_tp: Dict[str, Dict[str, List[float]]] = {}
+    per_tp_seam_sum: Dict[str, Dict[str, float]] = {}
+    per_tp_ext_seam_sum: Dict[str, Dict[str, float]] = {}
+    per_tp_count: Dict[str, Dict[str, int]] = {}
     for tp in dataset.rollout_timepoints:
         per_tp[tp] = {}
+        per_tp_seam_sum[tp] = {}
+        per_tp_ext_seam_sum[tp] = {}
+        per_tp_count[tp] = {}
         for suffix, _ in modes:
             per_tp[tp][suffix] = []
+            per_tp_seam_sum[tp][suffix] = 0.0
+            per_tp_ext_seam_sum[tp][suffix] = 0.0
+            per_tp_count[tp][suffix] = 0
     row_map: Dict[int, Dict[str, object]] = {}
 
     total = int(eval_indices.numel())
@@ -166,6 +178,19 @@ def evaluate(
                 x_pred = model.decode_crop(
                     z_chain[tp_i], crop_size=image_size, apply_refiner=refiner_flag,
                 ).detach().cpu()
+                bsz = int(x_pred.shape[0])
+                seam_v = float(seam_consistency_loss(x_pred, patch_size=int(seam_patch_size)).item())
+                ext_seam_v = float(
+                    extended_seam_loss(
+                        x_pred,
+                        x_gt,
+                        patch_size=int(seam_patch_size),
+                        zone_width=int(seam_zone_width),
+                    ).item()
+                )
+                per_tp_seam_sum[tp][suffix] += seam_v * bsz
+                per_tp_ext_seam_sum[tp][suffix] += ext_seam_v * bsz
+                per_tp_count[tp][suffix] += bsz
                 for b in range(x_pred.shape[0]):
                     psnr_v = float(calc_psnr_clip3(x_pred[b : b + 1], x_gt[b : b + 1]))
                     per_tp[tp][suffix].append(psnr_v)
@@ -174,29 +199,43 @@ def evaluate(
                     row[f"psnr{suffix}_{tp}"] = psnr_v
 
     summary = {}
+    seam_summary = {}
+    ext_seam_summary = {}
     for tp in dataset.rollout_timepoints:
         for suffix, _ in modes:
             key = f"{tp}{suffix}" if suffix else tp
             summary[key] = summarize(per_tp[tp][suffix])
+            n = max(per_tp_count[tp][suffix], 1)
+            seam_summary[key] = {
+                "n": float(per_tp_count[tp][suffix]),
+                "mean": float(per_tp_seam_sum[tp][suffix] / float(n)),
+            }
+            ext_seam_summary[key] = {
+                "n": float(per_tp_count[tp][suffix]),
+                "mean": float(per_tp_ext_seam_sum[tp][suffix] / float(n)),
+            }
     rows = [row_map[k] for k in sorted(row_map.keys())]
-    return summary, rows
+    return summary, seam_summary, ext_seam_summary, rows
 
 
 def write_csv(path: Path, split: str, rows: List[Dict[str, object]], rollout_tps: List[str]) -> None:
-    # Dynamically detect columns from the first row's keys to handle all decode modes
-    psnr_keys = []
-    if rows:
-        psnr_keys = sorted(k for k in rows[0] if k.startswith("psnr"))
-    if not psnr_keys:
+    # Dynamically detect columns from all rows to handle all decode modes robustly
+    metric_keys = set()
+    for row in rows:
+        for k in row.keys():
+            if k.startswith("psnr"):
+                metric_keys.add(k)
+    metric_keys_sorted = sorted(metric_keys)
+    if not metric_keys_sorted:
         # Fallback for default mode
-        psnr_keys = [f"psnr_{tp}" for tp in rollout_tps]
-    fieldnames = ["split", "slice_idx"] + psnr_keys
+        metric_keys_sorted = [f"psnr_{tp}" for tp in rollout_tps]
+    fieldnames = ["split", "slice_idx"] + metric_keys_sorted
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             out_row = {"split": split, "slice_idx": row["slice_idx"]}
-            for k in psnr_keys:
+            for k in metric_keys_sorted:
                 out_row[k] = row.get(k, "")
             writer.writerow(out_row)
 
@@ -212,12 +251,15 @@ def main() -> None:
     rollout_tps = cfg["data"].get("rollout_timepoints", TIMEPOINTS)
     rollout_times = [float(cfg["data"]["t_map"][tp]) for tp in rollout_tps]
     image_size = int(cfg["data"].get("image_size", 224))
+    img_loss_cfg = cfg.get("loss", {}).get("image_aux", {})
+    seam_patch_size = int(img_loss_cfg.get("seam_patch_size", 14))
+    seam_zone_width = int(img_loss_cfg.get("seam_zone_width", 3))
 
     dataset = build_dataset(cfg, split=args.split)
     eval_indices = select_indices(dataset.num_slices, args.max_slices)
     model = load_model(cfg, ckpt_path=args.checkpoint, device=device)
 
-    summary, rows = evaluate(
+    summary, seam_summary, ext_seam_summary, rows = evaluate(
         model=model,
         dataset=dataset,
         rollout_times=rollout_times,
@@ -226,6 +268,8 @@ def main() -> None:
         image_size=image_size,
         device=device,
         decode_mode=args.decode_mode,
+        seam_patch_size=seam_patch_size,
+        seam_zone_width=seam_zone_width,
     )
 
     payload = {
@@ -240,8 +284,12 @@ def main() -> None:
             "device": str(device),
             "rollout_timepoints": rollout_tps,
             "decode_mode": args.decode_mode,
+            "seam_patch_size": seam_patch_size,
+            "seam_zone_width": seam_zone_width,
         },
         "summary_psnr_clip3": summary,
+        "summary_seam_consistency": seam_summary,
+        "summary_extended_seam": ext_seam_summary,
         "per_slice": rows,
     }
 

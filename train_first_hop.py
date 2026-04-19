@@ -895,6 +895,14 @@ def evaluate(
             out[k] = v / max(chain_samples, 1)
         else:
             out[k] = v / max(main_count, 1)
+    if not model.seam_refiner_enabled:
+        for k in (
+            "val_chain_d20_raw_mse",
+            "val_chain_d10_raw_mse",
+            "val_chain_d4_raw_mse",
+            "val_chain_normal_raw_mse",
+        ):
+            out[k] = float("nan")
     out["val_chain_tail_mse"] = (
         out["val_chain_d10_mse"] + out["val_chain_d4_mse"] + out["val_chain_normal_mse"]
     ) / 3.0
@@ -996,6 +1004,10 @@ def save_checkpoint(
     best_val: float | None = None,
     best_metric_name: str | None = None,
     best_metric_signature: str | None = None,
+    best_d1_val: float | None = None,
+    best_d1_metric_name: str | None = None,
+    best_d1_guard_metric_name: str | None = None,
+    best_d1_guard_best: float | None = None,
 ) -> None:
     rng_state = {
         "python": random.getstate(),
@@ -1015,6 +1027,10 @@ def save_checkpoint(
         "best_val": float(best_val) if best_val is not None else None,
         "best_metric_name": best_metric_name,
         "best_metric_signature": best_metric_signature,
+        "best_d1_val": float(best_d1_val) if best_d1_val is not None else None,
+        "best_d1_metric_name": best_d1_metric_name,
+        "best_d1_guard_metric_name": best_d1_guard_metric_name,
+        "best_d1_guard_best": float(best_d1_guard_best) if best_d1_guard_best is not None else None,
         "rng_state": rng_state,
     }
     torch.save(ckpt, output_dir / name)
@@ -1323,6 +1339,28 @@ def main() -> None:
 
     best_val = float("inf")
     best_metric_name_for_ckpt = str(train_cfg.get("best_metric", "val_rollout_total"))
+    # Optional D1-oriented checkpoint lane (seam-focused selection with optional transport guard).
+    best_d1_metric_name = str(train_cfg.get("best_metric_d1", "")).strip()
+    best_d1_enabled = best_d1_metric_name != ""
+    best_d1_filename = str(train_cfg.get("best_metric_d1_filename", "best_d1.pt")).strip() or "best_d1.pt"
+    best_d1_min_step = int(train_cfg.get("best_metric_d1_min_step", 0))
+    if best_d1_min_step < 0:
+        raise ValueError(f"training.best_metric_d1_min_step must be >= 0, got {best_d1_min_step}")
+    best_d1_guard_metric_name = str(train_cfg.get("best_metric_d1_guard_metric", "")).strip()
+    best_d1_guard_rel_tol = float(train_cfg.get("best_metric_d1_guard_rel_tol", 0.0))
+    if best_d1_guard_rel_tol < 0.0:
+        raise ValueError(
+            f"training.best_metric_d1_guard_rel_tol must be >= 0, got {best_d1_guard_rel_tol}"
+        )
+    best_d1_val = float("inf")
+    best_d1_guard_best = float("inf")
+    if best_d1_enabled:
+        print(
+            f"[d1_best] enabled: metric={best_d1_metric_name}, file={best_d1_filename}, "
+            f"min_step={best_d1_min_step}, guard_metric={best_d1_guard_metric_name or 'none'}, "
+            f"guard_rel_tol={best_d1_guard_rel_tol:.4f}",
+            flush=True,
+        )
     start_step = 0
     img_loss_zero_streak = 0
     dead_branch_streak = 0
@@ -1466,6 +1504,9 @@ def main() -> None:
             start_step = 0
             best_val = float("inf")
             best_metric_name_for_ckpt = str(train_cfg.get("best_metric", "val_rollout_total"))
+            if best_d1_enabled:
+                best_d1_val = float("inf")
+                best_d1_guard_best = float("inf")
             # Do NOT restore rng_state — fresh randomness for new architecture
             print(
                 f"[resume][warm-start] architecture changed → reset step=0, best_val=inf, "
@@ -1479,6 +1520,13 @@ def main() -> None:
             else:
                 best_val = float("inf")
                 best_metric_name_for_ckpt = str(train_cfg.get("best_metric", "val_rollout_total"))
+            if best_d1_enabled:
+                best_d1_val_ckpt = ckpt.get("best_d1_val", None)
+                if best_d1_val_ckpt is not None:
+                    best_d1_val = float(best_d1_val_ckpt)
+                best_d1_guard_best_ckpt = ckpt.get("best_d1_guard_best", None)
+                if best_d1_guard_best_ckpt is not None:
+                    best_d1_guard_best = float(best_d1_guard_best_ckpt)
 
             rng_state = ckpt.get("rng_state", None)
             if isinstance(rng_state, dict):
@@ -1499,6 +1547,12 @@ def main() -> None:
             f"[resume] loaded step={start_step}, best_val={best_val:.6f}, best_metric_name={best_metric_name_for_ckpt}",
             flush=True,
         )
+        if best_d1_enabled:
+            print(
+                f"[resume] loaded best_d1_metric={best_d1_metric_name}, "
+                f"best_d1_val={best_d1_val:.6f}, best_d1_guard_best={best_d1_guard_best:.6f}",
+                flush=True,
+            )
         if start_step >= max_steps:
             print(
                 f"[resume] checkpoint step ({start_step}) >= max_steps ({max_steps}), no further training needed.",
@@ -2038,6 +2092,10 @@ def main() -> None:
                 best_val=best_val,
                 best_metric_name=best_metric_name_for_ckpt,
                 best_metric_signature=best_metric_signature,
+                best_d1_val=best_d1_val if best_d1_enabled else None,
+                best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+                best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+                best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
             )
 
         if step % eval_interval == 0:
@@ -2053,6 +2111,58 @@ def main() -> None:
             key, key_name = resolve_best_selection_score(metrics, train_cfg)
             best_metric_name_for_ckpt = key_name
             metrics["val_select_score"] = float(key)
+            if best_d1_enabled:
+                if step < best_d1_min_step:
+                    metrics["val_d1_skipped_before_min_step"] = float(best_d1_min_step)
+                else:
+                    if best_d1_metric_name not in metrics:
+                        raise KeyError(
+                            f"training.best_metric_d1 references unknown metric '{best_d1_metric_name}'. "
+                            f"Available keys: {sorted(metrics.keys())}"
+                        )
+                    d1_score = float(metrics[best_d1_metric_name])
+                    d1_guard_ok = True
+                    d1_guard_limit = float("nan")
+                    if best_d1_guard_metric_name:
+                        if best_d1_guard_metric_name not in metrics:
+                            raise KeyError(
+                                "training.best_metric_d1_guard_metric references unknown metric "
+                                f"'{best_d1_guard_metric_name}'. Available keys: {sorted(metrics.keys())}"
+                            )
+                        d1_guard_val = float(metrics[best_d1_guard_metric_name])
+                        if math.isfinite(best_d1_guard_best):
+                            d1_guard_limit = best_d1_guard_best * (1.0 + best_d1_guard_rel_tol)
+                            d1_guard_ok = d1_guard_val <= d1_guard_limit
+                        metrics["val_d1_guard_metric"] = d1_guard_val
+                        metrics["val_d1_guard_limit"] = d1_guard_limit
+                        metrics["val_d1_guard_ok"] = 1.0 if d1_guard_ok else 0.0
+                        best_d1_guard_best = min(best_d1_guard_best, d1_guard_val)
+                    else:
+                        metrics["val_d1_guard_ok"] = 1.0
+                    metrics["val_d1_select_score"] = d1_score
+                    if d1_guard_ok and d1_score < best_d1_val:
+                        best_d1_val = d1_score
+                        save_checkpoint(
+                            model,
+                            optimizer,
+                            scaler,
+                            step,
+                            output_dir,
+                            best_d1_filename,
+                            rollout_tps,
+                            best_val=best_val,
+                            best_metric_name=best_metric_name_for_ckpt,
+                            best_metric_signature=best_metric_signature,
+                            best_d1_val=best_d1_val,
+                            best_d1_metric_name=best_d1_metric_name,
+                            best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_guard_metric_name else None,
+                            best_d1_guard_best=best_d1_guard_best if math.isfinite(best_d1_guard_best) else None,
+                        )
+                        print(
+                            f"[val] new d1-best {best_d1_metric_name}={best_d1_val:.6f} "
+                            f"(file={best_d1_filename}) at step={step}",
+                            flush=True,
+                        )
             if metrics_fp is not None:
                 val_payload = {"event": "val", "step": int(step)}
                 for k, v in metrics.items():
@@ -2075,6 +2185,10 @@ def main() -> None:
                     best_val=best_val,
                     best_metric_name=best_metric_name_for_ckpt,
                     best_metric_signature=best_metric_signature,
+                    best_d1_val=best_d1_val if best_d1_enabled else None,
+                    best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+                    best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+                    best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
                 )
                 print(f"[val] new best {key_name}={best_val:.6f} at step={step}")
         if pbar is not None:
@@ -2095,6 +2209,10 @@ def main() -> None:
         best_val=best_val,
         best_metric_name=best_metric_name_for_ckpt,
         best_metric_signature=best_metric_signature,
+        best_d1_val=best_d1_val if best_d1_enabled else None,
+        best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+        best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+        best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
     )
     print(f"Training done. Outputs at: {output_dir}")
 

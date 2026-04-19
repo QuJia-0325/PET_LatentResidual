@@ -85,7 +85,8 @@ python train_first_hop.py \
 ```bash
 python eval_first_hop_224_clip3.py \
     --config configs/pet_flow/pet_flow_first_hop_224_50k_seam_refiner.yaml \
-    --checkpoint <best.pt> --split val --max-slices 0
+    --checkpoint <best.pt 或 best_d1.pt> --split val --max-slices 0 \
+    --decode-mode both
 ```
 
 **视觉**（最重要）：
@@ -96,7 +97,7 @@ python eval_first_hop_224_clip3.py \
 
 - **视觉 PASS**: 14px 网格在背景区域不再肉眼可辨
 - **PSNR 不退化**: Δtransport_avg ≥ −0.02 dB（zero-init 保证初始不退化）
-- **seam_loss 下降**: 对比 refiner vs no-refiner 的 seam_consistency_loss 值
+- **seam_loss 下降**: 对比 refiner vs no-refiner 的 `summary_extended_seam`（可辅以 `summary_seam_consistency`）
 
 ---
 
@@ -161,7 +162,7 @@ python eval_first_hop_224_clip3.py \
 ├── T1a: lambda=0.18（GPU 1）— PSNR headroom 探索
 └── T1b: lambda=0.25（GPU 2）— PSNR headroom 探索
 
-D1 和 T1 完全独立，无依赖关系。
+D1 和 T1 可并行运行，但共享 image_aux 训练路径（并非严格独立因果轴）。
 ```
 
 ---

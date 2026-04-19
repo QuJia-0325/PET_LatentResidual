@@ -69,6 +69,13 @@ training:
       weight: 0.90
     - name: val_chain_normal_mse
       weight: 1.50
+  # D1-specific visual lane: keep a seam-focused best checkpoint in parallel.
+  # This does not replace best.pt (transport lane); it adds best_d1.pt for D1 claims.
+  best_metric_d1: val_hop0_img_seam
+  best_metric_d1_filename: best_d1.pt
+  best_metric_d1_min_step: 4000
+  best_metric_d1_guard_metric: val_chain_normal_mse
+  best_metric_d1_guard_rel_tol: 0.03
 
   # Evaluate chain on all validation samples (not only hop0 rows).
   eval_chain_on_all_samples: true
