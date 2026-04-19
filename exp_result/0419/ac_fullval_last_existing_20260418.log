@@ -1,0 +1,17 @@
+A+C full-val eval reference log (from existing completed eval output)
+generated_at: 2026-04-19T12:48:31.324540
+source_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/ac_irepa_align_50k_last_fullval_20260418/first_hop_224_val_clip3_eval.json
+meta:
+  config: /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_50k_irepa_align.yaml
+  checkpoint: /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_irepa_align_gpu3_nopbar_20260418_010035/last.pt
+  split: val
+  max_slices: 0
+  num_eval_slices: 7403
+  batch_size: 8
+  device: cuda:0
+summary_psnr_clip3_mean:
+  D50: 42.622377930
+  D20: 35.576588996
+  D10: 35.953563328
+  D4: 36.537061585
+  NORMAL: 36.847919278

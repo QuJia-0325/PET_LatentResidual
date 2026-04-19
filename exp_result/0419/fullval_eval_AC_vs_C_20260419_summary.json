@@ -1,0 +1,117 @@
+{
+  "generated_at": "2026-04-19T12:48:31.324754",
+  "runs": {
+    "ac_best": {
+      "meta": {
+        "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+        "config": "/home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_50k_irepa_align.yaml",
+        "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_irepa_align_gpu3_nopbar_20260418_010035/best.pt",
+        "split": "val",
+        "max_slices": 0,
+        "num_eval_slices": 7403,
+        "batch_size": 8,
+        "device": "cuda:0",
+        "rollout_timepoints": [
+          "D50",
+          "D20",
+          "D10",
+          "D4",
+          "NORMAL"
+        ]
+      },
+      "mean_psnr_clip3": {
+        "D50": 42.62237792998663,
+        "D20": 35.573978469566995,
+        "D10": 35.94143996475302,
+        "D4": 36.521873791438516,
+        "NORMAL": 36.79260689828558
+      },
+      "transport_avg": 36.20747478101103,
+      "all_avg": 37.49045541080615
+    },
+    "ac_last": {
+      "meta": {
+        "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+        "config": "/home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_50k_irepa_align.yaml",
+        "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_irepa_align_gpu3_nopbar_20260418_010035/last.pt",
+        "split": "val",
+        "max_slices": 0,
+        "num_eval_slices": 7403,
+        "batch_size": 8,
+        "device": "cuda:0",
+        "rollout_timepoints": [
+          "D50",
+          "D20",
+          "D10",
+          "D4",
+          "NORMAL"
+        ]
+      },
+      "mean_psnr_clip3": {
+        "D50": 42.62237792998663,
+        "D20": 35.57658899622249,
+        "D10": 35.9535633277963,
+        "D4": 36.53706158529762,
+        "NORMAL": 36.84791927774529
+      },
+      "transport_avg": 36.22878329676543,
+      "all_avg": 37.507502223409666
+    },
+    "c_best": {
+      "meta": {
+        "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+        "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/config.yaml",
+        "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/best.pt",
+        "split": "val",
+        "max_slices": 0,
+        "num_eval_slices": 7403,
+        "batch_size": 8,
+        "device": "cuda:0",
+        "rollout_timepoints": [
+          "D50",
+          "D20",
+          "D10",
+          "D4",
+          "NORMAL"
+        ]
+      },
+      "mean_psnr_clip3": {
+        "D50": 42.62237792998663,
+        "D20": 35.56903362659454,
+        "D10": 35.94213350099142,
+        "D4": 36.505389579681655,
+        "NORMAL": 36.80552171082156
+      },
+      "transport_avg": 36.205519604522294,
+      "all_avg": 37.48889126961516
+    },
+    "c_last": {
+      "meta": {
+        "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+        "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/config.yaml",
+        "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/last.pt",
+        "split": "val",
+        "max_slices": 0,
+        "num_eval_slices": 7403,
+        "batch_size": 8,
+        "device": "cuda:0",
+        "rollout_timepoints": [
+          "D50",
+          "D20",
+          "D10",
+          "D4",
+          "NORMAL"
+        ]
+      },
+      "mean_psnr_clip3": {
+        "D50": 42.62237792998663,
+        "D20": 35.57078809051153,
+        "D10": 35.94867886588494,
+        "D4": 36.504914517013795,
+        "NORMAL": 36.793369333662255
+      },
+      "transport_avg": 36.20443770176813,
+      "all_avg": 37.488025747411825
+    }
+  }
+}

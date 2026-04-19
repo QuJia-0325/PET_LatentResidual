@@ -112,6 +112,80 @@ class SpatialAlignmentProjector(nn.Module):
         return self.projector(h)
 
 
+class SeamRefiner(nn.Module):
+    """Lightweight post-decoder refiner that reduces patch boundary artifacts.
+
+    Operates on the decoded image (after unpatchify) using depthwise-separable
+    convolutions with large kernels that span across patch boundaries (14px).
+    The residual output is constrained by tanh to prevent PSNR regression.
+
+    Key design choices:
+    - Kernel size 7: covers half a patch width, bridging adjacent patches
+    - Depthwise-separable: minimal parameters while maintaining spatial coverage
+    - Zero-init tail + tanh clamp: initial output = input (no PSNR regression)
+    - Trained on predicted-latent decoded images (matching inference distribution)
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 1,
+        hidden_channels: int = 32,
+        num_blocks: int = 3,
+        kernel_size: int = 7,
+        max_residual: float = 0.15,
+    ) -> None:
+        super().__init__()
+        self.max_residual = float(max_residual)
+        pad = kernel_size // 2
+
+        # Stem: 1 → hidden
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.GroupNorm(8, hidden_channels),
+            nn.SiLU(),
+        )
+
+        # Body: depthwise-separable residual blocks with large kernels
+        blocks = []
+        for _ in range(num_blocks):
+            blocks.append(self._make_dw_block(hidden_channels, kernel_size, pad))
+        self.body = nn.Sequential(*blocks)
+
+        # Tail: hidden → 1 (zero-init for safety)
+        self.tail = nn.Conv2d(hidden_channels, in_channels, kernel_size=3, padding=1)
+        nn.init.zeros_(self.tail.weight)
+        nn.init.zeros_(self.tail.bias)
+
+    @staticmethod
+    def _make_dw_block(channels: int, kernel_size: int, pad: int) -> nn.Module:
+        return nn.Sequential(
+            # Depthwise conv (large kernel, spans patch boundaries)
+            nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=pad, groups=channels),
+            nn.GroupNorm(8, channels),
+            nn.SiLU(),
+            # Pointwise conv (channel mixing)
+            nn.Conv2d(channels, channels, kernel_size=1),
+            nn.GroupNorm(8, channels),
+            nn.SiLU(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Refine decoded image by adding a small residual correction.
+
+        Args:
+            x: Decoded image [B, 1, H, W]
+
+        Returns:
+            Refined image [B, 1, H, W] = x + tanh(residual) * max_residual
+        """
+        h = self.stem(x)
+        # Residual blocks (no skip connection per-block for simplicity;
+        # the global residual x + correction handles skip)
+        h = self.body(h)
+        residual = torch.tanh(self.tail(h)) * self.max_residual
+        return x + residual
+
+
 class HopResidualVelocityHead(nn.Module):
     """Small hop-specific residual correction on top of shared velocity output."""
 
@@ -266,6 +340,18 @@ class PETFlowDiTFirstHop(nn.Module):
             )
             self._align_layer_idx = int(align_cfg.get("layer_idx", 6))
             self._install_backbone_hook()
+
+        # --- D1: Post-decoder seam refiner ---
+        refiner_cfg = first_cfg.get("seam_refiner", {})
+        self.seam_refiner_enabled = bool(refiner_cfg.get("enabled", False))
+        if self.seam_refiner_enabled:
+            self.seam_refiner = SeamRefiner(
+                in_channels=1,
+                hidden_channels=int(refiner_cfg.get("hidden_channels", 32)),
+                num_blocks=int(refiner_cfg.get("num_blocks", 3)),
+                kernel_size=int(refiner_cfg.get("kernel_size", 7)),
+                max_residual=float(refiner_cfg.get("max_residual", 0.15)),
+            )
 
     def _assert_pixel_encoder_capacity(self, first_cfg: Dict) -> None:
         max_ratio = float(first_cfg.get("pixel_encoder_max_ratio", 0.05))
@@ -424,12 +510,17 @@ class PETFlowDiTFirstHop(nn.Module):
         target = int(crop_size or self.image_size)
         h, w = x.shape[-2:]
         if h == target and w == target:
-            return x
-        if h < target or w < target:
+            out = x
+        elif h < target or w < target:
             raise ValueError(f"Cannot center-crop decode output {(h, w)} to {(target, target)}")
-        top = (h - target) // 2
-        left = (w - target) // 2
-        return x[:, :, top:top + target, left:left + target]
+        else:
+            top = (h - target) // 2
+            left = (w - target) // 2
+            out = x[:, :, top:top + target, left:left + target]
+        # Apply seam refiner if enabled
+        if self.seam_refiner_enabled:
+            out = self.seam_refiner(out)
+        return out
 
 
 def build_backbone(cfg: Dict) -> Tuple[nn.Module, bool]:

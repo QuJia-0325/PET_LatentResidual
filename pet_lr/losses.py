@@ -124,5 +124,64 @@ def seam_consistency_loss(pred: torch.Tensor, patch_size: int = 14) -> torch.Ten
     return (loss_seam + 0.5 * loss_grad) / num_seams
 
 
+def extended_seam_loss(
+    pred: torch.Tensor,
+    gt: torch.Tensor,
+    patch_size: int = 14,
+    zone_width: int = 3,
+) -> torch.Tensor:
+    """Extended seam loss with ±zone_width pixel zone and second-order smoothness.
+
+    Improvements over seam_consistency_loss:
+    1. Penalizes ±zone_width pixels around each boundary (not just ±1)
+    2. Uses distance-decaying weights within the zone
+    3. Adds second-order derivative continuity (curvature matching)
+    4. Compares against GT in the seam zone (not just self-consistency)
+    """
+    H, W = pred.shape[-2:]
+    seam_x = list(range(patch_size, W, patch_size))
+    seam_y = list(range(patch_size, H, patch_size))
+    loss = pred.new_zeros(())
+    count = 0
+
+    for x in seam_x:
+        if x >= W:
+            continue
+        for offset in range(-zone_width, zone_width + 1):
+            col = x + offset
+            if col < 1 or col >= W - 1:
+                continue
+            w = 1.0 / (1.0 + abs(offset))  # distance decay
+            # First-order: pred gradient vs GT gradient at seam zone
+            pred_grad = pred[:, :, :, col + 1] - pred[:, :, :, col - 1]
+            gt_grad = gt[:, :, :, col + 1] - gt[:, :, :, col - 1]
+            loss = loss + w * F.l1_loss(pred_grad, gt_grad)
+            # Second-order: curvature continuity
+            if col >= 2 and col < W - 2:
+                pred_curv = pred[:, :, :, col + 1] + pred[:, :, :, col - 1] - 2 * pred[:, :, :, col]
+                gt_curv = gt[:, :, :, col + 1] + gt[:, :, :, col - 1] - 2 * gt[:, :, :, col]
+                loss = loss + 0.5 * w * F.l1_loss(pred_curv, gt_curv)
+            count += 1
+
+    for y in seam_y:
+        if y >= H:
+            continue
+        for offset in range(-zone_width, zone_width + 1):
+            row = y + offset
+            if row < 1 or row >= H - 1:
+                continue
+            w = 1.0 / (1.0 + abs(offset))
+            pred_grad = pred[:, :, row + 1, :] - pred[:, :, row - 1, :]
+            gt_grad = gt[:, :, row + 1, :] - gt[:, :, row - 1, :]
+            loss = loss + w * F.l1_loss(pred_grad, gt_grad)
+            if row >= 2 and row < H - 2:
+                pred_curv = pred[:, :, row + 1, :] + pred[:, :, row - 1, :] - 2 * pred[:, :, row, :]
+                gt_curv = gt[:, :, row + 1, :] + gt[:, :, row - 1, :] - 2 * gt[:, :, row, :]
+                loss = loss + 0.5 * w * F.l1_loss(pred_curv, gt_curv)
+            count += 1
+
+    return loss / max(count, 1)
+
+
 def residual_l2_penalty(residual: torch.Tensor) -> torch.Tensor:
     return (residual ** 2).mean()

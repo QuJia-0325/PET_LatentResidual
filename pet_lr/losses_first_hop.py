@@ -4,7 +4,7 @@ from typing import Dict
 
 import torch
 
-from .losses import make_border_weight_map, seam_consistency_loss, ssim_loss, weighted_l1_loss
+from .losses import make_border_weight_map, seam_consistency_loss, extended_seam_loss, ssim_loss, weighted_l1_loss
 
 
 def compute_first_hop_image_loss(
