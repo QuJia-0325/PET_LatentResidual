@@ -106,7 +106,7 @@ D50→D20→D10→D4→NORMAL 为什么是这些剂量？为什么 4 hop？
 
 **Config**: `pet_flow_first_hop_224_50k_pixenc_ablation.yaml`
 - 基于 Scheme C (lambda_max=0.12)
-- `first_hop.pixel_forcing_disabled: true` — 强制 gate_pix=0，pixel_encoder 不贡献梯度
+- `first_hop.pixel_forcing_disabled: true` — 跳过 pixel forcing 路径（`_apply_hop0_pixel_forcing` 直接返回原始 z_src），pixel_encoder 冻结不贡献梯度；gate_pix 仍正常计算用于监控
 - 其他参数完全一致
 
 **代码改动**:
