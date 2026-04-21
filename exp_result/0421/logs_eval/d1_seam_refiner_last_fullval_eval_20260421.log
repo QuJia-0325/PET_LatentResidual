@@ -1,0 +1,36 @@
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 19.7s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.5s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.0s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 4.9s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 4.9s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.4s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+{
+  "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+  "config": "configs/pet_flow/pet_flow_first_hop_224_50k_seam_refiner.yaml",
+  "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_seam_refiner/last.pt",
+  "split": "val",
+  "max_slices": 0,
+  "num_eval_slices": 7403,
+  "batch_size": 8,
+  "device": "cuda:0",
+  "rollout_timepoints": [
+    "D50",
+    "D20",
+    "D10",
+    "D4",
+    "NORMAL"
+  ],
+  "decode_mode": "default",
+  "seam_patch_size": 14,
+  "seam_zone_width": 3
+}
+Saved JSON: /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/d1_seam_refiner_last_fullval_20260421/first_hop_224_val_clip3_eval.json
+Saved CSV: /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/d1_seam_refiner_last_fullval_20260421/first_hop_224_val_clip3_eval.csv

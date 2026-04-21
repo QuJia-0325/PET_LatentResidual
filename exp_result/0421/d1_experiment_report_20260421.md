@@ -11,11 +11,21 @@
 - 训练日志：
   - `logs_train/d1_seam_refiner_metrics.jsonl`
   - `logs_train/d1_seam_refiner_train_gpu3_20260420_150733.log`
+- 评估日志（full-val）：
+  - `logs_eval/d1_seam_refiner_best_fullval_eval_20260421.log`
+  - `logs_eval/d1_seam_refiner_last_fullval_eval_20260421.log`
+- full-val 结果：
+  - `results/d1_seam_refiner_best_fullval_eval_20260421.json`
+  - `results/d1_seam_refiner_best_fullval_eval_20260421.csv`
+  - `results/d1_seam_refiner_last_fullval_eval_20260421.json`
+  - `results/d1_seam_refiner_last_fullval_eval_20260421.csv`
 - 结构化摘要：
   - `artifacts/d1_seam_refiner_training_summary_20260421.json`
   - `artifacts/d1_seam_refiner_val_curve_20260421.csv`
+  - `artifacts/d1_fullval_best_vs_last_summary_20260421.json`
 - 关键点表：
   - `results/d1_keypoints_20260421.csv`
+  - `results/d1_fullval_best_vs_last_metrics_20260421.csv`
 
 ## 3. 原始数据表（关键 checkpoint 点）
 
@@ -45,10 +55,28 @@
    - `val_d1_select_score` 相对 best_d1_guard 上升约 `81.39%`。
    - 结论：该 run 的可报告 checkpoint 应优先使用 `best.pt`/`best_d1.pt`，不建议直接用 `last.pt` 做主结果。
 
-## 5. 建议
-1. 对 D1 立即补齐 `full-val eval`，至少评估三者：`best.pt`、`best_d1.pt`、`last.pt`。
-2. 对外汇报建议主用 `best.pt`（transport 主线），同时附 `best_d1.pt` 作为 D1 lane 证据。
+## 5. Full-val 结果（best.pt vs last.pt）
+
+| Metric | best.pt | last.pt | Delta (last - best) |
+|---|---:|---:|---:|
+| PSNR D50 | 38.591577 | 38.635481 | +0.043904 |
+| PSNR D20 | 35.923970 | 35.903491 | -0.020479 |
+| PSNR D10 | 36.094169 | 36.083271 | -0.010898 |
+| PSNR D4 | 36.146838 | 36.109041 | -0.037797 |
+| PSNR NORMAL | 36.449659 | 36.437741 | -0.011918 |
+| PSNR transport_avg (D20,D10,D4,NORMAL) | **36.153659** | **36.133386** | **-0.020273** |
+| PSNR all_avg (5tp) | 36.641243 | 36.633805 | -0.007438 |
+| seam_consistency transport_avg (lower better) | **0.003611892** | **0.003649164** | **+0.000037272** |
+| extended_seam transport_avg (lower better) | **0.002145011** | **0.002146932** | **+0.000001921** |
+
+结论：
+- full-val 上 `best.pt` 整体仍优于 `last.pt`（PSNR 主指标略优，seam 指标也略优）。
+- 这与训练窗口结论一致：`last.pt` 不是本 run 的最优报告点。
+
+## 6. 建议
+1. D1 对外主结果继续采用 `best.pt`，`last.pt` 仅作训练终点参考。
+2. 若要完整闭环 D1 claim，下一步补跑 `best_d1.pt` 的 full-val，并与 `best.pt/last.pt` 三者并列。
 3. 训练日志体积偏大（包含 tqdm 连续进度条）；后续建议保持 `TQDM_DISABLE=1` 或降低可视化频度，避免日志膨胀。
 
-## 6. 备注
-- 本报告结论基于训练期 val 窗口指标（`metrics.jsonl`），不替代 full-val 评估结论。
+## 7. 备注
+- 本报告包含训练期 val 窗口分析 + full-val（best/last）分析。
