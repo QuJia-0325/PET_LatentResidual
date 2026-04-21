@@ -324,7 +324,11 @@ class PETFlowDiTFirstHop(nn.Module):
         self.pixel_forcing_disabled = bool(first_cfg.get("pixel_forcing_disabled", False))
         if self.pixel_forcing_disabled:
             self.pixel_encoder.requires_grad_(False)
-            print("[model] pixel_forcing_disabled=true: pixel encoder frozen and gate forced to 0", flush=True)
+            print(
+                "[model] pixel_forcing_disabled=true: pixel encoder frozen, "
+                "pixel forcing path bypassed; gate metric kept for monitoring",
+                flush=True,
+            )
 
         pair_v_std = first_cfg.get("pair_v_std", self._PAIR_V_STD)
         if len(pair_v_std) != self.num_hops:

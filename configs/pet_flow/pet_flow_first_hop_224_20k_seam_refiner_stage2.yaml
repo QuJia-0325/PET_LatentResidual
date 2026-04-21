@@ -1,3 +1,5 @@
+# N2 seam refiner stage-2: cross-scheme warm-start (resume from Scheme C best.pt).
+# Resume compat is relaxed — strict_resume_compat=false is intentional.
 project_name: pet_first_hop_224
 rae_root: /home/qujiaxiang/project/RAE
 output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual
@@ -52,7 +54,7 @@ training:
   # N2: freeze everything except seam_refiner for stage-2 training
   freeze_backbone: true
   freeze_rae: true
-  freeze_first_hop_modules: true
+  freeze_all_except_seam_refiner: true
   # Resume compatibility: allow missing seam_refiner keys from Stage 1 checkpoint
   strict_resume_compat: false
   resume_allow_metric_mismatch: true
@@ -106,10 +108,7 @@ training:
   print_train_line_with_pbar: false
   log_grad_norms: false
   grad_finite_check: true
-  strict_resume_compat: true
-  resume_allow_metric_mismatch: false
-  resume_allow_config_mismatch: false
-  resume_allow_missing_compat_metadata: false
+  # N2: resume compat is relaxed (set above in freeze section); no duplicate here.
   metrics_jsonl: true
 
   rollout:

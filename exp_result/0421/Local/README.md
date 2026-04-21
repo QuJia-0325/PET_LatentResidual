@@ -123,13 +123,13 @@ D50→D20→D10→D4→NORMAL 为什么是这些剂量？为什么 4 hop？
 **Config**: `pet_flow_first_hop_224_20k_seam_refiner_stage2.yaml`
 - `--resume <Scheme_C_best.pt>`
 - `training.freeze_backbone: true`
-- `training.freeze_first_hop_modules: true`（冻结 pixel_encoder, hop_residual_head, g_pix_raw）
+- `training.freeze_all_except_seam_refiner: true`（冻结除 seam_refiner 外所有可训练参数）
 - `first_hop.seam_refiner.enabled: true`
 - `first_hop.seam_refiner.skip_first_tp: true`（跳过 D50 的 refiner）
 - `training.max_steps: 20000`（refiner 仅 9K params）
 
 **代码改动**:
-- `train_first_hop.py`: 新增 `freeze_first_hop_modules` 支持
+- `train_first_hop.py`: 新增 `freeze_all_except_seam_refiner` 支持
 - `model_first_hop.py`: 新增 `seam_refiner.skip_first_tp` 配置读取
 - `eval_first_hop_224_clip3.py`: eval 时 tp_i==0 且 skip_first_tp 时跳过 refiner
 
@@ -176,7 +176,7 @@ python eval_first_hop_224_clip3.py \
 | 文件 | 改动 |
 |------|------|
 | `pet_lr/model_first_hop.py` | `pixel_forcing_disabled` 支持 + `skip_first_tp` 配置 |
-| `train_first_hop.py` | `freeze_first_hop_modules` 支持 |
+| `train_first_hop.py` | `freeze_all_except_seam_refiner` 支持 |
 | `eval_first_hop_224_clip3.py` | `skip_first_tp` 在 eval 中跳过 D50 refiner |
 | `configs/pet_flow/pet_flow_first_hop_224_50k_pixenc_ablation.yaml` | N1 config |
 | `configs/pet_flow/pet_flow_first_hop_224_20k_seam_refiner_stage2.yaml` | N2 config |
