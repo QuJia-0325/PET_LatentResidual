@@ -175,8 +175,12 @@ def evaluate(
         for tp_i, tp in enumerate(dataset.rollout_timepoints):
             x_gt = dataset.images[tp][idx].float().cpu()
             for suffix, refiner_flag in modes:
+                # skip_first_tp: don't apply refiner on D50 (tp_i==0) passthrough
+                actual_refiner_flag = refiner_flag
+                if tp_i == 0 and getattr(model, "seam_refiner_skip_first_tp", False) and refiner_flag is None:
+                    actual_refiner_flag = False
                 x_pred = model.decode_crop(
-                    z_chain[tp_i], crop_size=image_size, apply_refiner=refiner_flag,
+                    z_chain[tp_i], crop_size=image_size, apply_refiner=actual_refiner_flag,
                 ).detach().cpu()
                 bsz = int(x_pred.shape[0])
                 seam_v = float(seam_consistency_loss(x_pred, patch_size=int(seam_patch_size)).item())

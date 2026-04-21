@@ -320,6 +320,12 @@ class PETFlowDiTFirstHop(nn.Module):
         pixel_gate_raw_init = _inverse_softplus_scalar(pixel_gate_init - self.pixel_gate_floor)
         self.g_pix_raw = nn.Parameter(torch.tensor(float(pixel_gate_raw_init), dtype=torch.float32))
 
+        # N1: pixel forcing ablation — completely disables pixel encoder contribution
+        self.pixel_forcing_disabled = bool(first_cfg.get("pixel_forcing_disabled", False))
+        if self.pixel_forcing_disabled:
+            self.pixel_encoder.requires_grad_(False)
+            print("[model] pixel_forcing_disabled=true: pixel encoder frozen and gate forced to 0", flush=True)
+
         pair_v_std = first_cfg.get("pair_v_std", self._PAIR_V_STD)
         if len(pair_v_std) != self.num_hops:
             raise ValueError(f"pair_v_std length ({len(pair_v_std)}) must equal num_hops ({self.num_hops})")
@@ -346,6 +352,7 @@ class PETFlowDiTFirstHop(nn.Module):
         # --- D1: Post-decoder seam refiner ---
         refiner_cfg = first_cfg.get("seam_refiner", {})
         self.seam_refiner_enabled = bool(refiner_cfg.get("enabled", False))
+        self.seam_refiner_skip_first_tp = bool(refiner_cfg.get("skip_first_tp", False))
         if self.seam_refiner_enabled:
             self.seam_refiner = SeamRefiner(
                 in_channels=1,
@@ -437,6 +444,9 @@ class PETFlowDiTFirstHop(nn.Module):
         x_src_img: torch.Tensor | None,
     ) -> torch.Tensor:
         if x_src_img is None:
+            return z_src
+        # N1 ablation: skip pixel forcing entirely
+        if self.pixel_forcing_disabled:
             return z_src
 
         if x_src_img.dim() == 3:

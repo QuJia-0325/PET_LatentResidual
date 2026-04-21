@@ -1136,6 +1136,20 @@ def main() -> None:
     print("[startup] model initialized", flush=True)
     model.assert_decoder_frozen()
 
+    # N2 stage-2: freeze all first-hop modules except seam_refiner
+    freeze_first_hop = bool(train_cfg.get("freeze_first_hop_modules", False))
+    if freeze_first_hop:
+        for name, p in model.named_parameters():
+            if p.requires_grad and not name.startswith("seam_refiner"):
+                p.requires_grad = False
+        n_frozen = sum(1 for p in model.parameters() if not p.requires_grad)
+        n_trainable = sum(1 for p in model.parameters() if p.requires_grad)
+        print(
+            f"[startup] freeze_first_hop_modules=true: {n_frozen} frozen, {n_trainable} trainable "
+            f"(only seam_refiner remains trainable)",
+            flush=True,
+        )
+
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     if not trainable_params:
         raise RuntimeError("No trainable parameters found")
