@@ -1712,8 +1712,12 @@ def main() -> None:
                 # Reference: GT target latent [B, C, H, W]
                 z_ref = main_batch["z_dst"].detach()
                 align_proj = main_out["align_proj"]  # [B, C_out, H, W]
-                # The projector output channels should match the latent channels
-                # (both default to 768). If not, truncate the reference to match.
+                # Validate: projector output channels must not exceed latent channels.
+                if align_proj.shape[1] > z_ref.shape[1]:
+                    raise RuntimeError(
+                        f"alignment projector output channels ({align_proj.shape[1]}) > "
+                        f"latent channels ({z_ref.shape[1]}); fix alignment.proj_out_channels"
+                    )
                 if z_ref.shape[1] != align_proj.shape[1]:
                     z_ref = z_ref[:, :align_proj.shape[1]]
                 loss_align = F.mse_loss(align_proj.float(), z_ref.float())

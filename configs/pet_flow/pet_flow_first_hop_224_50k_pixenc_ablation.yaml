@@ -146,6 +146,8 @@ training:
 optimizer:
   lr: 8.0e-5
   weight_decay: 0.01
+  # Exclude first-hop scalar gates (g_pix_raw, lambda_hop_raw) from L2 decay.
+  first_hop_weight_decay: 0.0
   betas:
     - 0.9
     - 0.95
@@ -247,10 +249,10 @@ first_hop:
   hop_residual_hidden_channels: 192
   pixel_gate_init: 0.02
   pixel_gate_floor: 0.001
-  lambda_hop_init: 0.01
+  lambda_hop_init: 0.10
   lambda_hop_floor: 0.001
   pixel_proj_init_std: 0.002
-  hop_residual_last_init_std: 0.002
+  hop_residual_last_init_std: 0.01
   pair_v_std:
     - 0.009634
     - 0.002946

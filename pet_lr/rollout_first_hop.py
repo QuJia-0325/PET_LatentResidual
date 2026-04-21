@@ -31,6 +31,8 @@ def mix_latent(
         return z_pred
     mixed = (1.0 - alpha) * z_gt + alpha * z_pred
     if straight_through:
+        # STE: forward value = mixed (uses GT for stability),
+        # backward gradient flows only through z_pred (detach blocks GT path).
         return z_pred + (mixed - z_pred).detach()
     return mixed
 

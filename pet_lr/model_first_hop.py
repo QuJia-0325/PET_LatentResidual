@@ -458,6 +458,11 @@ class PETFlowDiTFirstHop(nn.Module):
         if x_src_img.dim() != 4:
             raise ValueError(f"Expected x_src_img in [B,1,H,W], got {tuple(x_src_img.shape)}")
         if x_src_img.shape[1] != 1:
+            print(
+                f"[warn] x_src_img has {x_src_img.shape[1]} channels, "
+                f"truncating to first channel",
+                flush=True,
+            )
             x_src_img = x_src_img[:, 0:1]
 
         hop0_mask = hop_idx.long() == 0
@@ -478,6 +483,17 @@ class PETFlowDiTFirstHop(nn.Module):
         hop_idx: torch.Tensor,
         x_src_img: torch.Tensor | None = None,
     ) -> Dict[str, torch.Tensor]:
+        """Predict latent at destination timepoint.
+
+        Args:
+            z_src: Source latent [B, C, H, W].
+            t_src: Source timepoint, 1-D tensor [B,].
+            t_dst: Destination timepoint, 1-D tensor [B,].
+            hop_idx: Hop index per sample, 1-D long tensor [B,].
+            x_src_img: Optional pixel image for hop-0 forcing [B, 1, H, W].
+        """
+        assert t_src.dim() == 1, f"t_src must be 1-D [B,], got shape {t_src.shape}"
+        assert t_dst.dim() == 1, f"t_dst must be 1-D [B,], got shape {t_dst.shape}"
         hop_idx = hop_idx.long()
         z_in = self._apply_hop0_pixel_forcing(z_src, hop_idx, x_src_img)
 
@@ -545,7 +561,7 @@ class PETFlowDiTFirstHop(nn.Module):
             out = x[:, :, top:top + target, left:left + target]
         # Apply seam refiner: controlled by explicit flag or module default
         use_refiner = self.seam_refiner_enabled if apply_refiner is None else apply_refiner
-        if use_refiner and self.seam_refiner_enabled:
+        if use_refiner and hasattr(self, "seam_refiner"):
             out = self.seam_refiner(out)
         return out
 
