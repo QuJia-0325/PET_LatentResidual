@@ -1023,7 +1023,7 @@ def save_checkpoint(
         "scaler": scaler.state_dict(),
         "target_normalize": model.target_normalize,
         "rollout_path": rollout_timepoints,
-        "first_hop_pixel_enabled": True,
+        "first_hop_pixel_enabled": not model.pixel_forcing_disabled,
         "best_val": float(best_val) if best_val is not None else None,
         "best_metric_name": best_metric_name,
         "best_metric_signature": best_metric_signature,
@@ -1139,6 +1139,11 @@ def main() -> None:
     # N2 stage-2: freeze all except seam_refiner
     freeze_first_hop = bool(train_cfg_boot.get("freeze_all_except_seam_refiner", False))
     if freeze_first_hop:
+        if not resume_enabled:
+            raise RuntimeError(
+                "freeze_all_except_seam_refiner=true requires --resume <transport_checkpoint> "
+                "to ensure refiner trains on a valid frozen transport, not random init."
+            )
         for name, p in model.named_parameters():
             if p.requires_grad and not name.startswith("seam_refiner"):
                 p.requires_grad = False
@@ -1508,8 +1513,13 @@ def main() -> None:
                     f"Resume rollout_path mismatch: ckpt={list(ckpt_rollout_path)} vs cfg={list(rollout_tps)}"
                 )
             ckpt_first_hop_pixel = ckpt.get("first_hop_pixel_enabled", None)
-            if ckpt_first_hop_pixel is not None and not bool(ckpt_first_hop_pixel):
-                raise RuntimeError("Resume checkpoint indicates first_hop_pixel_enabled=false, incompatible with trainer")
+            current_pixel_enabled = not model.pixel_forcing_disabled
+            if ckpt_first_hop_pixel is not None and bool(ckpt_first_hop_pixel) != current_pixel_enabled:
+                raise RuntimeError(
+                    f"Resume pixel_forcing semantic mismatch: checkpoint has "
+                    f"first_hop_pixel_enabled={ckpt_first_hop_pixel}, but current config has "
+                    f"pixel_forcing_disabled={model.pixel_forcing_disabled}"
+                )
 
         start_step = int(ckpt.get("step", 0))
         best_val_ckpt = ckpt.get("best_val", None)

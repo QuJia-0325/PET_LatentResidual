@@ -105,6 +105,16 @@ def load_model(cfg: Dict, ckpt_path: str, device: torch.device) -> PETFlowDiTFir
     ckpt = torch.load(ckpt_path, map_location="cpu")
     state = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
     model.load_state_dict(state, strict=True)
+    # Verify pixel_forcing semantic consistency between checkpoint and config
+    if isinstance(ckpt, dict):
+        ckpt_pixel = ckpt.get("first_hop_pixel_enabled", None)
+        current_pixel = not model.pixel_forcing_disabled
+        if ckpt_pixel is not None and bool(ckpt_pixel) != current_pixel:
+            raise RuntimeError(
+                f"Eval pixel_forcing semantic mismatch: checkpoint has "
+                f"first_hop_pixel_enabled={ckpt_pixel}, but config has "
+                f"pixel_forcing_disabled={model.pixel_forcing_disabled}"
+            )
     model.eval()
     return model
 
