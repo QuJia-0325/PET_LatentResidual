@@ -6,6 +6,7 @@ import json
 import math
 import os
 import random
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
@@ -20,6 +21,7 @@ from tqdm import tqdm
 import yaml
 
 from pet_lr.data_first_hop import Hop0OnlyViewDataset, PETFirstHopAligned4HopDataset
+from pet_lr.ema import EMA
 from pet_lr.losses_first_hop import compute_first_hop_image_loss
 from pet_lr.model_first_hop import PETFlowDiTFirstHop
 from pet_lr.rollout_first_hop import (
@@ -1001,6 +1003,7 @@ def save_checkpoint(
     output_dir: Path,
     name: str,
     rollout_timepoints: list[str],
+    ema: EMA | None = None,
     best_val: float | None = None,
     best_metric_name: str | None = None,
     best_metric_signature: str | None = None,
@@ -1031,6 +1034,7 @@ def save_checkpoint(
         "best_d1_metric_name": best_d1_metric_name,
         "best_d1_guard_metric_name": best_d1_guard_metric_name,
         "best_d1_guard_best": float(best_d1_guard_best) if best_d1_guard_best is not None else None,
+        "ema": ema.state_dict() if ema is not None else None,
         "rng_state": rng_state,
     }
     torch.save(ckpt, output_dir / name)
@@ -1158,6 +1162,25 @@ def main() -> None:
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     if not trainable_params:
         raise RuntimeError("No trainable parameters found")
+
+    # --- EMA ---
+    ema_cfg = cfg.get("ema", {})
+    ema_enabled = bool(ema_cfg.get("enabled", False))
+    ema: EMA | None = None
+    if ema_enabled:
+        ema = EMA(
+            model,
+            decay=float(ema_cfg.get("decay", 0.9999)),
+            warmup_steps=int(ema_cfg.get("warmup_steps", 0)),
+            update_after_step=int(ema_cfg.get("update_after_step", 0)),
+            update_every=int(ema_cfg.get("update_every", 1)),
+        )
+        print(
+            f"[startup] EMA enabled: decay={ema_cfg.get('decay', 0.9999)} "
+            f"warmup={ema_cfg.get('warmup_steps', 0)} "
+            f"update_every={ema_cfg.get('update_every', 1)}",
+            flush=True,
+        )
 
     opt_cfg = cfg.get("optimizer", {})
     base_lr = float(opt_cfg.get("lr", 8.0e-5))
@@ -1567,6 +1590,17 @@ def main() -> None:
                             torch.cuda.set_rng_state_all(cuda_state)
                 except Exception as e:
                     print(f"[resume][warn] failed to restore rng_state: {e}", flush=True)
+
+            # Restore EMA state if available
+            if ema is not None and not _arch_changed:
+                ema_state = ckpt.get("ema", None)
+                if ema_state is not None:
+                    ema.load_state_dict(ema_state)
+                    ema.to(device)
+                    print(f"[resume] restored EMA state (step={ema.step})", flush=True)
+                else:
+                    print("[resume][warn] EMA enabled but checkpoint has no EMA state; using fresh EMA", flush=True)
+
         print(
             f"[resume] loaded step={start_step}, best_val={best_val:.6f}, best_metric_name={best_metric_name_for_ckpt}",
             flush=True,
@@ -1837,6 +1871,8 @@ def main() -> None:
                     raise RuntimeError("Non-finite gradient detected after unscale")
         scaler.step(optimizer)
         scaler.update()
+        if ema is not None:
+            ema.update()
 
         gate_val = model.gate_pix_value().detach()
         gate_abs = float(gate_val.abs().item())
@@ -2109,33 +2145,38 @@ def main() -> None:
                     f"{grad_suffix}"
                 )
         if step % save_interval == 0:
-            save_checkpoint(
-                model,
-                optimizer,
-                scaler,
-                step,
-                output_dir,
-                f"step_{step:06d}.pt",
-                rollout_tps,
-                best_val=best_val,
-                best_metric_name=best_metric_name_for_ckpt,
-                best_metric_signature=best_metric_signature,
-                best_d1_val=best_d1_val if best_d1_enabled else None,
-                best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
-                best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
-                best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
-            )
+            _ema_ctx = ema.average_parameters() if ema is not None else nullcontext()
+            with _ema_ctx:
+                save_checkpoint(
+                    model,
+                    optimizer,
+                    scaler,
+                    step,
+                    output_dir,
+                    f"step_{step:06d}.pt",
+                    rollout_tps,
+                    ema=ema,
+                    best_val=best_val,
+                    best_metric_name=best_metric_name_for_ckpt,
+                    best_metric_signature=best_metric_signature,
+                    best_d1_val=best_d1_val if best_d1_enabled else None,
+                    best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+                    best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+                    best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
+                )
 
         if step % eval_interval == 0:
-            metrics = evaluate(
-                model=model,
-                main_val_loader=main_val_loader,
-                hop0_val_loader=hop0_val_loader,
-                cfg=cfg,
-                device=device,
-                rollout_times=rollout_times,
-                global_step=step,
-            )
+            _ema_ctx = ema.average_parameters() if ema is not None else nullcontext()
+            with _ema_ctx:
+                metrics = evaluate(
+                    model=model,
+                    main_val_loader=main_val_loader,
+                    hop0_val_loader=hop0_val_loader,
+                    cfg=cfg,
+                    device=device,
+                    rollout_times=rollout_times,
+                    global_step=step,
+                )
             key, key_name = resolve_best_selection_score(metrics, train_cfg)
             best_metric_name_for_ckpt = key_name
             metrics["val_select_score"] = float(key)
@@ -2170,22 +2211,25 @@ def main() -> None:
                     metrics["val_d1_select_score"] = d1_score
                     if d1_guard_ok and d1_score < best_d1_val:
                         best_d1_val = d1_score
-                        save_checkpoint(
-                            model,
-                            optimizer,
-                            scaler,
-                            step,
-                            output_dir,
-                            best_d1_filename,
-                            rollout_tps,
-                            best_val=best_val,
-                            best_metric_name=best_metric_name_for_ckpt,
-                            best_metric_signature=best_metric_signature,
-                            best_d1_val=best_d1_val,
-                            best_d1_metric_name=best_d1_metric_name,
-                            best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_guard_metric_name else None,
-                            best_d1_guard_best=best_d1_guard_best if math.isfinite(best_d1_guard_best) else None,
-                        )
+                        _ema_ctx2 = ema.average_parameters() if ema is not None else nullcontext()
+                        with _ema_ctx2:
+                            save_checkpoint(
+                                model,
+                                optimizer,
+                                scaler,
+                                step,
+                                output_dir,
+                                best_d1_filename,
+                                rollout_tps,
+                                ema=ema,
+                                best_val=best_val,
+                                best_metric_name=best_metric_name_for_ckpt,
+                                best_metric_signature=best_metric_signature,
+                                best_d1_val=best_d1_val,
+                                best_d1_metric_name=best_d1_metric_name,
+                                best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_guard_metric_name else None,
+                                best_d1_guard_best=best_d1_guard_best if math.isfinite(best_d1_guard_best) else None,
+                            )
                         print(
                             f"[val] new d1-best {best_d1_metric_name}={best_d1_val:.6f} "
                             f"(file={best_d1_filename}) at step={step}",
@@ -2202,22 +2246,25 @@ def main() -> None:
 
             if key < best_val:
                 best_val = key
-                save_checkpoint(
-                    model,
-                    optimizer,
-                    scaler,
-                    step,
-                    output_dir,
-                    "best.pt",
-                    rollout_tps,
-                    best_val=best_val,
-                    best_metric_name=best_metric_name_for_ckpt,
-                    best_metric_signature=best_metric_signature,
-                    best_d1_val=best_d1_val if best_d1_enabled else None,
-                    best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
-                    best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
-                    best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
-                )
+                _ema_ctx3 = ema.average_parameters() if ema is not None else nullcontext()
+                with _ema_ctx3:
+                    save_checkpoint(
+                        model,
+                        optimizer,
+                        scaler,
+                        step,
+                        output_dir,
+                        "best.pt",
+                        rollout_tps,
+                        ema=ema,
+                        best_val=best_val,
+                        best_metric_name=best_metric_name_for_ckpt,
+                        best_metric_signature=best_metric_signature,
+                        best_d1_val=best_d1_val if best_d1_enabled else None,
+                        best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+                        best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+                        best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
+                    )
                 print(f"[val] new best {key_name}={best_val:.6f} at step={step}")
         if pbar is not None:
             pbar.update(1)
@@ -2226,22 +2273,25 @@ def main() -> None:
         pbar.close()
     if metrics_fp is not None:
         metrics_fp.close()
-    save_checkpoint(
-        model,
-        optimizer,
-        scaler,
-        max_steps,
-        output_dir,
-        "last.pt",
-        rollout_tps,
-        best_val=best_val,
-        best_metric_name=best_metric_name_for_ckpt,
-        best_metric_signature=best_metric_signature,
-        best_d1_val=best_d1_val if best_d1_enabled else None,
-        best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
-        best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
-        best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
-    )
+    _ema_ctx_final = ema.average_parameters() if ema is not None else nullcontext()
+    with _ema_ctx_final:
+        save_checkpoint(
+            model,
+            optimizer,
+            scaler,
+            max_steps,
+            output_dir,
+            "last.pt",
+            rollout_tps,
+            ema=ema,
+            best_val=best_val,
+            best_metric_name=best_metric_name_for_ckpt,
+            best_metric_signature=best_metric_signature,
+            best_d1_val=best_d1_val if best_d1_enabled else None,
+            best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+            best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+            best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
+        )
     print(f"Training done. Outputs at: {output_dir}")
 
 

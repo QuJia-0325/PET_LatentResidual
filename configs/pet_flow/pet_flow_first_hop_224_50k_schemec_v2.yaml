@@ -157,6 +157,14 @@ optimizer:
   backbone_lr_mult: 0.4
   first_hop_lr_mult: 3.5
 
+# EMA: match RAE training convention (backbone checkpoint uses EMA weights)
+ema:
+  enabled: true
+  decay: 0.9999
+  warmup_steps: 0
+  update_after_step: 0
+  update_every: 1
+
 lr_schedule:
   enabled: true
   warmup_ratio: 0.15
