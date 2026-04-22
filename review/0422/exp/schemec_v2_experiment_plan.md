@@ -14,11 +14,11 @@ GT latent 直接 decode 的 PSNR ceiling:
 | D4 | 50.832 dB | 36.147 dB | **14.7 dB** |
 | NORMAL | 52.634 dB | 36.450 dB | **16.2 dB** |
 
-**结论**：frozen decoder 完全不是瓶颈（ceiling 46-52 dB），transport backbone 的预测能力严重不足（只达到 35-36 dB，gap 10-16 dB）。
+**结论**：当前证据支持 decoder 非主导瓶颈（在 GT latent / on-manifold 条件下 ceiling 46-52 dB），transport backbone 的预测能力严重不足（只达到 35-36 dB，gap 10-16 dB）。
 
 ### 0422 审计发现的根本原因
 
-通过 4-agent transport 深度审计，发现之前**所有实验**都在以下 bug 下运行：
+通过 4-agent transport 深度审计，发现之前实验的机制性结论需重审，因为它们均在以下 bug 下运行：
 
 1. **weight_decay=0.01 压死 gate** → `g_pix_raw` 和 `lambda_hop_raw[0:4]` 被 AdamW 持续衰减到 floor
 2. **lambda_hop_init=0.01 + hop_residual_last_init_std=0.002** → hop residual 梯度被压制 ~100×，分支从未激活
@@ -92,9 +92,10 @@ v2 是修复 bug 后的**第一个公平 baseline**。只有 v2 结果出来后�
 
 ### PSNR 判据
 
-- 如果 val_select_score **< 0.000500**（比旧 best 0.000532 改善 > 6%）→ fix 有效
+- 如果 val_select_score **< 0.000500**（比旧 best 0.000532 改善 > 6%）→ fix 有效（仅作监控阈值，非唯一 go/no-go 标准）
 - 如果 val_select_score **与旧值相近**（±0.000020）→ fix 无影响，需追查更深层问题
 - 如果 **退化** → 初始化过大，需回调
+- 最终判断还需结合 gate/lambda 跟踪、full-val rerank 和 branch counterfactual eval
 
 ---
 
