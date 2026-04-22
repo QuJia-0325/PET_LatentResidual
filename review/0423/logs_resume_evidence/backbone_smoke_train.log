@@ -1,0 +1,11 @@
+2026-03-31 23:51:58 - INFO - Output: /home/qujiaxiang/project/RAE/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke
+2026-03-31 23:51:58 - INFO - Resolved devices: train=cuda:0, CUDA_VISIBLE_DEVICES=None, device_count=4
+2026-03-31 23:51:58 - INFO - Loading 4-hop rollout datasets from /data_2/qujiaxiang/lowdose_pet_ct/latents_224...
+2026-03-31 23:53:44 - INFO - Using 4-hop rollout transport (pair_weighting=manual, target_normalize=False)
+2026-03-31 23:53:45 - INFO - Using hop-aware DiT^DH: hidden=[384, 2048] depth=[12, 2] heads=[6, 16]
+2026-03-31 23:53:45 - INFO - Model params: 207,667,412
+2026-03-31 23:53:45 - INFO - Loading RAE for TensorBoard image logging on cuda:0
+2026-03-31 23:53:47 - INFO - Starting 4-hop hop-aware rollout training: max_steps=2000
+2026-04-01 01:15:59 - INFO - [Epoch 1] step=2000 train_loss=0.0012 val_total=0.0202 val_base=0.0180 val_rollout=0.0185
+2026-04-01 01:15:59 - INFO - New best rollout_total: 0.0185
+2026-04-01 01:16:04 - INFO - Training complete! Steps: 2000, Best rollout_total: 0.0185
