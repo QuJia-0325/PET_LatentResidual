@@ -1,0 +1,32 @@
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+[D50] mean=42.622386 std=7.256346 n=7403
+[D20] mean=46.635633 std=6.388344 n=7403
+[D10] mean=48.743580 std=6.023975 n=7403
+[D4] mean=50.831939 std=5.790249 n=7403
+[NORMAL] mean=52.634069 std=5.797238 n=7403
+{
+  "split": "val",
+  "latents_path": "/data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt",
+  "raw_data_dir": "/data_2/qujiaxiang",
+  "rae_ckpt": "/data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt",
+  "device": "cuda:0",
+  "batch_size": 16,
+  "clamp_max": 10.0,
+  "timepoints": [
+    "D50",
+    "D20",
+    "D10",
+    "D4",
+    "NORMAL"
+  ],
+  "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+  "eval_type": "GT_latent_direct_decode"
+}
+summary_psnr_clip3_mean:
+  D50: 42.622385790
+  D20: 46.635632609
+  D10: 48.743579815
+  D4: 50.831939273
+  NORMAL: 52.634068550
+Saved summary JSON: /data_2/qujiaxiang/outputs/PET_LatentResidual/gt_latent_decoder_ceiling_20260422/gt_latent_decoder_ceiling_clip3_val_summary.json
+Saved per-slice CSV: /data_2/qujiaxiang/outputs/PET_LatentResidual/gt_latent_decoder_ceiling_20260422/gt_latent_decoder_ceiling_clip3_val_per_slice.csv

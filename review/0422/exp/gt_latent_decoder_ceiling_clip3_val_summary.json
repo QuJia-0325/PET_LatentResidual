@@ -1,0 +1,57 @@
+{
+  "meta": {
+    "split": "val",
+    "latents_path": "/data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt",
+    "raw_data_dir": "/data_2/qujiaxiang",
+    "rae_ckpt": "/data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt",
+    "device": "cuda:0",
+    "batch_size": 16,
+    "clamp_max": 10.0,
+    "timepoints": [
+      "D50",
+      "D20",
+      "D10",
+      "D4",
+      "NORMAL"
+    ],
+    "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+    "eval_type": "GT_latent_direct_decode"
+  },
+  "summary_psnr_clip3": {
+    "D50": {
+      "n": 7403.0,
+      "mean": 42.62238579048757,
+      "std": 7.2563455958540075,
+      "min": 31.137291230847627,
+      "max": 72.06848101836428
+    },
+    "D20": {
+      "n": 7403.0,
+      "mean": 46.63563260915804,
+      "std": 6.388343943012514,
+      "min": 34.37129707662942,
+      "max": 72.0681780627101
+    },
+    "D10": {
+      "n": 7403.0,
+      "mean": 48.74357981508616,
+      "std": 6.023974723912391,
+      "min": 34.75200673187787,
+      "max": 72.06746491963737
+    },
+    "D4": {
+      "n": 7403.0,
+      "mean": 50.831939273222616,
+      "std": 5.790248700290363,
+      "min": 35.08127214022997,
+      "max": 72.06739780631835
+    },
+    "NORMAL": {
+      "n": 7403.0,
+      "mean": 52.634068550448966,
+      "std": 5.797237537221936,
+      "min": 35.23041075962078,
+      "max": 72.06795947080847
+    }
+  }
+}
