@@ -1,0 +1,49 @@
+{
+  "tag": "backbone_lr1_best",
+  "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_backbone_lr1/config.yaml",
+  "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_backbone_lr1/best.pt",
+  "split": "val",
+  "batch_size": 10,
+  "device": "cuda:0",
+  "runtime_sec": 572.0175292491913,
+  "psnr_metric": "clip3_per_sample_formula_equivalent",
+  "summary_psnr_clip3": {
+    "D50": {
+      "n": 7403.0,
+      "mean": 42.62237927154578,
+      "std": 7.256315838058097,
+      "min": 31.137290954589844,
+      "max": 72.06834411621094
+    },
+    "D20": {
+      "n": 7403.0,
+      "mean": 35.55893089029574,
+      "std": 8.769316590427678,
+      "min": 22.935409545898438,
+      "max": 75.2559585571289
+    },
+    "D10": {
+      "n": 7403.0,
+      "mean": 35.90863940104848,
+      "std": 8.261669585911589,
+      "min": 23.660127639770508,
+      "max": 72.82056427001953
+    },
+    "D4": {
+      "n": 7403.0,
+      "mean": 36.47144734806327,
+      "std": 7.94430447175409,
+      "min": 24.556640625,
+      "max": 71.09540557861328
+    },
+    "NORMAL": {
+      "n": 7403.0,
+      "mean": 36.71287998424645,
+      "std": 7.242446729520476,
+      "min": 25.03396987915039,
+      "max": 65.27629852294922
+    }
+  },
+  "summary_transport_avg": 36.16297440591349,
+  "summary_all_avg": 37.45485537903995
+}

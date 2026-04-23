@@ -1,0 +1,38 @@
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] still loading latents(val) (20.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] still loading latents(val) (40.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loaded latents(val) in 49.7s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] still loading raw(val,D50) (20.0s): /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loaded raw(val,D50) in 26.4s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 19.2s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] still loading raw(val,D10) (20.0s): /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loaded raw(val,D10) in 20.8s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] still loading raw(val,D4) (20.0s): /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loaded raw(val,D4) in 21.2s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.9s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[model] pixel_forcing_disabled=true: pixel encoder frozen, pixel forcing path bypassed; gate metric kept for monitoring
+[eval] processed 10/7403 slices
+[eval] processed 810/7403 slices
+[eval] processed 1610/7403 slices
+[eval] processed 2410/7403 slices
+[eval] processed 3210/7403 slices
+[eval] processed 4010/7403 slices
+[eval] processed 4810/7403 slices
+[eval] processed 5610/7403 slices
+[eval] processed 6410/7403 slices
+[eval] processed 7210/7403 slices
+{
+  "tag": "backbone_lr1_last",
+  "runtime_sec": 566.7233030796051,
+  "transport_avg": 36.18827478624463,
+  "all_avg": 37.47509568330486
+}
+Saved JSON: /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/0423_backbone_lr1_fast/backbone_lr1_last_fullval_clip3_fast.json
+Saved CSV:  /data_2/qujiaxiang/outputs/PET_LatentResidual/clip3_eval/0423_backbone_lr1_fast/backbone_lr1_last_fullval_clip3_fast.csv

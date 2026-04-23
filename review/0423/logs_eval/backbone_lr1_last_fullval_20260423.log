@@ -1,0 +1,17 @@
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] still loading latents(val) (20.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] still loading latents(val) (40.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loaded latents(val) in 43.7s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 6.5s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 11.0s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 5.8s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 7.5s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 11.0s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[model] pixel_forcing_disabled=true: pixel encoder frozen, pixel forcing path bypassed; gate metric kept for monitoring
