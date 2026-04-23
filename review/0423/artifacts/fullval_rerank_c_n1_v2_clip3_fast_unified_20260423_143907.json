@@ -1,0 +1,331 @@
+{
+  "psnr_metric": "clip3_per_sample_mean (equivalent formula to calc_psnr_clip3)",
+  "split": "val",
+  "num_eval_slices": 7403,
+  "batch_size": {
+    "C": 32,
+    "N1_v2": 32
+  },
+  "device": "cuda:0 (with CUDA_VISIBLE_DEVICES=2)",
+  "rollout_timepoints": [
+    "D50",
+    "D20",
+    "D10",
+    "D4",
+    "NORMAL"
+  ],
+  "sources": [
+    "review/0423/artifacts/fullval_rerank_c_n1_v2_clip3_fast_20260423_140220.json",
+    "review/0423/artifacts/fullval_rerank_c_n1_v2_clip3_fast_20260423_135323.json"
+  ],
+  "results": [
+    {
+      "scheme": "C",
+      "checkpoint_kind": "best",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/best.pt",
+      "runtime_sec": 226.62106466293335,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.569029702281014,
+          "std": 8.749015038457628,
+          "min": 23.01371192932129,
+          "max": 75.13973999023438
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.94213684156233,
+          "std": 8.246620602119952,
+          "min": 23.84272575378418,
+          "max": 72.81585693359375
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.50539344912298,
+          "std": 7.870841191680349,
+          "min": 24.901748657226562,
+          "max": 70.63668823242188
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.805527613515004,
+          "std": 7.382428152107009,
+          "min": 25.245344161987305,
+          "max": 66.33032989501953
+        }
+      },
+      "summary_transport_avg": 36.20552190162033,
+      "summary_all_avg": 37.48889371219333
+    },
+    {
+      "scheme": "C",
+      "checkpoint_kind": "last",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_imgaux_boost_gpu2_nopbar_20260418_010035/last.pt",
+      "runtime_sec": 216.1062982082367,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.5707817896949,
+          "std": 8.753087004165122,
+          "min": 22.987722396850586,
+          "max": 75.18094635009766
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.94868047730465,
+          "std": 8.235436909918475,
+          "min": 23.813579559326172,
+          "max": 72.73365020751953
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.50491438539354,
+          "std": 7.832115990808504,
+          "min": 24.89173126220703,
+          "max": 70.33202362060547
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.79337101067689,
+          "std": 7.253412624161577,
+          "min": 25.283411026000977,
+          "max": 65.51555633544922
+        }
+      },
+      "summary_transport_avg": 36.20443691576749,
+      "summary_all_avg": 37.48802572351106
+    },
+    {
+      "scheme": "N1",
+      "checkpoint_kind": "best",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/best.pt",
+      "runtime_sec": 222.941752910614,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.55822798839601,
+          "std": 8.738972080950731,
+          "min": 22.96795654296875,
+          "max": 75.08415985107422
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.8745305660237,
+          "std": 8.116845200756961,
+          "min": 23.864912033081055,
+          "max": 71.76526641845703
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.40676689843592,
+          "std": 7.6525458750621205,
+          "min": 24.8393497467041,
+          "max": 68.80421447753906
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.65423028707085,
+          "std": 7.000366069234545,
+          "min": 25.38093376159668,
+          "max": 63.83946228027344
+        }
+      },
+      "summary_transport_avg": 36.12343893498162,
+      "summary_all_avg": 37.42322733888236
+    },
+    {
+      "scheme": "N1",
+      "checkpoint_kind": "last",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/last.pt",
+      "runtime_sec": 219.31032943725586,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.55676075781936,
+          "std": 8.761466433150813,
+          "min": 22.948196411132812,
+          "max": 75.2618179321289
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.896564908757426,
+          "std": 8.212722819913242,
+          "min": 23.806215286254883,
+          "max": 72.59393310546875
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.45676412328617,
+          "std": 7.805313273371655,
+          "min": 24.83840560913086,
+          "max": 70.03614044189453
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.73458996280277,
+          "std": 7.194929975622106,
+          "min": 25.322874069213867,
+          "max": 65.12200927734375
+        }
+      },
+      "summary_transport_avg": 36.16116993816643,
+      "summary_all_avg": 37.453412141430206
+    },
+    {
+      "scheme": "v2",
+      "checkpoint_kind": "best",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/best.pt",
+      "runtime_sec": 217.36811184883118,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.566331454520125,
+          "std": 8.746937806389857,
+          "min": 22.971975326538086,
+          "max": 75.10950469970703
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.924281758101394,
+          "std": 8.23735924042657,
+          "min": 23.832351684570312,
+          "max": 72.74803924560547
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.49967058494286,
+          "std": 7.9117594368887865,
+          "min": 24.86878204345703,
+          "max": 70.9637222290039
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.798291171448916,
+          "std": 7.372223944722136,
+          "min": 25.331247329711914,
+          "max": 66.25105285644531
+        }
+      },
+      "summary_transport_avg": 36.197143742253324,
+      "summary_all_avg": 37.482191184699715
+    },
+    {
+      "scheme": "v2",
+      "checkpoint_kind": "last",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/last.pt",
+      "runtime_sec": 217.5587923526764,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.5693925122997,
+          "std": 8.745255202729732,
+          "min": 22.948822021484375,
+          "max": 75.10400390625
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.93020429125544,
+          "std": 8.201809528922011,
+          "min": 23.848487854003906,
+          "max": 72.4517822265625
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.49366316897763,
+          "std": 7.813561596557594,
+          "min": 24.864948272705078,
+          "max": 70.11231231689453
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.7580247544347,
+          "std": 7.138174689408124,
+          "min": 25.350635528564453,
+          "max": 64.69060516357422
+        }
+      },
+      "summary_transport_avg": 36.18782118174187,
+      "summary_all_avg": 37.47473313629056
+    }
+  ],
+  "ranking_by_transport_avg_desc": [
+    {
+      "tag": "C_best",
+      "transport_avg": 36.20552190162033,
+      "all_avg": 37.48889371219333
+    },
+    {
+      "tag": "C_last",
+      "transport_avg": 36.20443691576749,
+      "all_avg": 37.48802572351106
+    },
+    {
+      "tag": "v2_best",
+      "transport_avg": 36.197143742253324,
+      "all_avg": 37.482191184699715
+    },
+    {
+      "tag": "v2_last",
+      "transport_avg": 36.18782118174187,
+      "all_avg": 37.47473313629056
+    },
+    {
+      "tag": "N1_last",
+      "transport_avg": 36.16116993816643,
+      "all_avg": 37.453412141430206
+    },
+    {
+      "tag": "N1_best",
+      "transport_avg": 36.12343893498162,
+      "all_avg": 37.42322733888236
+    }
+  ]
+}

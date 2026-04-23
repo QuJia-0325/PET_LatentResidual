@@ -1,0 +1,222 @@
+{
+  "psnr_metric": "clip3_per_sample_mean (equivalent formula to calc_psnr_clip3)",
+  "split": "val",
+  "num_eval_slices": 7403,
+  "batch_size": 32,
+  "device": "cuda:0",
+  "rollout_timepoints": [
+    "D50",
+    "D20",
+    "D10",
+    "D4",
+    "NORMAL"
+  ],
+  "results": [
+    {
+      "scheme": "N1",
+      "checkpoint_kind": "best",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/best.pt",
+      "runtime_sec": 222.941752910614,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.55822798839601,
+          "std": 8.738972080950731,
+          "min": 22.96795654296875,
+          "max": 75.08415985107422
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.8745305660237,
+          "std": 8.116845200756961,
+          "min": 23.864912033081055,
+          "max": 71.76526641845703
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.40676689843592,
+          "std": 7.6525458750621205,
+          "min": 24.8393497467041,
+          "max": 68.80421447753906
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.65423028707085,
+          "std": 7.000366069234545,
+          "min": 25.38093376159668,
+          "max": 63.83946228027344
+        }
+      },
+      "summary_transport_avg": 36.12343893498162,
+      "summary_all_avg": 37.42322733888236
+    },
+    {
+      "scheme": "N1",
+      "checkpoint_kind": "last",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/last.pt",
+      "runtime_sec": 219.31032943725586,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.55676075781936,
+          "std": 8.761466433150813,
+          "min": 22.948196411132812,
+          "max": 75.2618179321289
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.896564908757426,
+          "std": 8.212722819913242,
+          "min": 23.806215286254883,
+          "max": 72.59393310546875
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.45676412328617,
+          "std": 7.805313273371655,
+          "min": 24.83840560913086,
+          "max": 70.03614044189453
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.73458996280277,
+          "std": 7.194929975622106,
+          "min": 25.322874069213867,
+          "max": 65.12200927734375
+        }
+      },
+      "summary_transport_avg": 36.16116993816643,
+      "summary_all_avg": 37.453412141430206
+    },
+    {
+      "scheme": "v2",
+      "checkpoint_kind": "best",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/best.pt",
+      "runtime_sec": 217.36811184883118,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.566331454520125,
+          "std": 8.746937806389857,
+          "min": 22.971975326538086,
+          "max": 75.10950469970703
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.924281758101394,
+          "std": 8.23735924042657,
+          "min": 23.832351684570312,
+          "max": 72.74803924560547
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.49967058494286,
+          "std": 7.9117594368887865,
+          "min": 24.86878204345703,
+          "max": 70.9637222290039
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.798291171448916,
+          "std": 7.372223944722136,
+          "min": 25.331247329711914,
+          "max": 66.25105285644531
+        }
+      },
+      "summary_transport_avg": 36.197143742253324,
+      "summary_all_avg": 37.482191184699715
+    },
+    {
+      "scheme": "v2",
+      "checkpoint_kind": "last",
+      "config": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/config.yaml",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/last.pt",
+      "runtime_sec": 217.5587923526764,
+      "summary_psnr_clip3": {
+        "D50": {
+          "n": 7403.0,
+          "mean": 42.6223809544853,
+          "std": 7.256323368477894,
+          "min": 31.137290954589844,
+          "max": 72.0683822631836
+        },
+        "D20": {
+          "n": 7403.0,
+          "mean": 35.5693925122997,
+          "std": 8.745255202729732,
+          "min": 22.948822021484375,
+          "max": 75.10400390625
+        },
+        "D10": {
+          "n": 7403.0,
+          "mean": 35.93020429125544,
+          "std": 8.201809528922011,
+          "min": 23.848487854003906,
+          "max": 72.4517822265625
+        },
+        "D4": {
+          "n": 7403.0,
+          "mean": 36.49366316897763,
+          "std": 7.813561596557594,
+          "min": 24.864948272705078,
+          "max": 70.11231231689453
+        },
+        "NORMAL": {
+          "n": 7403.0,
+          "mean": 36.7580247544347,
+          "std": 7.138174689408124,
+          "min": 25.350635528564453,
+          "max": 64.69060516357422
+        }
+      },
+      "summary_transport_avg": 36.18782118174187,
+      "summary_all_avg": 37.47473313629056
+    }
+  ],
+  "ranking_by_transport_avg_desc": [
+    {
+      "tag": "v2_best",
+      "transport_avg": 36.197143742253324,
+      "all_avg": 37.482191184699715
+    },
+    {
+      "tag": "v2_last",
+      "transport_avg": 36.18782118174187,
+      "all_avg": 37.47473313629056
+    },
+    {
+      "tag": "N1_last",
+      "transport_avg": 36.16116993816643,
+      "all_avg": 37.453412141430206
+    },
+    {
+      "tag": "N1_best",
+      "transport_avg": 36.12343893498162,
+      "all_avg": 37.42322733888236
+    }
+  ]
+}

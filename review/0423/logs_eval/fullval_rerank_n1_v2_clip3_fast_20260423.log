@@ -1,0 +1,65 @@
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 18.0s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.2s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 4.8s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 4.9s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+
+=== Evaluating N1_best ===
+config=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/config.yaml
+ckpt=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/best.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[model] pixel_forcing_disabled=true: pixel encoder frozen, pixel forcing path bypassed; gate metric kept for monitoring
+[eval] processed 32/7403 slices
+[eval] processed 1632/7403 slices
+[eval] processed 3232/7403 slices
+[eval] processed 4832/7403 slices
+[eval] processed 6432/7403 slices
+[done] N1_best: transport_avg=36.123439, all_avg=37.423227, runtime=3.7min
+
+=== Evaluating N1_last ===
+config=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/config.yaml
+ckpt=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_pixenc_ablation/last.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[model] pixel_forcing_disabled=true: pixel encoder frozen, pixel forcing path bypassed; gate metric kept for monitoring
+[eval] processed 32/7403 slices
+[eval] processed 1632/7403 slices
+[eval] processed 3232/7403 slices
+[eval] processed 4832/7403 slices
+[eval] processed 6432/7403 slices
+[done] N1_last: transport_avg=36.161170, all_avg=37.453412, runtime=3.7min
+
+=== Evaluating v2_best ===
+config=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/config.yaml
+ckpt=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/best.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[eval] processed 32/7403 slices
+[eval] processed 1632/7403 slices
+[eval] processed 3232/7403 slices
+[eval] processed 4832/7403 slices
+[eval] processed 6432/7403 slices
+[done] v2_best: transport_avg=36.197144, all_avg=37.482191, runtime=3.6min
+
+=== Evaluating v2_last ===
+config=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/config.yaml
+ckpt=/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_schemec_v2/last.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[eval] processed 32/7403 slices
+[eval] processed 1632/7403 slices
+[eval] processed 3232/7403 slices
+[eval] processed 4832/7403 slices
+[eval] processed 6432/7403 slices
+[done] v2_last: transport_avg=36.187821, all_avg=37.474733, runtime=3.6min
+
+Saved JSON: /home/qujiaxiang/project/PET_LatentResidual/review/0423/artifacts/fullval_rerank_c_n1_v2_clip3_fast_20260423_135323.json
+Saved CSV:  /home/qujiaxiang/project/PET_LatentResidual/review/0423/artifacts/fullval_rerank_c_n1_v2_clip3_fast_20260423_135323.csv
