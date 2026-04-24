@@ -290,3 +290,161 @@ data:
 | **总计** | | **3-5 GPU-day** |
 
 如果 Idea 1 带来 > 3 dB 改善 → 直接准备 workshop 投稿。
+
+---
+
+## [更新 0424] Idea 1 修订：两阶段训练设计
+
+### 原始设计的问题
+
+原始 Self-Forcing 方案（训练一开始就用纯预测输入）有冷启动问题：模型早期预测质量差 → garbage in → 后续 hop 无法学习有意义的 velocity。
+
+混入 GT（scheduled sampling / alpha ramp）正是为了解决这个冷启动问题——给模型一个逐步脱离"拐杖"的过程。**Self-Forcing 和混 GT 不矛盾，而是互补。**
+
+### 关键洞察：当前系统缺的不是 rollout 阶段的 Self-Forcing
+
+分析当前 alpha 调度：
+```
+warmup_ratio=0.10, ramp_ratio=0.30, alpha_start=0, alpha_end=1.0
+→ 前 5K 步: alpha=0 (纯 GT 输入)
+→ 5K-20K 步: alpha 从 0 ramp 到 1.0
+→ 20K+ 步: alpha=1.0 (纯预测输入)
+```
+
+所以 **rollout loss 在 20K 步之后已经是 Self-Forcing 了**（alpha=1.0 时 `mix_latent` 返回 `z_pred`）。
+
+**真正缺失的是：pair_loss 永远在 GT 输入上计算。**
+
+```python
+# 当前 pair loss（永远 teacher-forced）：
+out = model.predict_latent_step(
+    z_src=batch["z_src"],      # ← 永远是 GT latent
+    t_src=batch["t_src"],
+    t_dst=batch["t_dst"],
+    hop_idx=batch["hop_idx"],
+    x_src_img=batch["x_src"],
+)
+# loss = MSE(out["v_total_raw"], v_target) + MSE(out["z_pred"], batch["z_dst"])
+```
+
+pair_loss 训练 velocity 时，backbone 总是看到干净的 GT z_src。但推理时 hop1-3 的输入是预测的 z_pred（带误差）。**backbone 从未学过"如何在带误差的输入上做准确预测"。**
+
+### 修订：两阶段训练
+
+```
+Phase 1: 0 - 100K 步
+├── pair_loss: 正常（GT 输入）
+├── rollout_loss: alpha 从 0 → 1.0 渐进
+├── image_aux: hop0 only（正常）
+└── 目标: 学习基础 velocity prediction 能力
+
+Phase 2: 100K - 200K 步
+├── pair_loss: 改用 rollout 预测输入（非 GT）
+│   对 hop0: 仍用 z_D50_GT（真实起点）
+│   对 hop1: 用 model.predict(z_D50_GT) → z_D20_pred 作为输入
+│   对 hop2: 用 model.predict(z_D20_pred) → z_D10_pred 作为输入
+│   对 hop3: 用 model.predict(z_D10_pred) → z_D4_pred 作为输入
+├── rollout_loss: 纯 Self-Forcing (alpha=1.0 固定)
+├── image_aux: stochastic hop（Idea 2，可选叠加）
+└── 目标: 适应推理时的真实误差分布
+```
+
+### 实现方案
+
+**方案 A（简单，推荐先试）**：只改 pair_loss 的输入源
+
+在 Phase 2 中，pair_loss 的 `z_src` 不再从 batch 取 GT，而是先跑一遍 rollout 得到各 hop 的预测 latent，然后用预测 latent 作为 pair 训练的输入：
+
+```python
+# Phase 2 pair loss:
+if step > phase2_start and hop_idx > 0:
+    # 先跑 rollout 得到前序 hop 的预测
+    with torch.no_grad():
+        z_pred_chain = run_rollout_chain(model, z_d50_gt, rollout_times)
+    z_src_for_pair = z_pred_chain[hop_idx].detach()  # 用预测输入
+else:
+    z_src_for_pair = batch["z_src"]  # GT 输入
+```
+
+**代码改动**：~25 行（在 training loop 中 pair loss 计算前判断 phase）
+
+**方案 B（完整但成本高）**：pair_loss 和 rollout_loss 完全统一
+
+把 pair_loss 也改成 rollout 模式——每步都从 D50 开始做完整 4-hop rollout，每个 hop 的 loss 就是对应的 pair loss。这样 pair_loss 和 rollout_loss 合为一体。
+
+**代码改动**：~50 行，且每步多一次 4-hop forward（GPU 时间翻倍）
+
+**推荐**：先试方案 A。方案 A 的额外开销是一次 no_grad rollout（~2× pair 计算量，但无梯度），可接受。
+
+### 200K 训练的分阶段 Config
+
+```yaml
+training:
+  max_steps: 200000
+
+  # Phase 切换点
+  self_forcing_phase2_start: 100000
+
+  rollout:
+    # Phase 1: 正常 alpha ramp
+    warmup_ratio: 0.05      # 前 10K 步 GT
+    ramp_ratio: 0.40         # 10K-90K 步渐进
+    alpha_start: 0.0
+    alpha_end: 1.0
+    # Phase 2 (100K+): alpha 固定 1.0，pair_loss 也改用预测输入
+```
+
+### 与 200K v3（正在运行）的关系
+
+当前 200K v3 **不包含 Phase 2 改动**——它只是把 50K 的 config 拉长到 200K，alpha ramp 在 ~20K 步就结束了。200K v3 相当于 Phase 1 跑 200K 步。
+
+如果 200K v3 结果显示 step 50K-200K 之间没有显著改善（confirming plateau）→ 这正好证明需要 Phase 2 改动。
+
+### 预期效果分析
+
+| 组件 | 当前状态 | Phase 2 改动后 |
+|------|---------|---------------|
+| pair_loss 输入 | GT z_src（clean） | predicted z_src（with error） |
+| backbone 训练分布 | clean latent 分布 | realistic error 分布 |
+| rollout 推理匹配度 | 训练和推理分布不同 | **训练和推理分布对齐** |
+| 预期 PSNR 改善 | — | +2-5 dB（如果 exposure bias 是主因） |
+
+### 完整决策树（更新后）
+
+```
+200K v3 完成 (Day 5-6)
+    ↓
+transport_avg ≈ 36.2（无改善）   transport_avg > 36.5（有改善）
+    ↓                               ↓
+确认: 更长训练 ≠ 突破            继续 400K 看上限
+    ↓
+Path A 诊断 (0.5 GPU-day)
+    ↓
+EXPOSURE_BIAS        VELOCITY_CAPACITY       MIXED
+    ↓                    ↓                    ↓
+Phase 2 实验        Idea 2 + Idea 3        Phase 2 + Idea 2
+(pair_loss 改        (image loss +           (两者叠加)
+ 预测输入)           direct regression)
+    ↓
+50K Phase2 实验 (从 200K v3 last.pt resume)
+    ↓
+> 3 dB 改善           < 1 dB
+    ↓                    ↓
+准备投稿            + Idea 2 (stochastic image loss)
+                        ↓
+                    > 3 dB 改善    仍 < 1 dB
+                        ↓              ↓
+                    准备投稿       paradigm shift
+```
+
+---
+
+## 总结：三层突破策略
+
+| 层级 | 方法 | 解决的问题 | 预期 dB |
+|------|------|----------|---------|
+| **L1: Phase 2 Self-Forcing** | pair_loss 用预测输入 | exposure bias（train-test 分布不匹配） | +2-5 |
+| **L2: Stochastic Image Loss** | 随机 hop decode + image loss | latent MSE 方向不敏感 | +1-3 |
+| **L3: Direct Regression** | 去掉 velocity 框架 | velocity 表示的结构性限制 | 不确定 |
+
+**L1 是当前最可能的突破点**——pair_loss 永远在 GT 上训练是系统中最大的 train-test gap。
