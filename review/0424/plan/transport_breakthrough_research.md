@@ -56,85 +56,113 @@
 
 ---
 
-## 3 个 Idea 设计
+## Idea 设计
 
-### Idea 1: Self-Forcing Multi-Hop Transport（最高推荐 ⭐⭐⭐）
+### Idea 1: Two-Phase Self-Forcing Transport（最高推荐 ⭐⭐⭐）
 
-#### 动机
+#### 问题定位
 
-Self-Forcing (Huang et al., 2025, 193 引用) 解决了与我们完全相同的问题：
-- **他们的场景**：自回归 video diffusion，训练用 GT 帧，推理用预测帧 → exposure bias → 时序不一致
-- **我们的场景**：4-hop latent transport，训练 pair_loss 用 GT latent，推理 rollout 用预测 latent → exposure bias → 级联误差累积
+pair_loss ≈ 0 证明 backbone 在 GT 输入下单步 velocity 已经很精准。但 rollout_loss 仍大，说明推理时的级联输入分布与训练时不同。
 
-他们的方法核心是：**训练时不注入 GT，而是用模型自己的预测作为下一步输入**。
+**当前系统的两个 loss 路径**：
 
-#### 方法
+| loss | 输入来源 | 与推理一致？ |
+|------|---------|------------|
+| pair_loss | 永远用 GT latent (z_src_GT, z_dst_GT) | ❌ 训练专属 |
+| rollout_loss | alpha ramp: GT→pred 混合 → 最终 alpha=1 纯预测 | ✅ 后期一致 |
 
-```python
-# 当前（Teacher Forcing）：
-z_D20_pred = model(z_D50_gt, ...)     # hop0: GT 输入
-loss_hop0 = MSE(z_D20_pred, z_D20_gt)
+rollout_loss 在 alpha=1 后已经是 Self-Forcing 模式（纯预测输入），但 **pair_loss 永远是 teacher-forced**——backbone 的大部分梯度来自 pair_loss（占 70-80%），而这些梯度全部在 GT 输入分布上计算。backbone 从未学会在预测误差上做精确 velocity prediction。
 
-# rollout 用 mix_latent(z_gt, z_pred, alpha) 混合
-z_curr = mix_latent(z_D20_gt, z_D20_pred, alpha=0.5)  # GT 混入
-z_D10_pred = model(z_curr, ...)        # hop1: 混合输入
+#### 两阶段训练设计
 
+```
+Phase 1 (0 - 100K steps): 标准训练
+  ├── pair_loss: GT 输入 (z_src_GT → z_dst_GT)
+  ├── rollout_loss: alpha 从 0 → 1.0 (scheduled sampling)
+  ├── image_aux_loss: hop0 image-space supervision
+  └── 目标: backbone 学会基本的 velocity prediction
 
-# Self-Forcing（提议）：
-z_D20_pred = model(z_D50_gt, ...)     # hop0: GT 输入（D50 是真实起点）
-loss_hop0 = MSE(z_D20_pred, z_D20_gt)
-
-z_D10_pred = model(z_D20_pred.detach(), ...)  # hop1: 纯预测输入
-loss_hop1 = MSE(z_D10_pred, z_D10_gt)
-
-z_D4_pred = model(z_D10_pred.detach(), ...)   # hop2: 纯预测输入
-loss_hop2 = MSE(z_D4_pred, z_D4_gt)
-
-z_NORMAL_pred = model(z_D4_pred.detach(), ...)  # hop3: 纯预测输入
-loss_hop3 = MSE(z_NORMAL_pred, z_NORMAL_gt)
+Phase 2 (100K - 200K steps): Self-Forcing pair_loss
+  ├── pair_loss: 预测输入 (z_pred_prev → z_dst_GT)
+  │   每步先做一轮 rollout 生成 z_pred 链，
+  │   然后用 z_pred[hop] 替代 z_GT[hop] 作为 pair_loss 的 z_src
+  ├── rollout_loss: alpha = 1.0 固定 (纯预测)
+  ├── image_aux_loss: 保持
+  └── 目标: backbone 学会在自己的误差分布上做精确预测
 ```
 
-#### 关键设计选择
-
-1. **detach 策略**：每步 detach 防止梯度穿过整条链（否则 GPU 显存爆炸）
-2. **alpha 调度**：前 warmup 期仍用 teacher forcing（alpha=0）确保早期稳定，ramp 到 alpha=1（Self-Forcing）
-3. **hop0 始终用 GT**：D50 是真实输入（推理时也是），不需要 self-force
-4. **与现有 rollout loss 的关系**：Self-Forcing 替换 rollout loss 中的 mix_latent 逻辑，不是新增 loss
-
-#### 与现有代码的差异
+#### Phase 2 的具体实现
 
 ```python
-# rollout_first_hop.py 中的 mix_latent 修改：
-# 旧：
-z_curr = mix_latent(z_gt, z_pred, alpha=alpha, straight_through=True)
-# 新（Self-Forcing 模式下）：
-z_curr = z_pred  # 纯预测，不混合 GT
+# Phase 2 中的 pair_loss 计算：
+# 1. 先做一轮 detached rollout 获取预测 latent chain
+with torch.no_grad():
+    z_chain_pred = []
+    z_curr = batch["z_rollout"][:, 0]  # z_D50 (GT, 因为是真实起点)
+    z_chain_pred.append(z_curr)
+    for hop_idx in range(4):
+        out = model.predict_latent_step(z_curr, t_src, t_dst, hop_idx)
+        z_curr = out["z_pred"]
+        z_chain_pred.append(z_curr)
+
+# 2. 用预测链替代 GT 作为 pair_loss 的 z_src
+hop = batch["hop_idx"]  # 当前 batch 的 hop index
+z_src_self = z_chain_pred[hop].detach()  # 用预测值作为输入
+z_dst_gt = batch["z_dst"]               # target 仍然是 GT
+
+# 3. backbone forward 用 self-forced 输入
+out = model.predict_latent_step(z_src_self, t_src, t_dst, hop, x_src_img)
+pair_loss = MSE(out["v_total_raw"], v_target_from(z_dst_gt, z_src_self))
 ```
 
-实际上只需要在 rollout config 中加一个 `self_forcing: true` 开关。
+#### 为什么不从一开始就 Self-Forcing
+
+1. **冷启动问题**：Phase 1 的 backbone 预测很差（从 2000 步 smoke 开始），Self-Forcing 输入 = garbage → loss 很大 → 梯度爆炸
+2. **需要基础 velocity**：Phase 1 让 backbone 先学到 "从 GT 到 GT" 的正确 velocity 方向
+3. **渐进过渡**：100K 步后 backbone 已有基本能力，预测 latent 质量足够作为输入
+4. **200K v3 自然对接**：当前 200K v3 训练 = Phase 1，完成后 resume 进入 Phase 2
+
+#### 与 rollout loss 的 alpha=1 有何不同
+
+| 维度 | rollout alpha=1 | Phase 2 Self-Forcing pair_loss |
+|------|----------------|-------------------------------|
+| 影响的 loss | 只影响 rollout_loss（占 ~20%） | 影响 pair_loss（占 **70-80%**） |
+| 梯度来源 | 只有 rollout 链的梯度 | 主要梯度来源切换到预测分布 |
+| z_src | rollout 链的 z_pred | per-sample z_pred（来自 detached pre-rollout） |
+| 生效时机 | ~15K 步后 | 100K 步后 |
+
+**这是真正的差异**：pair_loss 是 backbone 梯度的主力（70-80%），但它永远在 GT 分布上。Phase 2 把主力梯度也切换到预测分布。
 
 #### 代码改动量
 
-**~15 行**（修改 `rollout_first_hop.py` 的 `rollout_multistep_losses_first_hop` 函数）
+**~25 行**：
+- `train_first_hop.py`：在 `compute_pair_losses` 前，根据 step 判断是否做 detached pre-rollout 并替换 batch 的 z_src
+- config 新增 `self_forcing_pair_start_step: 100000`
 
-#### 新颖性分析
+#### Resume 设计
 
-| 维度 | 分析 |
+200K v3 完成后（Phase 1 完成），用 `--resume best.pt` 启动 Phase 2：
+- `max_steps: 200000`（Phase 2 从 100K resume 到 200K = 额外 100K 步）
+- `self_forcing_pair: true`
+- `self_forcing_pair_start_step: 0`（因为 resume 后 step 已经 > 100K）
+
+或者做成单次 200K 训练，在 step > 100K 时自动切换。
+
+#### 风险与缓解
+
+| 风险 | 缓解 |
 |------|------|
-| Self-Forcing 本身 | 已发表（Huang et al., 2025），不是新方法 |
-| **应用场景新颖** | Self-Forcing 在 medical multi-hop latent transport 中的首次应用 |
-| **诊断框架新颖** | 配合 Path A（TF vs RO gap）量化 exposure bias → Self-Forcing 效果的完整诊断链 |
-| **level** | Workshop paper 级别（如果效果显著可升级到 main） |
+| Phase 2 初期 loss 跳变 | detached pre-rollout 不传梯度到 z_src，只改变 forward 分布 |
+| 预测 latent 质量差导致 velocity target 不稳定 | velocity target 仍来自 (z_dst_GT - z_src_self) / dt，GT target 端未变 |
+| GPU 显存增加（多一轮 forward） | pre-rollout 在 no_grad 下，显存增加很小 |
 
 #### 预期效果
 
-- 如果 Path A 显示 exposure_gap ≥ 0.5 dB → Self-Forcing 预期 **+2-5 dB**（消除大部分 exposure bias）
-- 如果 exposure_gap < 0.2 dB → Self-Forcing 效果有限（< 0.5 dB），需要 Idea 2/3
-
-#### 风险
-
-- Self-Forcing 训练初期可能不稳定（预测 latent 质量差 → loss 大 → 梯度大）
-- 缓解：warmup 期仍用 teacher forcing，渐进过渡
+| Path A 结果 | Self-Forcing 预期 |
+|------------|-----------------|
+| exposure_gap ≥ 0.5 dB | **+2-5 dB**（消除主要 exposure bias） |
+| exposure_gap 0.2-0.5 dB | **+1-2 dB** |
+| exposure_gap < 0.2 dB | **< 0.5 dB**（需要 Idea 2/3） |
 
 ---
 
@@ -228,34 +256,62 @@ Chen et al. (2026) "Latent Generative Solvers" 在物理模拟中发现 direct r
 ## 执行优先级
 
 ```
-Step 0: Path A 诊断 (0.5 GPU-day)
-        ↓
+当前: 200K v3 = Phase 1（进行中）
+         ↓
+Step 0: Path A 诊断 (0.5 GPU-day, 与 200K 并行)
+         ↓
   EXPOSURE_BIAS          VELOCITY_CAPACITY          MIXED
-        ↓                       ↓                    ↓
-Step 1: Idea 1              Idea 2 + Idea 3      Idea 1 + Idea 2
-  (Self-Forcing)        (Image Loss + Direct)    (两者叠加)
-        ↓                       ↓                    ↓
-Step 2: + Idea 2           考虑架构变更           评估效果
+         ↓                       ↓                    ↓
+Step 1: Phase 2             Idea 2 + Idea 3      Phase 2 + Idea 2
+  (Self-Forcing pair)    (Image Loss + Direct)    (两者叠加)
+  resume 200K best        Path A < 0.2 dB        Phase 2 优先
+  +100K steps             考虑架构变更            + Idea 2 叠加
+         ↓                       ↓                    ↓
+Step 2: + Idea 2           评估效果              评估效果
   (叠加 Image Loss)
-        ↓
-Step 3: 评估结果
-  如果 > 3 dB 改善 → 准备投稿
-  如果 < 1 dB → 考虑 Idea 3 或 paradigm shift
+         ↓
+Step 3: 如果 > 3 dB → 投稿
+        如果 < 1 dB → Idea 3 / paradigm shift
 ```
 
 ---
 
-## 实验 Config 设计（Idea 1）
+## 实验 Config 设计（Idea 1 — 两阶段）
 
-基于 transport_v3（已包含权重修正 + velocity_rebalance）：
+### Phase 1: 200K v3（已在运行）
+
+当前 `pet_flow_first_hop_224_200k_transport_v3.yaml` 就是 Phase 1。无需修改。
+
+### Phase 2: Self-Forcing Pair Loss
+
+基于 200K v3 的 best.pt resume：
 
 ```yaml
-# 新增字段
-rollout:
-  self_forcing: true           # 启用 Self-Forcing
-  self_forcing_warmup: 5000    # 前 5K 步仍用 teacher forcing
-  self_forcing_ramp: 10000     # 5K-15K 步渐进过渡
-  # 其余不变
+# pet_flow_first_hop_224_100k_selfforcing.yaml
+run_name: first_hop_224_100k_selfforcing
+max_steps: 100000  # Phase 2: 额外 100K 步
+
+training:
+  # Self-Forcing pair loss: 用 detached rollout 预测链替代 GT 作为 pair z_src
+  self_forcing_pair:
+    enabled: true
+    # Phase 2 从第 0 步就启用（因为 resume 自 200K Phase 1 已学基础）
+  # rollout alpha 固定 1.0（已完成 ramp）
+  rollout:
+    alpha_start: 1.0
+    alpha_end: 1.0
+    warmup_ratio: 0.0
+    ramp_ratio: 0.0
+```
+
+或做成单次 200K 训练自动切换：
+
+```yaml
+# 在 transport_v3 200K config 中添加：
+training:
+  self_forcing_pair:
+    enabled: true
+    start_step: 100000  # 前 100K 用 GT pair，后 100K 用 self-forced pair
 ```
 
 ---
@@ -278,173 +334,23 @@ data:
 
 ---
 
-## 预期时间线
+## 执行时间线
 
-| Day | 任务 | GPU-day |
-|-----|------|---------|
-| 1 | Path A 诊断 | 0.5 |
-| 1 | 200K 继续跑（已在进行） | — |
-| 2 | 根据 Path A 结果实施 Idea 1 或 Idea 2 代码 | 0 |
-| 3-5 | Idea 1/2 实验（50K 步 → 100K 步） | 2-4 |
-| 6-7 | Full-val eval + 结果分析 | 0.5 |
-| **总计** | | **3-5 GPU-day** |
+| Day | 任务 | GPU-day | 状态 |
+|-----|------|---------|------|
+| 1 | Path A 诊断 | 0.5 | 待启动 |
+| 1-5 | 200K v3 继续跑 = **Phase 1** | ~4 | 进行中（42K/200K） |
+| 5 | Phase 1 完成：评估 200K 结果 | 0 | — |
+| 5 | 实施 Idea 1 Phase 2 代码（~25 行） | 0 | — |
+| 6-9 | **Phase 2: Self-Forcing pair_loss** (resume 200K best → +100K) | 4 | — |
+| 6-9 并行 | Idea 2: Stochastic Hop Image Loss（可叠加） | 0 | 可选 |
+| 10 | Full-val eval + 结果分析 | 0.5 | — |
+| **总计** | | **~9 GPU-day** | |
 
-如果 Idea 1 带来 > 3 dB 改善 → 直接准备 workshop 投稿。
+### 关键决策点
 
----
+- **Day 1 Path A 结果**：确认 exposure bias 是否是主因 → 决定是否全力投入 Phase 2
+- **Day 5 200K v3 结果**：如果 200K 已突破 plateau → Phase 2 可选；如果仍在 36.2 → Phase 2 必做
+- **Day 10 Phase 2 结果**：如果 > 3 dB 改善 → 准备投稿；如果 < 1 dB → 叠加 Idea 2 或考虑 Idea 3
 
-## [更新 0424] Idea 1 修订：两阶段训练设计
-
-### 原始设计的问题
-
-原始 Self-Forcing 方案（训练一开始就用纯预测输入）有冷启动问题：模型早期预测质量差 → garbage in → 后续 hop 无法学习有意义的 velocity。
-
-混入 GT（scheduled sampling / alpha ramp）正是为了解决这个冷启动问题——给模型一个逐步脱离"拐杖"的过程。**Self-Forcing 和混 GT 不矛盾，而是互补。**
-
-### 关键洞察：当前系统缺的不是 rollout 阶段的 Self-Forcing
-
-分析当前 alpha 调度：
-```
-warmup_ratio=0.10, ramp_ratio=0.30, alpha_start=0, alpha_end=1.0
-→ 前 5K 步: alpha=0 (纯 GT 输入)
-→ 5K-20K 步: alpha 从 0 ramp 到 1.0
-→ 20K+ 步: alpha=1.0 (纯预测输入)
-```
-
-所以 **rollout loss 在 20K 步之后已经是 Self-Forcing 了**（alpha=1.0 时 `mix_latent` 返回 `z_pred`）。
-
-**真正缺失的是：pair_loss 永远在 GT 输入上计算。**
-
-```python
-# 当前 pair loss（永远 teacher-forced）：
-out = model.predict_latent_step(
-    z_src=batch["z_src"],      # ← 永远是 GT latent
-    t_src=batch["t_src"],
-    t_dst=batch["t_dst"],
-    hop_idx=batch["hop_idx"],
-    x_src_img=batch["x_src"],
-)
-# loss = MSE(out["v_total_raw"], v_target) + MSE(out["z_pred"], batch["z_dst"])
-```
-
-pair_loss 训练 velocity 时，backbone 总是看到干净的 GT z_src。但推理时 hop1-3 的输入是预测的 z_pred（带误差）。**backbone 从未学过"如何在带误差的输入上做准确预测"。**
-
-### 修订：两阶段训练
-
-```
-Phase 1: 0 - 100K 步
-├── pair_loss: 正常（GT 输入）
-├── rollout_loss: alpha 从 0 → 1.0 渐进
-├── image_aux: hop0 only（正常）
-└── 目标: 学习基础 velocity prediction 能力
-
-Phase 2: 100K - 200K 步
-├── pair_loss: 改用 rollout 预测输入（非 GT）
-│   对 hop0: 仍用 z_D50_GT（真实起点）
-│   对 hop1: 用 model.predict(z_D50_GT) → z_D20_pred 作为输入
-│   对 hop2: 用 model.predict(z_D20_pred) → z_D10_pred 作为输入
-│   对 hop3: 用 model.predict(z_D10_pred) → z_D4_pred 作为输入
-├── rollout_loss: 纯 Self-Forcing (alpha=1.0 固定)
-├── image_aux: stochastic hop（Idea 2，可选叠加）
-└── 目标: 适应推理时的真实误差分布
-```
-
-### 实现方案
-
-**方案 A（简单，推荐先试）**：只改 pair_loss 的输入源
-
-在 Phase 2 中，pair_loss 的 `z_src` 不再从 batch 取 GT，而是先跑一遍 rollout 得到各 hop 的预测 latent，然后用预测 latent 作为 pair 训练的输入：
-
-```python
-# Phase 2 pair loss:
-if step > phase2_start and hop_idx > 0:
-    # 先跑 rollout 得到前序 hop 的预测
-    with torch.no_grad():
-        z_pred_chain = run_rollout_chain(model, z_d50_gt, rollout_times)
-    z_src_for_pair = z_pred_chain[hop_idx].detach()  # 用预测输入
-else:
-    z_src_for_pair = batch["z_src"]  # GT 输入
-```
-
-**代码改动**：~25 行（在 training loop 中 pair loss 计算前判断 phase）
-
-**方案 B（完整但成本高）**：pair_loss 和 rollout_loss 完全统一
-
-把 pair_loss 也改成 rollout 模式——每步都从 D50 开始做完整 4-hop rollout，每个 hop 的 loss 就是对应的 pair loss。这样 pair_loss 和 rollout_loss 合为一体。
-
-**代码改动**：~50 行，且每步多一次 4-hop forward（GPU 时间翻倍）
-
-**推荐**：先试方案 A。方案 A 的额外开销是一次 no_grad rollout（~2× pair 计算量，但无梯度），可接受。
-
-### 200K 训练的分阶段 Config
-
-```yaml
-training:
-  max_steps: 200000
-
-  # Phase 切换点
-  self_forcing_phase2_start: 100000
-
-  rollout:
-    # Phase 1: 正常 alpha ramp
-    warmup_ratio: 0.05      # 前 10K 步 GT
-    ramp_ratio: 0.40         # 10K-90K 步渐进
-    alpha_start: 0.0
-    alpha_end: 1.0
-    # Phase 2 (100K+): alpha 固定 1.0，pair_loss 也改用预测输入
-```
-
-### 与 200K v3（正在运行）的关系
-
-当前 200K v3 **不包含 Phase 2 改动**——它只是把 50K 的 config 拉长到 200K，alpha ramp 在 ~20K 步就结束了。200K v3 相当于 Phase 1 跑 200K 步。
-
-如果 200K v3 结果显示 step 50K-200K 之间没有显著改善（confirming plateau）→ 这正好证明需要 Phase 2 改动。
-
-### 预期效果分析
-
-| 组件 | 当前状态 | Phase 2 改动后 |
-|------|---------|---------------|
-| pair_loss 输入 | GT z_src（clean） | predicted z_src（with error） |
-| backbone 训练分布 | clean latent 分布 | realistic error 分布 |
-| rollout 推理匹配度 | 训练和推理分布不同 | **训练和推理分布对齐** |
-| 预期 PSNR 改善 | — | +2-5 dB（如果 exposure bias 是主因） |
-
-### 完整决策树（更新后）
-
-```
-200K v3 完成 (Day 5-6)
-    ↓
-transport_avg ≈ 36.2（无改善）   transport_avg > 36.5（有改善）
-    ↓                               ↓
-确认: 更长训练 ≠ 突破            继续 400K 看上限
-    ↓
-Path A 诊断 (0.5 GPU-day)
-    ↓
-EXPOSURE_BIAS        VELOCITY_CAPACITY       MIXED
-    ↓                    ↓                    ↓
-Phase 2 实验        Idea 2 + Idea 3        Phase 2 + Idea 2
-(pair_loss 改        (image loss +           (两者叠加)
- 预测输入)           direct regression)
-    ↓
-50K Phase2 实验 (从 200K v3 last.pt resume)
-    ↓
-> 3 dB 改善           < 1 dB
-    ↓                    ↓
-准备投稿            + Idea 2 (stochastic image loss)
-                        ↓
-                    > 3 dB 改善    仍 < 1 dB
-                        ↓              ↓
-                    准备投稿       paradigm shift
-```
-
----
-
-## 总结：三层突破策略
-
-| 层级 | 方法 | 解决的问题 | 预期 dB |
-|------|------|----------|---------|
-| **L1: Phase 2 Self-Forcing** | pair_loss 用预测输入 | exposure bias（train-test 分布不匹配） | +2-5 |
-| **L2: Stochastic Image Loss** | 随机 hop decode + image loss | latent MSE 方向不敏感 | +1-3 |
-| **L3: Direct Regression** | 去掉 velocity 框架 | velocity 表示的结构性限制 | 不确定 |
-
-**L1 是当前最可能的突破点**——pair_loss 永远在 GT 上训练是系统中最大的 train-test gap。
+如果 Phase 2 带来 > 3 dB 改善 → 直接准备 workshop 投稿。
