@@ -1,0 +1,4 @@
+[startup] loading config: configs/pet_flow/pet_flow_first_hop_224_50k_transport_v3_gpu2_retry1.yaml
+[startup] run dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_transport_v3_gpu2_retry1
+[startup] building datasets/dataloaders...
+[io] loading latents(train): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt (115.3GB)
