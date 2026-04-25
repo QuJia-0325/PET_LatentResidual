@@ -1,4 +1,4 @@
-# V4 SF Pilot — 10K from 200K v3 best.pt
+# V4 SF Run — 50K from 200K v3 best.pt
 # 目的：验证 Self-Forcing (scheduled sampling) 能否打破 transport plateau
 # 使用 schedule_origin: resume_relative，SF warmup/ramp 从 resume 步重新开始
 # 启动前必须用 launch_v4_sf_pilot.sh 自动设 max_steps
@@ -44,7 +44,7 @@ training:
   max_steps: 999999
   log_interval: 50
   eval_interval: 400
-  save_interval: 5000
+  save_interval: 10000
   max_val_batches: 64
   max_hop0_val_batches: 64
   val_window_mode: rolling
@@ -105,15 +105,15 @@ training:
 
   # === Self-Forcing pair (v4) ===
   # schedule_origin: resume_relative → warmup/ramp 从 resume 步重新计数
-  # 10K pilot: 2K warmup (纯 GT) → 2K-5K ramp (0→1) → 5K-10K 稳态 (alpha=1.0)
+  # 50K run: 5K warmup (纯 GT) → 5K-15K ramp (0→1) → 15K-50K 稳态 (alpha=1.0)
   self_forcing_pair:
     enabled: true
     schedule_origin: resume_relative
     alpha_sf_start: 0.0
     alpha_sf_end: 1.0
-    warmup_steps: 2000
-    ramp_steps: 3000
-    min_resume_steps: 5000
+    warmup_steps: 5000
+    ramp_steps: 10000
+    min_resume_steps: 20000
     log_when_zero: true
 
   rollout:
