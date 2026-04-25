@@ -2114,6 +2114,7 @@ def main() -> None:
                 "sf_gap_norm": float(sf_info["gap_norm"].item()) if sf_info is not None else 0.0,
                 "sf_z_pred_norm": float(sf_info["z_pred_norm"].item()) if sf_info is not None else 0.0,
                 "sf_z_gt_norm": float(sf_info["z_gt_norm"].item()) if sf_info is not None else 0.0,
+                "pair_w": pair_w,
                 "roll_w": roll_w,
                 "img_w": img_w,
                 "pair_frac": pair_frac,
