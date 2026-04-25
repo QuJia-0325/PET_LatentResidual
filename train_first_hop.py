@@ -484,8 +484,22 @@ def compute_self_forcing_z_src(
     if not bool(sf_cfg.get("enabled", False)):
         return None
 
+    # v3.1 fix: support resume-relative schedule so SF warmup/ramp
+    # work correctly when resuming from a checkpoint.
+    schedule_origin = str(sf_cfg.get("schedule_origin", "absolute")).lower()
+    if schedule_origin == "resume_relative":
+        resume_start = int(cfg.get("_runtime", {}).get("resume_start_step", 0))
+        effective_step = max(global_step - resume_start, 0)
+    elif schedule_origin == "absolute":
+        effective_step = global_step
+    else:
+        raise ValueError(
+            f"self_forcing_pair.schedule_origin must be 'absolute' or 'resume_relative', "
+            f"got '{schedule_origin}'"
+        )
+
     alpha_sf = get_linear_schedule_value(
-        global_step=global_step,
+        global_step=effective_step,
         warmup_steps=int(sf_cfg.get("warmup_steps", 5000)),
         ramp_steps=int(sf_cfg.get("ramp_steps", 10000)),
         start=float(sf_cfg.get("alpha_sf_start", 0.0)),
@@ -1708,6 +1722,8 @@ def main() -> None:
                 else:
                     print("[resume][warn] EMA enabled but checkpoint has no EMA state; using fresh EMA", flush=True)
 
+        # Inject resume start step for schedule_origin=resume_relative
+        cfg.setdefault("_runtime", {})["resume_start_step"] = int(start_step)
         print(
             f"[resume] loaded step={start_step}, best_val={best_val:.6f}, best_metric_name={best_metric_name_for_ckpt}",
             flush=True,
@@ -2222,6 +2238,8 @@ def main() -> None:
                         f"pix_delta_abs_hop0={pix_delta_abs_hop0:.6f} "
                         f"v_hop_abs={v_hop_abs:.6f}"
                         f" v_hop_abs_hop0={v_hop_abs_hop0:.6f}"
+                        f" sf_alpha={float(sf_info['alpha_sf'].item()) if sf_info is not None else 0.0:.3f}"
+                        f" sf_gap={float(sf_info['gap_norm'].item()) if sf_info is not None else 0.0:.6f}"
                         f"{grad_suffix}"
                     )
             else:
@@ -2268,6 +2286,8 @@ def main() -> None:
                     f"pix_delta_abs_hop0={pix_delta_abs_hop0:.6f} "
                     f"v_hop_abs={v_hop_abs:.6f}"
                     f" v_hop_abs_hop0={v_hop_abs_hop0:.6f}"
+                    f" sf_alpha={float(sf_info['alpha_sf'].item()) if sf_info is not None else 0.0:.3f}"
+                    f" sf_gap={float(sf_info['gap_norm'].item()) if sf_info is not None else 0.0:.6f}"
                     f"{grad_suffix}"
                 )
         if step % save_interval == 0:
