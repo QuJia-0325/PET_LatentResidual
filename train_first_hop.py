@@ -461,6 +461,113 @@ def compute_rollout_losses(
     }
 
 
+@torch.no_grad()
+def compute_self_forcing_z_src(
+    model: PETFlowDiTFirstHop,
+    main_batch: Dict[str, torch.Tensor],
+    cfg: Dict,
+    global_step: int,
+    rollout_times: list[float],
+) -> Dict[str, torch.Tensor] | None:
+    """Self-Forcing pair loss: replace pair `z_src` with the model's own predicted
+    latent at the same hop, mixed with GT by alpha_sf.
+
+    Returns None when SF is disabled. Otherwise returns a dict with:
+      - z_src_sf:   per-sample mixed latent (forward value used by pair loss)
+      - alpha_sf:   current scalar mix in [0, 1]
+      - gap_norm:   ||z_src_pred - z_src_gt||_1 mean (diagnostic)
+      - z_pred_norm / z_gt_norm: scale checks (diagnostic)
+    The pre-rollout is run under no_grad to keep memory bounded; only the
+    *value* of z_src changes — the downstream pair loss is unchanged.
+    """
+    sf_cfg = cfg.get("training", {}).get("self_forcing_pair", {})
+    if not bool(sf_cfg.get("enabled", False)):
+        return None
+
+    alpha_sf = get_linear_schedule_value(
+        global_step=global_step,
+        warmup_steps=int(sf_cfg.get("warmup_steps", 5000)),
+        ramp_steps=int(sf_cfg.get("ramp_steps", 10000)),
+        start=float(sf_cfg.get("alpha_sf_start", 0.0)),
+        end=float(sf_cfg.get("alpha_sf_end", 1.0)),
+    )
+
+    z_src_gt = main_batch["z_src"]
+    device = z_src_gt.device
+
+    # If alpha is 0 we still want to log diagnostics, but skip the pre-rollout
+    # to save compute when truly off.
+    log_only = bool(sf_cfg.get("log_when_zero", False))
+    if alpha_sf <= 0.0 and not log_only:
+        return {
+            "z_src_sf": z_src_gt,
+            "alpha_sf": torch.tensor(0.0, device=device),
+            "gap_norm": torch.tensor(0.0, device=device),
+            "z_pred_norm": torch.tensor(0.0, device=device),
+            "z_gt_norm": z_src_gt.detach().abs().mean(),
+        }
+
+    if "z_rollout" not in main_batch:
+        raise RuntimeError(
+            "self_forcing_pair requires main_batch['z_rollout']; "
+            "ensure data.train_include_full_x_rollout/rollout latents are loaded."
+        )
+
+    z_rollout = main_batch["z_rollout"]              # [B, T, C, H, W]
+    hop_idx = main_batch["hop_idx"].long()           # [B]
+    bsz = z_rollout.shape[0]
+    num_hops = int(model.num_hops)
+    assert z_rollout.shape[1] == num_hops + 1, (
+        f"z_rollout T ({z_rollout.shape[1]}) must equal num_hops+1 ({num_hops+1})"
+    )
+    assert len(rollout_times) == num_hops + 1, (
+        f"rollout_times len ({len(rollout_times)}) must equal num_hops+1 ({num_hops+1})"
+    )
+
+    # Pre-rollout: z_chain[k] = predicted latent at timepoint k (k=0 is GT D50).
+    z_chain: list[torch.Tensor] = [z_rollout[:, 0]]
+    z_curr = z_rollout[:, 0]
+    x_first = main_batch.get("x_rollout_first")
+    for h in range(num_hops):
+        t_s = torch.full((bsz,), float(rollout_times[h]), device=device)
+        t_d = torch.full((bsz,), float(rollout_times[h + 1]), device=device)
+        hop_t = torch.full((bsz,), h, device=device, dtype=torch.long)
+        x_in = x_first if h == 0 else None
+        out = model.predict_latent_step(
+            z_src=z_curr,
+            t_src=t_s,
+            t_dst=t_d,
+            hop_idx=hop_t,
+            x_src_img=x_in,
+        )
+        z_curr = out["z_pred"].detach()
+        z_chain.append(z_curr)
+
+    # Per-sample gather: for sample i, pick z_chain[hop_idx[i]][i].
+    # Stack along a new chain dim so torch.gather works cleanly: [B, T, C, H, W].
+    z_chain_stack = torch.stack(z_chain, dim=1)
+    idx = hop_idx.view(-1, 1, 1, 1, 1).expand(
+        -1, 1, z_chain_stack.shape[2], z_chain_stack.shape[3], z_chain_stack.shape[4]
+    )
+    z_src_pred = z_chain_stack.gather(1, idx).squeeze(1)  # [B, C, H, W]
+
+    # Mix
+    if alpha_sf >= 1.0:
+        z_src_sf = z_src_pred
+    elif alpha_sf <= 0.0:
+        z_src_sf = z_src_gt
+    else:
+        z_src_sf = (1.0 - alpha_sf) * z_src_gt + alpha_sf * z_src_pred
+
+    return {
+        "z_src_sf": z_src_sf,
+        "alpha_sf": torch.tensor(float(alpha_sf), device=device),
+        "gap_norm": (z_src_pred - z_src_gt).abs().mean(),
+        "z_pred_norm": z_src_pred.abs().mean(),
+        "z_gt_norm": z_src_gt.abs().mean(),
+    }
+
+
 def compute_foc_losses(
     model: PETFlowDiTFirstHop,
     hop0_batch: Dict[str, torch.Tensor],
@@ -1683,6 +1790,21 @@ def main() -> None:
             pg["lr"] = lr_now * float(pg.get("lr_scale", 1.0))
 
         with autocast(enabled=amp_enabled):
+            # --- Self-Forcing pair: replace z_src with model's own predicted
+            # latent at the same hop (per-sample). Pair loss code is unchanged;
+            # only the value of main_batch["z_src"] is mutated before the main
+            # forward pass. Pre-rollout runs under no_grad, so backbone params
+            # only see SF gradients via the *single* main pair-step pass below.
+            sf_info = compute_self_forcing_z_src(
+                model=model,
+                main_batch=main_batch,
+                cfg=cfg,
+                global_step=step,
+                rollout_times=rollout_times,
+            )
+            if sf_info is not None:
+                main_batch["z_src"] = sf_info["z_src_sf"]
+
             main_out = model.predict_latent_step(
                 z_src=main_batch["z_src"],
                 t_src=main_batch["t_src"],
@@ -1988,7 +2110,10 @@ def main() -> None:
                 "rollout_straight_through": rollout_st,
                 "lambda_img": float(lambda_img),
                 "alpha": float(rollout_losses["alpha_mix"].item()),
-                "pair_w": pair_w,
+                "sf_alpha": float(sf_info["alpha_sf"].item()) if sf_info is not None else 0.0,
+                "sf_gap_norm": float(sf_info["gap_norm"].item()) if sf_info is not None else 0.0,
+                "sf_z_pred_norm": float(sf_info["z_pred_norm"].item()) if sf_info is not None else 0.0,
+                "sf_z_gt_norm": float(sf_info["z_gt_norm"].item()) if sf_info is not None else 0.0,
                 "roll_w": roll_w,
                 "img_w": img_w,
                 "pair_frac": pair_frac,
