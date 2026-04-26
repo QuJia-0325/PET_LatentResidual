@@ -5,6 +5,10 @@
 **日志**：`review/0426/logs_train/v4_sf_pilot_gpu2.log`（266 行，覆盖 step 86850 → 95250）
 **决策**：在 sf_alpha 仅爬到 ~0.345（约目标 1.0 的 1/3）时**提前终止**——已经能看清趋势，无需消耗剩余 GPU 时长。
 
+**关联文档**：
+- 与本目录已有 [v3_results_analysis](./v3_results_analysis_20260426.md)（Path A 诊断）、[v3p1_redo_plan](./v3p1_redo_experiment_plan_20260426.md)（schedule fix 计划）、[Codex review](./research_review_0426_gpt54xhigh_20260426.md) 为同一分析链
+- Reviewer critique：[viewer/v4_sf_pilot_review_critique_20260426.md](./viewer/v4_sf_pilot_review_critique_20260426.md)
+
 ---
 
 ## 1. 结论摘要（TL;DR）
@@ -13,10 +17,10 @@
 |---|---|---|
 | V3.1 P1 修复（resume_relative SF schedule）| ✅ **生效** | step 86850–91800 共 5000 步内 `sf_alpha=0.000`，从 step 91850 开始 ramp |
 | V3.1 P2 修复（stdout 暴露 sf_alpha/sf_gap）| ✅ **生效** | 每行 `[train]` 末尾均含 `sf_alpha=… sf_gap=…` |
-| SF 在低 alpha（≤0.10）阶段是否有收益 | 🟡 **边际正向** | V4 度量下：V3 基线 0.000567 → SF α≈0.10 时 best 0.000538（−5.1%） |
-| SF 在中高 alpha（≥0.15）阶段是否仍正向 | ❌ **明确负向** | val_select 从 0.000538 单调劣化至 0.001323（α≈0.30 时已 +146%） |
-| sf_gap 是否随训练收敛 | ❌ **不收敛** | 0.002–0.007 区间持续震荡，与 alpha 上升无单调关系 |
-| **总体判断** | ❌ **当前 SF-pair 设计不能作为 transport 突破方向** | 与 V3 SF run 完全相同的恶化模式重现 |
+| SF 在低 alpha（≤0.10）阶段是否有收益 | 🟡 **待验证** | V4 度量下：V3 基线 0.000567 → SF α≈0.10 时 best 0.000538（−5.1%）；**需先测 baseline val 波动范围确认信号真实性** |
+| SF 在中高 alpha（≥0.15）阶段是否仍正向 | ❌ **当前超参下失效** | val_select 从 0.000538 劣化至 0.001323，但α=0.30 优于 α=0.22（**震荡而非单调**，提示优化不稳而非损失方向错误） |
+| sf_gap 是否随训练收敛 | 🟡 **待验证** | 0.002–0.007 区间震荡；sf_gap = 非归一化 L1（`(z_pred-z_gt).abs().mean()`），**该指标本身的信息量存疑** |
+| **总体判断** | ⚠️ **当前超参配置下 SF-pair 失效，但归因尚不充分——是优化不稳还是损失形式错误需 ablation 确认** | 恶化模式呈震荡而非单调，单 seed 单超参不足以判死方向 |
 
 ---
 
@@ -30,6 +34,10 @@ V4 weighting:  0.15*d20 + 0.45*d10 + 0.9*d4 + 1.5*normal   ← d20 权重 0.5 �
 ```
 
 V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=87200（sf_alpha=0）的 val_select_score=**0.000567** 就是 **V3 模型在 V4 度量下的真实基线**——这是公平对比的起点，无需另外重新评估。
+
+> **基线对照表**（避免混淆）：
+> - V3 best.pt @ V3 weighting (0.5\*d20+...) = **0.000648**
+> - V3 best.pt @ V4 weighting (0.15\*d20+...) = **0.000567** ← 后续所有对比一律用此值
 
 ---
 
@@ -47,6 +55,8 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 | 93200 | 0.140 | val 开始恶化 |
 | 94000 | 0.220 | |
 | 95250 | 0.345 | 终止时刻 |
+
+> **注**：sf_alpha 值为 `get_linear_schedule_value` 按 `effective_step = global_step - 86800` 公式推算，与日志 stdout 中 `sf_alpha=X.XXX` 字段一致。
 
 `effective_step = global_step - resume_start_step (=86800)`, `warmup_steps=5000`, `ramp_steps=10000`, `alpha_sf_end=1.0` —— 与 config 完全一致。**P1 修复完全成功。**
 
@@ -74,33 +84,40 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 
 ### 4.2 三个明确发现
 
-**Finding A — SF 在 α ∈ [0, 0.10] 时有边际正收益**
+**Finding A — SF 在 α ∈ [0, 0.10] 时观察到改善，但信号真实性待验证**
 - V3 baseline @ V4 metric: 0.000567
 - V4 best @ α≈0.10: 0.000538
-- **相对改进 5.1%**（绝对值 −0.000029）
+- **相对改善 5.1%**（绝对值 −0.000029）
 - 全部四档 chain MSE 都改善：d20 −10.7%, d10 −8.8%, d4 −5.3%, normal −2.9%
-- 这是真实但非常微弱的信号，可能仅为 finetune noise 范围
+- **⚠️ 待验证**：α=0 区间（step 87200-91800）的 val_chain_normal_mse 自然波动范围未测量。如果 baseline 在纯 GT 区间的波动 ≥ 0.000005，则 0.000175→0.000170 可能在 noise 内。**需列出 α=0 区间全部 val 点并计算 std 后才能判断**
 
-**Finding B — α ≥ 0.15 后 val 进入震荡式恶化**
-- 93200（α=0.14）已开始反弹（0.000551）
+**Finding B — α ≥ 0.15 后 val 在当前超参下进入震荡式恶化**
+- 93200（α=0.14）开始反弹（0.000551）
 - 93600（α=0.18）暴涨至 0.000939（+74% vs best）
-- 此后在 0.000654–0.001323 大幅震荡，再无任何接近 best 的点
-- 模式与 V3 SF run（旧 schedule bug 下 α=1.0）的"30% 全面退化"高度一致
+- 此后在 0.000654–0.001323 大幅震荡
+- **⚠️ 关键观察**：α=0.30（val=0.000654）优于 α=0.22（val=0.001025）——**恶化模式是震荡而非单调**。如果是"SF 损失形式错误"，应当看到单调恶化；震荡更可能指向**优化不稳**（ramp 太陡 / LR 没跟上 / rolling val 噪声）
+- 与 V3 SF run 的"瞬间冲击"不同，V4 是"渐进+震荡"——**两者不是同一种失败模式**
 
-**Finding C — `val_pair_total` 在 step 93200 出现"质变跳跃"**
-- step ≤ 92800：`val_pair_total = 0.000000`（完全不参与 val loss）
+**Finding C — `val_pair_total` 在 step 93200 出现跳变（待确认是否为定义效应）**
+- step ≤ 92800：`val_pair_total = 0.000000`
 - step 93200 起：跳到 0.0002 量级并保持
-- 时间点正好在 sf_alpha 越过某个阈值（约 0.10–0.14 之间）时出现
-- 推测 val 阶段也走 `compute_self_forcing_z_src` 路径，pair 损失被 SF 偏移污染——这本身**不是 bug**，但说明 SF 已经把模型预测分布推离 GT 分布到肉眼可见的程度
+- **⚠️ 待确认**：如果 val 阶段也执行了 `compute_self_forcing_z_src`，则 α=0 时 `z_src_sf = z_src_gt`，pair loss 计算结果与无 SF 时完全相同，val_pair_total ≡ 0 是**定义恒等式**。跳变只反映 α 开始非零后 val pair 输入被偏移，**不能作为"模型分布漂移"的独立证据**
 
-### 4.3 sf_gap 不收敛的负面信号
+### 4.3 sf_gap 震荡（待验证的观察，非诊断结论）
 
-`sf_gap = ||z_pred − z_src_GT||` 在整段训练中保持 0.002–0.007 震荡，**与 sf_alpha 上升无任何收敛趋势**。
+`sf_gap` 在 0.002–0.007 区间震荡，与 sf_alpha 上升无单调关系。
 
-如果 SF loss 真在驱动模型把 rollout 预测拉近 teacher 分布，gap 应当随训练单调下降；现状说明：
+**sf_gap 的实际计算**（源自 `compute_self_forcing_z_src` 返回值）：
+```python
+gap_norm = (z_src_pred - z_src_gt).abs().mean()  # 非归一化 L1
+```
 
-- 要么 `sf_gap` 计算口径有问题（仅看绝对值，未归一化）；
-- 要么模型确实没在学习消化 SF 信号——它只是被 SF loss 推得越来越偏，而 image / rollout 损失在反向牵引，最终两边都没赢。
+**⚠️ 指标信息量存疑**：
+- 这是**非归一化**的 L1 范数。latent 的自然尺度在 0.001-0.01 量级，sf_gap 0.002-0.007 可能只是反映 latent 的自然尺度差异
+- 被 hop_idx=0 样本稀释（hop0 的 z_src_pred ≡ z_src_gt，gap 恒为 0，约占 batch 的 25%）
+- 更有意义的指标应该是 per-hop 归一化 gap（如 `gap / z_gt_norm`）或单独看 hop1-3
+
+**在归一化 + per-hop 版本确认前，sf_gap 的震荡不能作为"SF 没用"的证据，仅作为现象记录。**
 
 ---
 
@@ -112,9 +129,9 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 | 有效新训练步数 | ~3600（resume 后即结束）| ~8400（终止时） |
 | val 最终结果 vs baseline | **−30%**（全面恶化） | α≤0.10 时 +5%，α≥0.15 后 **−74%~−146%** |
 | 失败模式 | "瞬间冲击" | "渐进恶化" |
-| 是否能区分 schedule bug 与方法本身缺陷 | ❌ 不能 | ✅ 能——**方法本身在 α 偏高时即失效** |
+| 是否能区分 schedule bug 与方法本身缺陷 | ❌ 不能 | 🟡 部分——**当前超参下 α 高时失效，但震荡非单调提示可能是优化不稳** |
 
-**核心信息**：V3.1 的 schedule 修复消除了"实验结论无效"的混淆变量，**但 SF-pair 损失本身在当前权重 / 时序下不能跨越 transport gap**。
+**核心信息**：V3.1 的 schedule 修复消除了"实验结论无效"的混淆变量。**当前超参配置下（ramp=10K, α_end=1.0, LR=4e-5）SF-pair 在 α≥0.15 后失效，但失效归因（方法缺陷 vs 优化不稳）尚需 ablation 确认。**
 
 ---
 
@@ -123,40 +140,64 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 | 假设 | 是否成立 | 证据 |
 |---|---|---|
 | H1：V3 SF 失败仅因为 schedule bug | ❌ **被证伪** | V4 修复后仍在 α≥0.15 失败 |
-| H2：低 alpha 的 SF 有微小正收益 | 🟡 **弱支持** | 5% 改进，但样本仅 1 个 ckpt，不能排除 noise |
-| H3：SF-pair loss 形式本身设计有缺陷 | 🟡 **强烈怀疑** | sf_gap 不收敛 + alpha 一上去 val 就坏 |
-| H4：sf_gap 度量本身有问题 | 🟡 **可能** | 需要看 gap_norm 的归一化逻辑 |
-| H5：transport gap 不应通过"换 z_src"解决 | 🟡 **倾向支持** | 替换 pair 输入只改变 distribution shift，不直接改进 hop-wise velocity 学习 |
+| H2：低 alpha 的 SF 有微小正收益 | 🟡 **待验证** | 5% 改善观察到，但需先测 baseline val 波动 std |
+| H3：SF-pair loss 形式本身设计有缺陷 | 🟡 **待排查** | α 高时恶化，但**震荡非单调**→ 可能是优化不稳而非损失方向错；sf_gap 指标本身未验证 |
+| H4：sf_gap 度量本身有问题 | 🟡 **很可能** | 非归一化 L1 + hop0 稀释；需 per-hop 归一化版本 |
+| H5：transport gap 不应通过"换 z_src"解决 | 🟡 **开放** | 理论上成立，但实测震荡模式不排除优化问题 |
+| **H6：当前 SF 配方的 ramp 太陡 / LR 不匹配** | 🟡 **新增假设** | α=0.30 优于 α=0.22 的非单调性直接支持此假设 |
 
 ---
 
-## 7. 下一步建议（路线选择）
+## 7. 下一步计划（综合 reviewer critique 后）
 
-### 选项 A — **放弃 SF-pair 路线**（推荐，置信度高）
-SF 在 V3 和 V4 两次都失败，且失败模式从"schedule bug"迁移到"方法缺陷"后仍存在。继续在这个方向调参（更小 ramp_end、更慢 ramp、加 EMA 等）边际收益预期低，建议把 GPU 预算投到其他 idea。
+### 并行轨道 A — Rollout-Heavy（第一优先，纯 config 改动）
 
-**对 v4 plan 的影响**：`review/plan/transport_breakthrough_research_v4.md` 里如果还把 SF-pair 列为主推方向，需要降级或剥离。
+**不等 SF 归因完成就可以跑**——探索一个全新的轴。
 
-### 选项 B — **小剂量 SF 限幅版**（仅当你想做完整性 ablation 时）
-- `alpha_sf_end = 0.10`（不要 1.0）
-- `ramp_steps = 30000`（更慢）
-- 训 30K 步看是否能稳定保持当前 best 0.000538
-- 风险：即使成功，也只是 5% 改进，不足以作为论文主卖点
+从 200K v3 best resume，50K 步：
+- `rollout.lambda: 0.25 → 2.0`（8×）
+- `rollout.step_weights: [0.5, 1.0, 2.0, 4.0]`（按 exposure gap² 比例）
+- `image_aux.lambda: 0.12 → 0.04`（降 3×）
+- `self_forcing_pair.enabled: false`
 
-### 选项 C — **重新设计 SF 形式**
-当前 SF-pair 把 GT `z_src` 换成模型自己的 `z_pred`，本质上是 input-side perturbation，没有显式约束 hop-velocity 学习。可考虑：
-- 把 SF 信号施加在 velocity 输出端而非 input 端
-- 引入 stop-grad 的 EMA teacher 而非当前 step 的自预测
-- 但这等于做新 idea，需要重新走 plan/discuss/execute 流程
+详见 §12 综合实验计划。
+
+### 并行轨道 B — SF 低 α 验证（不需 GPU，数据分析）
+
+在等 Rollout-Heavy 跑的期间，完成 reviewer 要求的 3 项验证：
+
+**B1. 测 baseline val 波动范围**（F1 修复）
+- 列出 step 87200-91800（α=0 区间）的全部 val 点的 `val_chain_normal_mse`
+- 计算 mean ± std
+- 判断 step 92800 的 0.000170 是否在 mean - 1σ 以下
+
+**B2. 确认 val_pair_total 定义**（F4 修复）
+- 查 `train_first_hop.py` 的 val 循环中 `sf_info` 是否参与 val pair 计算
+- 如果是 → Finding C 降级为定义效应
+- 如果否 → Finding C 保留为模型分布漂移证据
+
+**B3. sf_gap 归一化版本**（F3 修复）
+- 计算 `sf_gap_normalized = sf_gap / sf_z_gt_norm`（两者都已在 metrics_jsonl 中）
+- 按 hop 分组看 per-hop gap 趋势（hop0 应恒为 0，hop1-3 是真正的信号）
+
+### 串行轨道 C — SF 窄带 Ablation（仅当 Rollout-Heavy 也不行时）
+
+如果 Rollout-Heavy 失败，回来做 reviewer 建议的 SF 参数排查：
+- `alpha_sf_end: 0.15`（限幅到 pilot best 附近）
+- `ramp_steps: 30000`（更慢的 ramp）
+- `lr: 2e-5`（降 LR 配合 SF 注入）
+- 跑 30K 步，看 val 是否稳定
 
 ---
 
-## 8. 立即行动项
+## 8. 立即行动项（更新版）
 
 1. ✅ 已完成：服务器 V4 SF pilot 提前终止
-2. ⏳ 本报告归档至 `review/0426/`
-3. ⏳ 更新 `review/plan/transport_breakthrough_research_v4.md`：在 Idea 1 (SF-pair) 标注"已证伪"，根据用户决策选择 A/B/C
-4. ⏳ 向 reviewer 通报：V3.1 schedule fix 验证成功，但方法本身需要重新设计；当前没有候选方案能突破 V3 200K transport 基线
+2. ✅ 已完成：本报告归档 + reviewer critique 修正
+3. ⏳ **B1**：列出 α=0 区间全部 val 点，计算 baseline val std（不需 GPU）
+4. ⏳ **B2**：查代码确认 val_pair_total 是否含 α 因子（不需 GPU）
+5. ⏳ 准备 Rollout-Heavy config + launch script
+6. ⏳ 等 200K v3 完成 → 启动 Rollout-Heavy
 
 ---
 
