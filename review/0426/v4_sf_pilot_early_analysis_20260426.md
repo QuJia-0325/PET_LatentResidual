@@ -450,3 +450,196 @@ self_forcing_pair: { enabled: false }   # 明确关闭 SF
 *补充分析作者：Copilot*
 *补充日期：2026-04-26*
 *依据：Path A 多 ckpt 数据 + v4 SF pilot 失败分析 + rollout_first_hop.py / train_first_hop.py 代码审查*
+
+---
+---
+
+# SF-pair 失败的根因复盘：与现有 rollout alpha 机制的代码级对比（2026-04-26 第二次补充）
+
+## 14. 现有 rollout 的 alpha 混合机制（代码实证）
+
+### 14.1 chainstable 配置中的三阶段设计
+
+200K v3 训练（`pet_flow_first_hop_224_50k_formal_v3_chainstable.yaml`）的 rollout schedule：
+
+```yaml
+rollout:
+  warmup_ratio: 0.10    # 前 10%：alpha = 0（纯 GT 输入）
+  ramp_ratio: 0.30      # 10%-40%：alpha 从 0 线性到 1.0（GT→混合→pred）
+  alpha_start: 0.0
+  alpha_end: 1.00       # 40% 之后：alpha = 1.0（纯 pred 输入）
+```
+
+以 50K 步为例：
+- **Step 0–5000**（前 10%）：alpha=0，rollout 链每跳输入 = 纯 GT → 模型先学好单跳 velocity
+- **Step 5000–20000**（10-40%）：alpha 从 0→1，`z_curr = (1-α)·GT + α·pred` → 模型逐步适应 noisy 输入
+- **Step 20000–50000**（40% 后）：alpha=1.0，`z_curr = pred` → 纯预测链，与推理一致
+
+### 14.2 rollout 链内传播逻辑（`rollout_first_hop.py` line 80-100）
+
+```python
+for hop_idx in range(num_steps):
+    # 1. 用当前 z_curr 做 forward
+    out = model.predict_latent_step(z_src=z_curr, ...)
+    z_pred = out["z_pred"]
+    z_gt = z_rollout[:, hop_idx + 1]
+
+    # 2. 每一跳都有 loss（对照当前位置 GT）
+    step_loss = ||z_pred - z_gt||²
+
+    # 3. 决定下一跳的输入
+    if hop_idx < num_steps - 1:
+        z_curr = mix_latent(z_gt, z_pred, alpha)
+        # alpha=0 → z_curr = GT（稳定）
+        # alpha=0.5 → z_curr = 混合（渐进）
+        # alpha=1.0 → z_curr = pred（和推理一致）
+    else:
+        z_curr = z_pred  # 最后一跳不需要混合
+```
+
+**关键设计点**：
+1. **每一跳都有 GT loss**——即使输入是 predicted/混合的，target 仍是当前位置的 GT
+2. **GT 锚定**——alpha < 1 时，下一跳输入混入 GT，防止误差雪崩
+3. **渐进过渡**——从纯 GT 到纯 pred 是平滑的，模型有充足时间适应
+
+### 14.3 `mix_latent` 的 straight-through 估计器
+
+```python
+def mix_latent(z_gt, z_pred, alpha, straight_through=True):
+    if alpha <= 0:
+        # forward: z_gt, backward: gradient 仍流过 z_pred（STE）
+        return z_pred + (z_gt - z_pred).detach()
+    if alpha >= 1:
+        return z_pred
+    mixed = (1 - alpha) * z_gt + alpha * z_pred
+    if straight_through:
+        # forward: mixed, backward: gradient 只流过 z_pred
+        return z_pred + (mixed - z_pred).detach()
+    return mixed
+```
+
+alpha_gated 模式下，STE 只在 alpha ≥ 0.999 时启用（`straight_through_alpha_min: 0.999`）。这意味着在混合阶段（alpha < 1），梯度**直接流过 mixed value**——GT 和 pred 都参与梯度计算。
+
+---
+
+## 15. SF-pair 与 rollout alpha 的逐点对比
+
+### 15.1 输入/target 匹配性
+
+**rollout_loss（正确）**：
+```
+输入：z_curr = mix(z_gt[k], z_pred[k-1], alpha)    ← 含 GT 锚定
+forward：z_pred[k] = model(z_curr)
+target：z_gt[k+1]                                  ← 当前跳目标位置的 GT
+loss：||z_pred[k] - z_gt[k+1]||²
+语义："不管从哪出发，到达 GT 目标位置"              ← ✅ 物理合理
+```
+
+**SF-pair（有问题）**：
+```
+输入：z_src_sf = mix(z_src_GT, z_chain[hop_idx], alpha_sf)  ← 无 GT 锚定（alpha_sf 高时纯 pred）
+forward：v_pred = model(z_src_sf)
+target：v_target = (z_dst_GT - z_src_GT) / dt              ← 用 z_src_GT 算的 velocity
+loss：||v_pred(z_src_sf) - v_target(z_src_GT)||²
+语义："从 noisy 位置出发，产生的 velocity 应等于从 GT 位置出发的 velocity"  ← ❌ 物理不合理
+```
+
+**根本矛盾**：当 `z_src_sf ≠ z_src_GT` 时，从两个不同起点出发到同一终点的 velocity 不应相同。SF-pair 要求模型做到这一点，这是一个**不可满足的约束**——alpha 越大，约束越不合理，模型被迫在两个矛盾信号间折衷，导致 GT 上的 pair loss 也恶化（§4.2 Finding C 已代码确认）。
+
+### 15.2 中间状态监督
+
+| 维度 | rollout_loss | SF-pair |
+|------|-------------|---------|
+| hop0 (D50→D20) | ✅ step_loss[0] | ❌ 无（hop0 的 z_src_pred ≡ z_src_GT，SF 无效果） |
+| hop1 (D20→D10) | ✅ step_loss[1] | ❌ 仅当 batch 中 hop_idx=1 的样本有 loss |
+| hop2 (D10→D4) | ✅ step_loss[2] | ❌ 仅当 batch 中 hop_idx=2 的样本有 loss |
+| hop3 (D4→NORMAL) | ✅ step_loss[3] | ❌ 仅当 batch 中 hop_idx=3 的样本有 loss |
+| **跨 hop 约束** | ✅ 链式传播，每跳误差影响下一跳 loss | ❌ 每个样本独立，不知道上下文 |
+
+rollout 的每一跳 loss 都在约束链式传播的中间状态。SF-pair 的 pre-rollout 是 `@torch.no_grad()` 的 4 次 forward，中间状态没有任何 loss 约束——它只用最终结果替换 pair 输入。
+
+### 15.3 误差累积控制
+
+**rollout（有控制）**：
+```
+alpha < 1 时：z_curr 混入 GT → 误差被压制在每一跳
+alpha = 1 时：纯 pred，但每跳 loss 仍约束 → 误差累积但有梯度纠正
+```
+
+**SF-pair（无控制）**：
+```
+pre-rollout 从 GT D50 出发，跑 4 跳 chain（no_grad）
+hop0: z_chain[0] = GT（无误差）
+hop1: z_chain[1] = model(GT) → 有误差
+hop2: z_chain[2] = model(z_chain[1]) → 误差累积
+hop3: z_chain[3] = model(z_chain[2]) → 误差进一步累积
+→ 无任何 loss 约束 z_chain[1,2,3] 的质量
+→ hop3 的 z_chain[3] 可能已严重偏离 GT
+→ 用它替换 pair_loss 的 z_src → velocity target 不匹配 → 模型被错误训练
+```
+
+---
+
+## 16. 为什么 exposure bias 仍然存在（尽管 rollout 设计正确）
+
+rollout 的 alpha 混合设计**本身是对的**。问题不在设计，在**权重**。
+
+### 16.1 梯度占比分析
+
+200K v3 训练日志（从 v4 SF pilot 的 α=0 区间提取，此时 SF 未生效，反映纯 baseline 状态）：
+
+```
+step 86850-91800（sf_alpha=0，纯 baseline 行为）：
+  pair_frac  ≈ 2-13%   ← 单跳 GT 监督
+  roll_frac  ≈ 6-32%   ← 链式 pred 监督（对抗 exposure bias）
+  img_frac   ≈ 57-92%  ← hop0 像素重建（不对抗 exposure bias）
+```
+
+**中位数大约**：pair ~5%, roll ~10%, img ~85%。
+
+### 16.2 含义
+
+| loss | 占梯度 | 对 exposure bias 的帮助 | 结论 |
+|------|--------|------------------------|------|
+| pair_loss | ~5% | ❌ 制造 exposure bias（纯 GT 训练） | 越多越加剧 bias |
+| rollout_loss | ~10% | ✅ 对抗 exposure bias（pred chain + GT target） | **太少了** |
+| image_aux | ~85% | ❌ 无关（只做 hop0 像素重建） | 不帮忙但占了绝大部分梯度 |
+
+image_aux 在做 hop0 的像素级重建（L1 + SSIM + seam），这对最终图像质量有帮助，但**对 chain 后端（hop1-3）的 exposure bias 没有任何帮助**。它吃掉了 85% 的梯度，留给 rollout 的只有 10%——rollout 的设计再正确，10% 的梯度份额也不够让 backbone 真正学会"在 predicted 输入上做好 chain prediction"。
+
+### 16.3 Path A exposure_gap 的趋势进一步支持这个判断
+
+| Checkpoint | 训练步数 | mean ExpoGap | 解读 |
+|------------|---------|-------------|------|
+| step_10000 | 10K | 4.19 dB | 早期（rollout α 仍在 ramp 中） |
+| step_30000 | 30K | 4.76 dB | alpha 已到 1.0 超 10K 步，但 gap 仍上升 |
+| best (46K) | 46K | 4.80 dB | 继续上升 |
+
+**如果 rollout 权重足够**，在 alpha=1.0 之后（step 20K 之后），ExpoGap 应当开始下降——因为模型此时在纯 pred chain 上训练。但实测 gap 仍在上升：说明 10% 的 rollout 梯度**不足以抵消** pair_loss 持续在 GT 分布上强化模型的效应。
+
+---
+
+## 17. 修正后的因果解释链
+
+```
+根因：rollout_loss 权重太低（~10% 梯度），被 image_aux（~85%）淹没
+  ↓
+直接后果：backbone 参数更新主要由 image_aux（hop0 像素）驱动
+  ↓
+间接后果：rollout 的 chain prediction 信号不足以让 backbone 适应 predicted 分布
+  ↓
+外显症状：Path A ExpoGap 持续上升（4.19 → 4.80 dB）
+  ↓
+错误应对：SF-pair（在 pair_loss 输入端注入 predicted 分布）
+  ↓
+为什么 SF 失败：pair_loss 的 target velocity 仍按 GT 算，输入/target 不匹配 +
+               无中间状态 loss + 无 GT 锚定 → 模型被错误训练
+  ↓
+正确应对：加大 rollout_loss 权重（§11 方向 1），让已有的正确机制有足够的梯度影响力
+```
+
+---
+
+*第二次补充作者：Copilot*
+*补充日期：2026-04-26*
+*依据：`rollout_first_hop.py` 完整代码审查 + `pet_flow_first_hop_224_50k_formal_v3_chainstable.yaml` config 对比 + v4 SF pilot α=0 区间梯度占比实测*
