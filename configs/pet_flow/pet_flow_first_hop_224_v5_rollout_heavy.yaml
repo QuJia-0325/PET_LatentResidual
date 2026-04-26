@@ -294,7 +294,7 @@ loss:
     velocity_weight: 1.0
     endpoint_weight: 1.0
     velocity_rebalance:
-      enabled: false
+      enabled: true               # ← 恢复 200K v3 值 (was false in SF pilot)
       mode: sqrt_ratio
       clip_min: 1.0
       clip_max: 4.0
