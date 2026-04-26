@@ -13,9 +13,19 @@
 | Exposure bias 是核心瓶颈（gap=4.80 dB，单调上升） | Path A 多 ckpt（v3 实验 A） | ✅ 强确认 |
 | v3 B/C 结果不可信（SF schedule bug + 仅 3600 步） | v3 结果分析 | ✅ 确认 |
 | `591d34c` 代码修复（schedule_origin）正确 | subagent + Codex 双重确认 | ✅ |
+| **SF-pair (scheduled sampling) 方法已证伪** | v4 pilot 实验（alpha≥0.15 后单调恶化） | ❌ **已终止** |
 | 200K v3 仍在跑，best 仍在更新 | 服务器状态 | ⏳ 进行中 |
 | Rolling val 不可用于 claim 级别对比 | Codex S2 | ⚠️ 需 full-val |
 | 只有 1 个 GPU 能用于新实验（RAM 限制） | 硬件约束 | 🔒 |
+
+### SF-pair 证伪详情（2026-04-26 v4 pilot）
+
+- 从 200K v3 best（step=86800）resume，50K 新增步，schedule_origin=resume_relative
+- warmup 5K 步 + ramp 10K 步，在 alpha ≈ 0.10 时达到 best（-5.1% vs baseline）
+- **alpha ≥ 0.15 后 val 单调恶化**：+74% @ alpha=0.18, +146% @ alpha=0.34
+- sf_gap 不收敛（0.002-0.007 震荡），模型未学会消化 SF 信号
+- 失败模式与 v3（schedule bug 下 alpha=1.0 的瞬间冲击）一致，证明是方法缺陷而非配置问题
+- 详见 [review/0426/v4_sf_pilot_early_analysis_20260426.md](../0426/v4_sf_pilot_early_analysis_20260426.md)
 
 ---
 
