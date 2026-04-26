@@ -217,12 +217,11 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 
 ## 6. 代码改动
 
-| 文件 | 改动 | 状态 | 优先级 |
-|------|------|------|--------|
-| config: `pet_flow_first_hop_224_v5_rollout_heavy.yaml | V5-main config | ✅ 已创建 | — |
-| `scripts/launch_v5_rollout_heavy.sh` | 自动读 ckpt step + 设 max_steps + 启动 | ❌ 待创建 | **P0** |
-| config: `pet_flow_first_hop_224_v5_rollout_heavy_1a.yaml` | 兜底 config (λ_roll=1.0) | ❌ 待创建 | P1 |
-| `train_first_hop.py` | **0 行改动** | ✅ 无需修改 | — |
+| 文件 | 改动 | 状态 |
+|------|------|------|
+| config: `pet_flow_first_hop_224_v5_rollout_heavy.yaml` | V5-main config | ✅ 已创建 |
+| `scripts/launch_v5_rollout_heavy.sh` | 自动读 ckpt step + 设 max_steps + 启动 | ✅ 已创建 |
+| `train_first_hop.py` | **0 行改动** | ✅ 无需修改 |
 
 §11 备选方向涉及的 config / 工具文件等到主实验跑完再看是否需要。
 

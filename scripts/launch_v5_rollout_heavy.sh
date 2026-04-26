@@ -97,5 +97,6 @@ echo "  注: best_val=${RESUME_VAL} 是 selection score（val_multi_objective）
 echo ""
 echo "=== 止损条件 ==="
 echo "  val_pair_total > 0.00005 @ +5K  → 立即停"
-echo "  val_select > baseline × 1.05 @ +10K → 止损"
+echo "  val_select 退化 > 5% vs 首次 [val] 行 @ +10K → 止损"
+echo "  (注: baseline 需从首次 [val] 行读取，RESUME_VAL=${RESUME_VAL} 是 selection score)"
 echo "  roll_frac < 20% → λ_roll 不够，考虑升级"
