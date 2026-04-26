@@ -106,17 +106,17 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 
 ---
 
-## 2. Go/No-Go 监控（极简版：1B 直跑）
+## 2. Go/No-Go 监控（V5-main）
 
 ### 2.1 相变早期警报（最高优先，0 成本）
 
 | 检查点 | val_pair_total 阈值 | 动作 |
 |--------|---------------------|------|
-| +5K | > 0.00005 | ⛔ **立即停 1B → 启动 1A 兜底** |
+| +5K | > 0.00005 | ⛔ **立即停 → 降 λ_roll 到 1.0 重试** |
 | +10K | > 0.00003 | ⚠️ 关注，+15K 再看 |
 | +25K | > 0.00002 | ⛔ 止损 |
 
-**理由**：V4 SF pilot 中 val_pair_total 从 0→0.000196 是相变的最早信号（比 val_select 提前 1-2 个 val 点）。1B 因为更激进，相变风险也更高，监控不能省。
+**理由**：V4 SF pilot 中 val_pair_total 从 0→0.000196 是相变的最早信号（比 val_select 提前 1-2 个 val 点）。V5-main 的 rollout 6× 改变了梯度平衡，需要监控。
 
 ### 2.2 效果监控（自顶向下版，看肉眼可见的改善）
 
@@ -126,7 +126,7 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 |--------|---------------------|------|
 | +10K | < baseline × 0.90（改善 ≥ 10%）| ✅ 方向对，继续跑 |
 | +10K | baseline × 0.95~1.00（改善 ≤ 5%）| 🟡 可能在 noise 内，继续观察到 +25K |
-| +10K | > baseline × 1.05 | ⛔ 止损，启动 1A 兜底 |
+| +10K | > baseline × 1.05 | ⛔ 止损 |
 | +25K | < baseline × 0.90 | ✅ 跑完 50K，full-val + Path A |
 | +25K | baseline × 0.95~1.05 | ❌ **方向不成立**——梯度强度不是瓶颈，进入 §11 备选 |
 | +50K | — | full-val eval + Path A redo on best.pt |
@@ -134,7 +134,7 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 **为什么用 10% 而非 5% 作为成功线**：
 - V4 SF best 也有 5%，但那是临界点偶然——5% 在 val 噪声边缘
 - 10% 才能脱离 noise，**肉眼可见**的改善
-- 如果 1B 跑到 +25K 还连 5% 都达不到，就是方向错了，不要再投资
+- 如果 V5-main 跑到 +25K 还连 5% 都达不到，就是方向错了，不要再投资
 
 ### 2.3 梯度占比监控（次要，仅做诊断）
 
@@ -164,7 +164,7 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 - hop0 PSNR 不退化 > 0.3 dB
 - 末端 ExpoGap 至少不变差
 
-如果 1B 50K 步后**连最低门槛都达不到**，说明 rollout 加权方向不成立，进入 §11 备选方向。
+如果 V5-main 50K 步后**连最低门槛都达不到**，说明 rollout 加权方向不成立，进入 §11 备选方向。
 
 ---
 
@@ -172,49 +172,45 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 
 只有跑出"看得过去"的结果之后才回头分析。Claims 按结果强度分级：
 
-| 1B 结果 | 允许的 claim |
+| V5-main 结果 | 允许的 claim |
 |------|-------------|
 | ✅ val_chain_normal_mse 改善 ≥ 10% **且** ExpoGap ↓ | "加权 rollout 直接对抗了 cascade exposure bias，方向被证实" |
 | ✅ 改善 ≥ 10% 但 ExpoGap 不变 | "权重提升改善了 chain 整体精度，机制留给 §10 事后分析" |
-| 🟡 改善 5-10% | "信号微弱，可能在 noise 边缘，跑 1A 兜底版做对照确认是真信号" |
+| 🟡 改善 5-10% | "信号微弱，可能在 noise 边缘，full-val 确认是否为真信号" |
 | ❌ 改善 < 5% 或持平 | "梯度强度不是当前瓶颈——方向证伪。进入 §11 备选" |
-| ❌ < baseline | "rollout 过强压制了 pair/image，启动 1A 兜底" |
-| ⛔ 触发 val_pair_total 相变 | "rollout 在当前 backbone 容量下也会触发盆地切换；启动 1A 兜底，同时把方向 4（EMA teacher）的优先级提升" |
+| ❌ < baseline | "rollout 过强压制了 pair/image，降 λ_roll 重试" |
+| ⛔ 触发 val_pair_total 相变 | "rollout 在当前 backbone 容量下也会触发盆地切换；降 λ_roll 重试，同时把方向 4（EMA teacher）的优先级提升" |
 
 ### 4.1 失败回退路径（简化版）
 
-| 1B 失败模式 | 下一步 |
-|------------|--------|
-| **+5K 相变** | 立刻停 1B → 启动 1A 兜底 → 如果 1A 也相变则跳方向 4 |
-| **+10K 性能涨 > 5%** | 停 1B → 启动 1A 兜底 |
-| **+25K 改善 < 5%** | 不停，跑到 50K 看 → 50K 仍 < 5% → 方向证伪，§11 |
-| **hop0 PSNR 退化 > 0.5 dB** | 停 1B → 启动 1A'（image_aux=0.08 而非 0.04）|
-| **梯度 NaN / loss 爆炸** | 立刻停 → step_weights 改为 [0.8, 1.0, 1.5, 2.5]（更平）|
+| V5-main 失败模式 | 下一步 |
+|-----------------|--------|
+| **+5K 相变** | 立刻停 → 降 λ_roll 到 1.0 重试 |
+| **+10K 退化 > 5%** | 停 → 降 λ_roll 到 1.0 重试 |
+| **+25K 改善 < 3%** | 跑到 50K 看 → 仍 < 3% → 进入 §11 备选方向 |
+| **hop0 PSNR 退化 > 0.5 dB** | 停 → 恢复 image_aux=0.12 重试 |
+| **梯度 NaN / loss 爆炸** | 立刻停 → step_weights 改为 [1.0, 1.0, 1.0, 1.0]（均匀）|
 
 ---
 
-## 5. 时间线（GPU 数量充足）
-
-**资源说明**：GPU 数量不是约束，**单卡显存才是约束**。所有实验保持 V3 同样的 batch / image size。
-
-### GPU 分配（2 卡主线 + 1 卡备用）
+## 5. 时间线
 
 | GPU | 任务 |
 |-----|------|
-| GPU-0 | **V5-1B 主实验**（rollout λ=2.0, 50K steps, from step 86800） |
-| GPU-1 | **Path A redo on step 86800 ckpt**（一次性，~2h，得 ExpoGap_86800）→ 完成后**待命**接管 1A 兜底 |
+| GPU-0 | **V5-main**（rollout λ=1.5, image_aux=0.08, 50K steps, from step 86800） |
+| GPU-1 | **Path A redo on step 86800 ckpt**（一次性，~2h）→ 完成后待命 |
 | GPU-2 | **200K v3 继续**（如未完成）→ 完成后待命 |
 
 ### 时间线
 
 | Day | GPU-0 | GPU-1 | 产出 |
 |-----|-------|-------|------|
-| 0 AM | 准备 1B config + launch script | Path A redo on 86800 ckpt | ExpoGap_86800 baseline |
-| 0 PM | **V5-1B 启动** | 待命 | 实验运行 |
-| 1 AM | +5K 相变检查 | 视情况接管 1A | 第一关 go/no-go |
-| 1 PM | +10K 效果检查 | — | **关键决策点：是否进入备选方向** |
-| 2 | +25K 效果检查 | — | 第二关 go/no-go |
-| 3 | +50K 完成 + full-val | Path A redo on 1B best | 最终结果 |
+| 0 AM | V5-main config + script 已就绪 | Path A redo on 86800 ckpt | ExpoGap_86800 baseline |
+| 0 PM | **V5-main 启动** | 待命 | 实验运行 |
+| 1 AM | +5K 相变检查 | — | 第一关 go/no-go |
+| 1 PM | +10K 效果检查 | — | 第二关 |
+| 2 | +25K 效果检查 | — | 第三关 |
+| 3 | +50K 完成 + full-val | Path A redo on V5-main best | 最终结果 |
 | 4 | 事后分析（§10）/ 备选方向决策 | — | 决策报告 |
 
 ---
@@ -223,9 +219,9 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 
 | 文件 | 改动 | 状态 | 优先级 |
 |------|------|------|--------|
-| config: `pet_flow_first_hop_224_v5_rollout_heavy_1b.yaml` | 1B 主实验 config | ❌ 待创建 | **P0** |
+| config: `pet_flow_first_hop_224_v5_rollout_heavy.yaml | V5-main config | ✅ 已创建 | — |
 | `scripts/launch_v5_rollout_heavy.sh` | 自动读 ckpt step + 设 max_steps + 启动 | ❌ 待创建 | **P0** |
-| config: `pet_flow_first_hop_224_v5_rollout_heavy_1a.yaml` | 1A 兜底 config | ❌ 待创建 | P1 |
+| config: `pet_flow_first_hop_224_v5_rollout_heavy_1a.yaml` | 兜底 config (λ_roll=1.0) | ❌ 待创建 | P1 |
 | `train_first_hop.py` | **0 行改动** | ✅ 无需修改 | — |
 
 §11 备选方向涉及的 config / 工具文件等到主实验跑完再看是否需要。
@@ -236,10 +232,10 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 
 | 风险 | 缓解 |
 |------|------|
-| 1B 触发相变（val_pair_total 跳变） | +5K 步即检查，立即停跳 1A 兜底 |
-| hop0 像素退化（image_aux ÷3 太狠） | hop0 PSNR 独立监控，回退到 1A'（image_aux=0.08）|
-| pair_loss 被压死（roll_frac > 60%） | pair_frac ≥ 2% 底线，低于即跑 1A 兜底 |
-| step_weights 末端 4× 太陡 → 末端 hop 过拟合 | val_chain_d20_mse 独立监控；触发回退到 [0.8, 1.0, 1.5, 2.5] |
+| V5-main 触发相变（val_pair_total 跳变） | +5K 步即检查，立即停，降 λ_roll 重试 |
+| hop0 像素退化（image_aux ÷1.5） | hop0 PSNR 独立监控，恢复 image_aux=0.12 重试
+| pair_loss 被压死（roll_frac > 60%） | pair_frac ≥ 2% 底线，低于即降 λ_roll |
+| step_weights 末端过拟合 | val_chain_d20_mse 独立监控；触发回退到 [1.0, 1.0, 1.0, 1.0]（均匀） |
 | 86800 不是最强起点 | 直接用 V3 best.pt step 86800，不纠结；如有 final 200K best.pt 优先用 |
 | 50K 步全部跑完仍持平 | 进入 §11 备选方向，不再投资 rollout 加权路线 |
 
@@ -253,7 +249,7 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 4. **SF 相关功能保持 disabled**
 5. **baseline 必须用同 ckpt 重算**：Path A 的 ExpoGap_86800 不能直接套旧 6.32 dB
 6. **失败回退路径必须预先想好**：见 §4.1
-7. **不做无用功的对照实验阻塞主实验**：B4/B5/B1/方向 5 都是论文补强证据，不阻塞 1B 启动
+7. **不做无用功的对照实验阻塞主实验**：B4/B5/B1/方向 5 都是论文补强证据，不阻塞 V5-main 启动
 
 ---
 
@@ -265,33 +261,33 @@ V5 Σw = 0.80+1.00+1.50+2.50 = 5.80
 - 不开 gradient checkpointing 之外的额外内存优化（避免引入未知数）
 
 利用 GPU 数量充足的优势：
-- **3 卡并行**（§5）：1A 主实验 + 方向 5 对照 + 待命回退卡
+- **3 卡并行**（§5）：V5-main + Path A + 待命卡
 - 任何回退实验立即在待命卡上启动，不打断主实验
 - B5 参数 L2 测量、Path A redo 这类一次性任务在 GPU-1 完成，不占主实验
 
 ---
 
-## 10. 事后分析框架（仅在 1B 跑出"看得过去"的结果后启动）
+## 10. 事后分析框架（仅在 V5-main 跑出"看得过去"的结果后启动）
 
-> 自顶向下原则：**先有结果，再分析机制**。如果 1B 50K 步后没拿到 ≥ 5% 改善，下面所有事后分析都不需要做——因为方向已被证伪。
+> 自顶向下原则：**先有结果，再分析机制**。如果 V5-main 50K 步后没拿到 ≥ 5% 改善，下面所有事后分析都不需要做——因为方向已被证伪。
 
-### 10.1 如果 1B 成功（≥ 10% 改善）
+### 10.1 如果 V5-main 成功（≥ 10% 改善）
 
 需要回答：
 1. **改善来自哪里**：roll_frac 占比变化、step_weights 末端加重、image_aux 降低，三者各自贡献多少？
-   - 做法：跑 ablation 系列（1B-no-stepweights / 1B-image_aux=0.08 / 1B-rollout=1.0）
-2. **是否 ExpoGap 直接缓解**：跑 Path A on 1B best.pt，对比 ExpoGap_86800
+   - 做法：跑 ablation 系列（V5-no-stepweights / V5-image-restore / V5-rollout-1.0）
+2. **是否 ExpoGap 直接缓解**：跑 Path A on V5-main best.pt，对比 ExpoGap_86800
 3. **机制论证**：补完 SF vs rollout 5 维对比表（见 §10.4）作为论文章节
 4. **可推广性**：在更大 scale（如 224→256）或更深 chain（4→6 hops）上是否仍成立
 
-### 10.2 如果 1B 性能持平（梯度强度不是瓶颈）
+### 10.2 如果 V5-main 性能持平（梯度强度不是瓶颈）
 
 需要回答：
 1. **真正瓶颈在哪**：是 backbone 容量？数据多样性？loss 形式？
 2. **进入 §11 备选方向决策**：方向 4（EMA teacher）/ 方向 5（结构改动）/ 方向 6（数据增强）
 3. 为论文留下 negative result：rollout 加权方向已被实验证伪，节省同行重复
 
-### 10.3 如果 1B 触发相变
+### 10.3 如果 V5-main 触发相变
 
 需要回答：
 1. 是否同 V4 SF 量级（B5 参数 L2 距离）
@@ -316,19 +312,19 @@ V4 Finding D 揭示了"自洽循环 → 参数被推出 GT 盆地"的相变机�
 
 | 任务 | 描述 | 何时做 |
 |------|------|--------|
-| B4 | 核对 SF + rollout 的 stop-grad 状态（5 min 代码审查） | 1B +10K 检查空隙 |
-| B5 | 算 V3 正常训练相邻 4K 步参数 L2 距离 → 给"正常移动幅度"baseline | 1B +25K 检查空隙 |
-| B1 | 算 baseline val 自然波动 std → 校准 5%/10% 阈值 | 1B +5K 后顺手做 |
+| B4 | 核对 SF + rollout 的 stop-grad 状态（5 min 代码审查） | V5-main +10K 检查空隙 |
+| B5 | 算 V3 正常训练相邻 4K 步参数 L2 距离 → 给"正常移动幅度"baseline | V5-main +25K 检查空隙 |
+| B1 | 算 baseline val 自然波动 std → 校准 5%/10% 阈值 | V5-main +5K 后顺手做 |
 
 这些任务**不阻塞主实验**，只是用空闲时间补充诊断证据，方便事后写论文或做决策。
 
 ---
 
-## 11. 备选方向（仅在 1B 失败时考虑）
+## 11. 备选方向（仅在 V5-main 失败时考虑）
 
-### 11.1 方向 4：EMA Teacher Backbone（如 1B 触发相变）
+### 11.1 方向 4：EMA Teacher Backbone（如 V5-main 触发相变）
 
-**触发条件**：1B 触发 val_pair_total 相变 + B5 确认参数移动是同款机制。
+**触发条件**：V5-main 触发 val_pair_total 相变 + B5 确认参数移动是同款机制。
 
 #### 设计
 维护一个 EMA backbone 作为独立 teacher：
@@ -346,9 +342,9 @@ V4 Finding D 揭示了"自洽循环 → 参数被推出 GT 盆地"的相变机�
 - ~50 行代码（EMA update hook + teacher forward 替换）
 - 新 config 项 `ema_teacher: { enabled, beta, start_step }`
 
-### 11.2 方向 5：SF 极保守对照（如 1B 持平且想保留 SF 选项）
+### 11.2 方向 5：SF 极保守对照（如 V5-main 持平且想保留 SF 选项）
 
-**触发条件**：1B 持平（不是相变，是真没改善）+ 想确认 SF 是否还有未来。
+**触发条件**：V5-main 持平（不是相变，是真没改善）+ 想确认 SF 是否还有未来。
 
 ```yaml
 # pet_flow_first_hop_224_v5_sf_minimal_control.yaml
@@ -369,7 +365,7 @@ image_aux: { lambda_start: 0.12 }
 - 跳变 → SF 方向彻底证伪
 - 不跳变 → 方向 4 EMA teacher 优先级提升
 
-### 11.3 方向 6：监督形式改动（如 1B 持平且想换思路）
+### 11.3 方向 6：监督形式改动（如 V5-main 持平且想换思路）
 
 不再调权重，改 loss 形式：
 - pair_loss 从 endpoint MSE → multi-step velocity matching
