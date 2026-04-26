@@ -89,6 +89,7 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 - V4 best @ α≈0.10: 0.000538
 - **相对改善 5.1%**（绝对值 −0.000029）
 - 全部四档 chain MSE 都改善：d20 −10.7%, d10 −8.8%, d4 −5.3%, normal −2.9%
+- **⚠️ 反预期信号**：改善幅度 d20 > d10 > d4 > normal，但 SF 机制的预期是**末端 hop 改善最多**（SF 主要修正 chain 后端的 exposure bias）。当前观察反而是链头改善最多、链尾改善最少——这与"d20 在 V4 weighting 下被降权后绝对值变小、相对波动放大"的 noise 解释一致，**进一步降低信号可信度**。
 - **⚠️ 待验证**：α=0 区间（step 87200-91800）的 val_chain_normal_mse 自然波动范围未测量。如果 baseline 在纯 GT 区间的波动 ≥ 0.000005，则 0.000175→0.000170 可能在 noise 内。**需列出 α=0 区间全部 val 点并计算 std 后才能判断**
 
 **Finding B — α ≥ 0.15 后 val 在当前超参下进入震荡式恶化**
@@ -98,10 +99,12 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 - **⚠️ 关键观察**：α=0.30（val=0.000654）优于 α=0.22（val=0.001025）——**恶化模式是震荡而非单调**。如果是"SF 损失形式错误"，应当看到单调恶化；震荡更可能指向**优化不稳**（ramp 太陡 / LR 没跟上 / rolling val 噪声）
 - 与 V3 SF run 的"瞬间冲击"不同，V4 是"渐进+震荡"——**两者不是同一种失败模式**
 
-**Finding C — `val_pair_total` 在 step 93200 出现跳变（待确认是否为定义效应）**
-- step ≤ 92800：`val_pair_total = 0.000000`
-- step 93200 起：跳到 0.0002 量级并保持
-- **⚠️ 待确认**：如果 val 阶段也执行了 `compute_self_forcing_z_src`，则 α=0 时 `z_src_sf = z_src_gt`，pair loss 计算结果与无 SF 时完全相同，val_pair_total ≡ 0 是**定义恒等式**。跳变只反映 α 开始非零后 val pair 输入被偏移，**不能作为"模型分布漂移"的独立证据**
+**Finding C — `val_pair_total` 在 step 93200 出现跳变（已确认：是真实模型退化）**
+- step 87200：`val_pair_total = 0.000001`（浮点精度，本质为 0）
+- step 91200：`val_pair_total = 0.000000`
+- step 93200 起：跳到 0.000196 量级并保持
+- **✅ 已确认**（代码审查 `train_first_hop.py` line 870-878）：val 循环中 pair loss 直接用 `batch["z_src"]`（GT）计算，**不调用 `compute_self_forcing_z_src`**。val 时不走 SF 路径。因此 val_pair_total 的跳变是**模型参数被 SF 训练改变后，在 GT 输入上的 pair loss 真实恶化**——SF 训练确实把模型的 velocity 预测从 GT-optimal 推离了
+- 这**是**"模型被 SF 损害"的独立证据，与 val_select_score 恶化一致
 
 ### 4.3 sf_gap 震荡（待验证的观察，非诊断结论）
 
@@ -195,9 +198,10 @@ gap_norm = (z_src_pred - z_src_gt).abs().mean()  # 非归一化 L1
 1. ✅ 已完成：服务器 V4 SF pilot 提前终止
 2. ✅ 已完成：本报告归档 + reviewer critique 修正
 3. ⏳ **B1**：列出 α=0 区间全部 val 点，计算 baseline val std（不需 GPU）
-4. ⏳ **B2**：查代码确认 val_pair_total 是否含 α 因子（不需 GPU）
-5. ⏳ 准备 Rollout-Heavy config + launch script
-6. ⏳ 等 200K v3 完成 → 启动 Rollout-Heavy
+4. ✅ **B2**：已确认——val 循环不调用 SF，val_pair_total 是 GT 输入下的真实 pair loss。Finding C 的跳变是模型退化的独立证据
+5. ⏳ **B3**：计算 sf_gap 归一化版本 `sf_gap / sf_z_gt_norm`，按 hop 分组（不需 GPU，从 metrics_jsonl 读取）
+6. ⏳ 准备 Rollout-Heavy config + launch script
+7. ⏳ 等 200K v3 完成 → 启动 Rollout-Heavy
 
 ---
 
@@ -206,7 +210,7 @@ gap_norm = (z_src_pred - z_src_gt).abs().mean()  # 非归一化 L1
 - 训练步数：~8450 effective steps（86800 → 95250），SF 真正生效仅 ~3400 步
 - val 频率：每 400 步一次，覆盖 21 个 val 点
 - 单一 seed、单一 GPU，无 N=3 重复
-- **本报告结论的强度**：足以否决"继续按当前 v4 plan 跑完 50K"，但不足以发表"SF-pair 永远不行"的强声明；如需后者，需要至少 N=3 重复 + 多种超参网格
+- **本报告结论的强度**：足以暂停当前 v4 SF 配置（ramp=10K, α_end=1.0, LR=4e-5）的继续执行，但**不足以判死 SF-pair 方向**。归因（方法缺陷 vs 优化不稳）需 ablation 确认（见 §7 轨道 C）。如需发表强否定声明，需要至少 N=3 重复 + 多种超参网格
 
 ---
 
@@ -246,7 +250,9 @@ SF-pair 做的事情：把 pair_loss 的 GT 输入 `z_src` 换成模型在 rollo
 3. pair_loss 是**单跳**的——它不知道这个输入是 chain 的第几步产物，也不知道下游还有几跳需要这个输出
 4. 随着 alpha 上升，输入偏移越来越大，velocity 预测越来越偏，链式累积导致全面崩溃
 
-**本质上 SF-pair = input-side perturbation without correction signal**
+**一个可能的解释**：SF-pair = input-side perturbation without correction signal。
+
+> ⚠️ **强度声明**：这是当前数据下的**一种解释**，不是已被实验证伪的结论。震荡式（非单调）的失败模式同样可能由优化不稳（ramp 太陡 / LR 不匹配 / val 噪声）引起——参见 §6 H6。要把这条假设升级为"机制缺陷"，需要至少完成：(a) ramp_steps=30K + α_end=0.15 的窄带 ablation；(b) sf_gap 归一化版本验证。在两项之前，本节仅作为**方向选择的启发**，不作为否决 SF 路线的判决。
 
 ### 10.3 与 rollout_loss 的对比
 
@@ -258,7 +264,7 @@ SF-pair 做的事情：把 pair_loss 的 GT 输入 `z_src` 换成模型在 rollo
 | 链式校正 | ❌ 无 | ✅ 有（step_losses 加权求和） |
 | exposure bias 感知 | ❌ 不知道输入有误差 | ✅ 隐式知道（因为 z_curr 是预测值） |
 
-**rollout_loss 才是直接对抗 exposure bias 的正确工具**——它已经在链式预测上计算 loss，天然包含"从 noisy 输入出发也能到达 GT"的学习信号。
+**rollout_loss 是当前系统中最直接对抗 exposure bias 的已有工具**——它在链式预测上计算 loss，天然包含"从 noisy 输入出发也能到达 GT"的学习信号。（注意：这不等于说它一定能解决 exposure bias，只是它比 pair_loss + SF 更适合这个任务。）
 
 ### 10.4 为什么 rollout_loss 当前效果有限
 
@@ -282,27 +288,40 @@ img_frac  ≈ 80-90%   ← hop0 像素重建（与 exposure bias 无关）
 
 **核心思路**：不需要新 loss，不需要新机制——只需把已有的 rollout_loss 权重拉上去。
 
-**配置变化**：
+**⚠️ 教训应用**：V4 SF pilot 失败的核心教训是"单点跳一大步、无渐进 ablation"。本方向必须避免重蹈覆辙——**先做保守版验证、再决定是否激进**。
 
-| 参数 | 当前值 | 提议值 | 理由 |
+#### 1A — 保守版（第一步必跑）
+
+| 参数 | 当前值 | 保守值 | 倍数 |
 |------|--------|--------|------|
-| `rollout.lambda_start/end` | 0.25 | **2.0** (8×) | rollout 是唯一直接对抗 exposure bias 的 loss |
-| `image_aux.lambda_start/max` | 0.12 | **0.04** (降 3×) | 减少 image 对梯度的主导地位 |
-| `rollout.step_weights` | [1.0, 1.1, 1.2, 1.3] | 保持不变或微调 | 先验证权重拉升效果 |
+| `rollout.lambda_start/end` | 0.25 | **1.0** | 4× |
+| `image_aux.lambda_start/max` | 0.12 | **0.08** | ÷1.5 |
+| `rollout.step_weights` | [1.0, 1.1, 1.2, 1.3] | [0.5, 1.0, 2.0, 4.0] | 末端加重（详见方向 2） |
 
-**预期效果**：
-- `roll_frac` 从 7-15% → 40-60%
-- `img_frac` 从 80-90% → 20-30%
-- backbone 梯度将主要来自 chain prediction，而非 hop0 像素重建
+**为什么先跑保守版**：
+- image_aux 是 hop0 像素重建的**唯一稳定源**。直接降 3× 等于在另一个轴上重复 V4 SF 的错误：单超参一次性大跳。如果 hop0 像素崩，整个 chain 输入分布漂移，比 SF 失败更糟。
+- rollout 4× 已经能让 `roll_frac` 从 7-15% 提升到 ~30%，足以验证趋势。
+- 这一组**风险面最小、可验证性最强**。
 
-**风险**：
-- rollout_loss 过大可能压制 pair_loss → 单跳 velocity 精度下降
-- image_aux 降太低 → hop0 像素质量退化
-- **缓解**：监控 `pair_frac` 不低于 2%，`val_chain_d20_mse` 不恶化
+#### 1B — 激进版（仅当 1A 趋势正向后才跑）
+
+| 参数 | 1A 值 | 1B 值 |
+|------|-------|-------|
+| `rollout.lambda_start/end` | 1.0 | **2.0** (再 2×) |
+| `image_aux.lambda_start/max` | 0.08 | **0.04** (再 ÷2) |
+
+**门槛**：1A 在 25K 步内 `val_select` 改善 ≥ 3% 且 hop0 像素 PSNR 不退化 ≥ 0.3 dB → 才允许跑 1B。
+
+**预期效果（1A→1B 累积）**：
+- `roll_frac` 从 7-15% → 1A: ~30% → 1B: 40-60%
+- `img_frac` 从 80-90% → 1A: ~50% → 1B: 20-30%
+
+**核心风险**：
+- rollout_loss 过大压制 pair_loss → 单跳 velocity 精度下降（监控 `pair_frac` ≥ 2%）
+- image_aux 降太低 → hop0 像素质量退化（监控 hop0 PSNR）
+- **rollout step_weights 末端加重 → backbone 在末端 hop 上过拟合预测分布而非真实 velocity**（监控 `val_chain_d20_mse` 不恶化超过 5%）
 
 **代码改动**：0 行。纯 config。
-
-**验证成本**：~30h（50K 步 from 200K v3 best resume）。
 
 ### 方向 2：Hop-Weighted Rollout Loss（配合方向 1）
 
@@ -323,69 +342,77 @@ img_frac  ≈ 80-90%   ← hop0 像素重建（与 exposure bias 无关）
 
 **代码改动**：0 行。纯 config。
 
-### 方向 3：Rollout-Only Fine-tuning Phase（需少量代码改动）
+### 方向 3：Pair Loss 渐进归零（仅当方向 1B 仍不足时考虑）
 
-**核心思路**：pair_loss 是 exposure bias 的**根源**（88% 梯度来自 GT-only 训练）。在 200K 标准训练后，进入 Phase 2，**完全去掉 pair_loss**，只用 rollout_loss + image_aux 训练。
+**核心思路**：pair_loss 是 exposure bias 的**根源**（提供 ~88% 梯度但全部来自 GT 输入）。如果方向 1B 仍不能让 normal_mse 显著改善，可以进一步**渐进降低** pair_loss 权重，让 backbone 在更接近 chain prediction 分布上学习。
 
-**理由**：
-- 去掉 pair_loss 后，模型只在链式预测上学习，**从根源消除 exposure bias**
-- rollout_loss 的每一步 `step_loss = ||z_pred - z_gt||²` 本身就是单跳监督——只是输入是预测值而非 GT
-- image_aux 保留以稳定 hop0 的像素质量
+**⚠️ 不直接归零**：直接 `pair_sample_probs=[0,0,0,0]` 等于一次性切掉 88% 的梯度信号，剩 12%（rollout + image_aux）是否足以驱动 backbone 更新完全未知。这等于第三次重复 V4 SF 的"单点跳大步"错误。
 
-**风险**：
-- 没有 pair_loss 的单跳监督，模型可能"忘记" velocity 预测精度
-- 但 rollout 每步 loss 隐含了单跳监督——只是输入分布不同
-
-**实现方式**：
+**渐进 schedule**（仅当 1B 通过后启用）：
 
 ```yaml
-# 最简实现（0 代码改动）：
-transport:
-  pair_sample_probs: [0.0, 0.0, 0.0, 0.0]  # pair 不再采样
-# 或新增 flag：
-training:
-  pair_loss_enabled: false   # 需 ~5 行代码
+# Phase 3a (前 15K 步): pair_loss_weight 从 1.0 线性降到 0.5
+# Phase 3b (中 15K 步): pair_loss_weight 从 0.5 线性降到 0.25
+# Phase 3c (后 20K 步): pair_loss_weight 保持 0.25 或继续降到 0.1
+#
+# 每个 phase 末尾做 checkpoint，看 val 是否退化；退化则回滚到上一 phase 权重
 ```
 
-需确认 `pair_sample_probs = [0,0,0,0]` 在 dataloader 中是否会报错——如果不行，加一个 `pair_loss_weight: 0.0` 乘在 total_loss 中即可。
+**实现方式**：
+- 在 `train_first_hop.py` 中加 `pair_loss_weight = get_linear_schedule_value(...)` 包在 pair_loss 求和处
+- ~10 行代码改动
+- **不**改 `pair_sample_probs`（保持采样，只缩 loss）——这样 pair grad 还在但权重缩小，比直接断采样更稳
 
-**验证成本**：~30h（50K 步）。
+**Go/No-Go**：每 5K 步看 `val_chain_normal_mse` 是否劣于上一阶段 + 5%；劣化则回滚权重。
+
+**与方向 1B 的关系**：方向 3 不是替代品而是补充。先跑完 1B 的 50K 步看是否达到医生满意度；不够再考虑 3。
 
 ---
 
 ## 12. 综合实验计划
 
-### 第一优先：方向 1+2 组合（"Rollout-Heavy"）
+### 第一优先：方向 1A（"Rollout-Heavy 保守版"）
 
 ```yaml
-# 新 config: pet_flow_first_hop_224_v4_rollout_heavy.yaml
+# 新 config: pet_flow_first_hop_224_v4_rollout_heavy_1a.yaml
 # 改动 vs 200K v3 baseline:
 rollout:
-  lambda_start: 2.0      # 0.25 → 2.0 (8×)
-  lambda_end: 2.0
+  lambda_start: 1.0       # 0.25 → 1.0 (4×, 保守)
+  lambda_end: 1.0
   step_weights:
     - 0.5                 # hop0: 降低（无 exposure bias）
     - 1.0                 # hop1
     - 2.0                 # hop2
     - 4.0                 # hop3: 加重（exposure bias 最严重）
 image_aux:
-  lambda_start: 0.04      # 0.12 → 0.04 (降 3×)
-  lambda_max: 0.04
+  lambda_start: 0.08      # 0.12 → 0.08 (÷1.5, 保守)
+  lambda_max: 0.08
 # 其余所有参数与 200K v3 完全一致
-# self_forcing_pair: { enabled: false }  ← 明确关闭 SF
+self_forcing_pair: { enabled: false }   # 明确关闭 SF
 ```
 
 从 200K v3 best resume，跑 50K 步。
 
-**Go/No-Go 判定**：
-- +10K: 若 val_select_score > baseline × 1.20 → 止损
-- +25K: 若 val 趋势无改善 → 止损
-- +50K: full-val eval + Path A redo
+**Go/No-Go 判定**（双触发任一即止损，挂钩医生关心的 normal 档）：
 
-**成功标准**：
-- `val_select_score < baseline`（chain 整体改善）
-- Path A exposure_gap 下降 ≥ 10%（从 4.80 降到 ≤ 4.32 dB）
-- `val_chain_normal_mse` 改善 ≥ 5%（末端 hop 受益最大）
+| 检查点 | val_select 阈值 | val_chain_normal_mse 阈值 | hop0 PSNR 阈值 |
+|--------|----------------|---------------------------|---------------|
+| +10K | > baseline × 1.05 → 止损 | > baseline × 1.10 → 止损 | < baseline − 0.5 dB → 止损 |
+| +25K | 无改善（≥ baseline）→ 止损 | 无改善（≥ baseline × 0.97）→ 止损 | < baseline − 0.3 dB → 止损 |
+| +50K | full-val eval + Path A redo | — | — |
+
+**为什么阈值这么严**：之前 V4 SF 跑了 8400 步才看到 val_select 涨 146%，到那时 GPU 时间已经浪费。新阈值在 10K 步就强制 review，避免重复同样的浪费。
+
+**1A → 1B 升级条件**（必须全部满足；所有"步"均指 resume 后的新增步数，非绝对 step）：
+- resume 后 +25K 步时 `val_select` 已改善 ≥ 3%（相对 resume 起点 baseline）
+- resume 后 +25K 步时 `val_chain_normal_mse` 已改善 ≥ 2%
+- hop0 PSNR 不退化超过 0.3 dB
+- `pair_frac` 仍 ≥ 2%（pair 监督未被压死）
+
+**成功标准（针对医生需求）**：
+- 第一目标：`val_chain_normal_mse` 改善 ≥ 5%（normal 档是医生看到的输出）
+- 第二目标：Path A exposure_gap 末端 hop（D4→NORMAL）下降 ≥ 10%（从 6.32 dB 降到 ≤ 5.69 dB）
+- 第三目标：`val_select_score < baseline`（chain 整体改善，避免单档优化拆东墙补西墙）
 
 ### 第二优先：方向 3（"Rollout-Only Phase"）
 
@@ -402,13 +429,21 @@ image_aux:
 
 ---
 
-## 13. 为什么"加大 rollout 权重"值得乐观
+## 13. 为什么"加大 rollout 权重"作为下一个尝试方向
+
+> ⚠️ **强度声明**：以下是**选择该方向的依据**，不是预测它会成功的乐观陈述。研究里的"乐观"是放弃 ablation 的借口。Go/No-Go 阈值（§12）一旦触发就止损，不要因为这一节的"理由"拖延决策。
 
 1. **Rollout loss 已经在做正确的事**——它在纯预测链上计算 loss（alpha=1.0），每步都有 GT 监督
 2. **它只是被 image_aux 淹没了**——80-90% 梯度去做像素重建，对 transport chain 帮助有限
-3. **v3 C'（λ_roll=1.0）的梯度特征**：虽然只跑了 3600 步，但 `grad_backbone` 是 SF 版的 2.4×——说明加大 rollout 确实大幅改变了梯度信号
+3. **v3 C'（λ_roll=1.0）的梯度特征**：虽然只跑了 3600 步、单 seed，但 `grad_backbone` 是 SF 版的 2.4×——说明加大 rollout 确实**改变了梯度信号**（注意：这只支持"权重生效"，**不**支持"会带来 val 改善"）
 4. **Path A diagnostic 的原始建议**就是 "inspect rollout hyperparameters (alpha ramp, step weights) and the mid-chain contribution"——我们之前跳过了这个最简单的建议直接去做 SF
 5. **Occam's Razor**：最简单的干预（调权重）应该先于复杂的新机制（SF、EMA teacher 等）
+6. **失败也有诊断价值**：如果方向 1A 在 25K 步内仍无改善，则可以排除"梯度信号不足"假设，转向更激进的方向 1B 或结构性改动（multi-scale decoder、chain-aware backbone）——这本身就是有价值的信息
+
+**反方向考量（必须留意）**：
+- 第 3 条的 3600 步样本量极小，不能据此预测 50K 步的趋势
+- 第 5 条的 Occam 原则只说"先尝试简单方案"，不说"简单方案会成功"
+- step_weights 末端加重 [0.5, 1.0, 2.0, 4.0] 是基于 §10.1 ExpoGap² 比例的**理论推导**，未经实验验证——可能存在 backbone 在末端 hop 过拟合预测分布的风险
 
 ---
 
