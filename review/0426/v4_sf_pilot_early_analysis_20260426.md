@@ -18,9 +18,9 @@
 | V3.1 P1 修复（resume_relative SF schedule）| ✅ **生效** | step 86850–91800 共 5000 步内 `sf_alpha=0.000`，从 step 91850 开始 ramp |
 | V3.1 P2 修复（stdout 暴露 sf_alpha/sf_gap）| ✅ **生效** | 每行 `[train]` 末尾均含 `sf_alpha=… sf_gap=…` |
 | SF 在低 alpha（≤0.10）阶段是否有收益 | 🟡 **待验证** | V4 度量下：V3 基线 0.000567 → SF α≈0.10 时 best 0.000538（−5.1%）；**需先测 baseline val 波动范围确认信号真实性** |
-| SF 在中高 alpha（≥0.15）阶段是否仍正向 | ❌ **当前超参下失效** | val_select 从 0.000538 劣化至 0.001323，但α=0.30 优于 α=0.22（**震荡而非单调**，提示优化不稳而非损失方向错误） |
+| SF 在中高 alpha（≥0.15）阶段是否仍正向 | ❌ **当前超参下相变型失效** | val_select 从 0.000538 劣化至 0.001323；**val_pair_total（GT 输入下）从 0 跳变到 0.000196**——模型被永久推离 GT-optimal manifold。α=0.30 vs α=0.22 的 select 震荡不再能用"优化不稳"完全解释（详见 §10.5 Finding D） |
 | sf_gap 是否随训练收敛 | 🟡 **待验证** | 0.002–0.007 区间震荡；sf_gap = 非归一化 L1（`(z_pred-z_gt).abs().mean()`），**该指标本身的信息量存疑** |
-| **总体判断** | ⚠️ **当前超参配置下 SF-pair 失效，但归因尚不充分——是优化不稳还是损失形式错误需 ablation 确认** | 恶化模式呈震荡而非单调，单 seed 单超参不足以判死方向 |
+| **总体判断** | ⚠️ **当前超参配置下 SF-pair 失效，且失效是相变型 + 模型对 GT 的响应被永久推坏（不仅是 SF 路径下表现差）。归因偏向"损失形式与 backbone 容量不匹配"，但仍需 ablation 排除 ramp/LR 因素** | val_pair_total 在 GT 输入下持续高位 + 相变型跳变 → 见 §10.5 |
 
 ---
 
@@ -90,6 +90,7 @@ V4 pilot 是从 V3 best.pt（step=86800）resume 的，因此 V4 日志里 step=
 - **相对改善 5.1%**（绝对值 −0.000029）
 - 全部四档 chain MSE 都改善：d20 −10.7%, d10 −8.8%, d4 −5.3%, normal −2.9%
 - **⚠️ 反预期信号**：改善幅度 d20 > d10 > d4 > normal，但 SF 机制的预期是**末端 hop 改善最多**（SF 主要修正 chain 后端的 exposure bias）。当前观察反而是链头改善最多、链尾改善最少——这与"d20 在 V4 weighting 下被降权后绝对值变小、相对波动放大"的 noise 解释一致，**进一步降低信号可信度**。
+- **⚠️ 临界点位置**：α≈0.10 这个 best 出现在**模型即将相变崩溃但还没崩**的临界点（详见 §10.5 Finding D）——4 个 val 点之后（93200，α≈0.14）val_pair_total 就跳到 0.000196。这意味着即使 5% 改善是真信号，它也**不在一个稳定的工作区**，无法作为长训目标
 - **⚠️ 待验证**：α=0 区间（step 87200-91800）的 val_chain_normal_mse 自然波动范围未测量。如果 baseline 在纯 GT 区间的波动 ≥ 0.000005，则 0.000175→0.000170 可能在 noise 内。**需列出 α=0 区间全部 val 点并计算 std 后才能判断**
 
 **Finding B — α ≥ 0.15 后 val 在当前超参下进入震荡式恶化**
@@ -144,10 +145,11 @@ gap_norm = (z_src_pred - z_src_gt).abs().mean()  # 非归一化 L1
 |---|---|---|
 | H1：V3 SF 失败仅因为 schedule bug | ❌ **被证伪** | V4 修复后仍在 α≥0.15 失败 |
 | H2：低 alpha 的 SF 有微小正收益 | 🟡 **待验证** | 5% 改善观察到，但需先测 baseline val 波动 std |
-| H3：SF-pair loss 形式本身设计有缺陷 | 🟡 **待排查** | α 高时恶化，但**震荡非单调**→ 可能是优化不稳而非损失方向错；sf_gap 指标本身未验证 |
+| H3：SF-pair loss 形式本身设计有缺陷 | ⚠️ **中度支持**（升级） | (a) val_pair_total 在 GT 输入下永久恶化（Finding C/D）；(b) 相变型而非渐进型失败；(c) 末端 hop 改善 < 链头改善（与 SF 预期相反）。三条独立证据都指向 SF 信号方向问题，不只是优化超参 |
 | H4：sf_gap 度量本身有问题 | 🟡 **很可能** | 非归一化 L1 + hop0 稀释；需 per-hop 归一化版本 |
 | H5：transport gap 不应通过"换 z_src"解决 | 🟡 **开放** | 理论上成立，但实测震荡模式不排除优化问题 |
-| **H6：当前 SF 配方的 ramp 太陡 / LR 不匹配** | 🟡 **新增假设** | α=0.30 优于 α=0.22 的非单调性直接支持此假设 |
+| **H6：当前 SF 配方的 ramp 太陡 / LR 不匹配** | 🟡 **部分支持，但不充分** | α=0.30 vs α=0.22 的 select 震荡支持 H6；但 val_pair_total 在 α=0.30 仍是 0.000155（高位），如果只是 ramp/LR 问题应该看到 GT 性能恢复——它没有。H6 解释 select 震荡，**不解释** GT 性能永久损失 |
+| **H7（新增）：α 跨过临界点后参数进入对 GT 也次优的盆地（相变型 catastrophic forgetting）** | ⚠️ **中度支持** | val_pair_total 从 0 → 0.000196 是断崖式跳变；后续 α 上升到 0.30 时 val_pair_total 仍在 0.000155-0.000295 高位，**没有任何回到 0 的迹象** → 优化已进入新的局部盆地 |
 
 ---
 
@@ -200,8 +202,10 @@ gap_norm = (z_src_pred - z_src_gt).abs().mean()  # 非归一化 L1
 3. ⏳ **B1**：列出 α=0 区间全部 val 点，计算 baseline val std（不需 GPU）
 4. ✅ **B2**：已确认——val 循环不调用 SF，val_pair_total 是 GT 输入下的真实 pair loss。Finding C 的跳变是模型退化的独立证据
 5. ⏳ **B3**：计算 sf_gap 归一化版本 `sf_gap / sf_z_gt_norm`，按 hop 分组（不需 GPU，从 metrics_jsonl 读取）
-6. ⏳ 准备 Rollout-Heavy config + launch script
-7. ⏳ 等 200K v3 完成 → 启动 Rollout-Heavy
+6. ⏳ **B4（新增，最高优先）**：核对 `compute_self_forcing_z_src` 中 `z_src_pred` 是否带 `.detach()`——决定 D.4 第 4 条"自洽循环"假设强度（不需 GPU，5 分钟代码审查）
+7. ⏳ **B5（新增）**：取 step 91200 vs 93200 的 ckpt 算 backbone 参数 L2 距离，对比 V3 正常训练的相邻 4K 步参数移动幅度（需 GPU 但只跑一次 diff）
+8. ⏳ 准备 Rollout-Heavy 1A config + launch script（需要严格 Go/No-Go 监控 val_pair_total on GT inputs）
+9. ⏳ 等 200K v3 完成 → 启动 Rollout-Heavy 1A
 
 ---
 
@@ -252,7 +256,7 @@ SF-pair 做的事情：把 pair_loss 的 GT 输入 `z_src` 换成模型在 rollo
 
 **一个可能的解释**：SF-pair = input-side perturbation without correction signal。
 
-> ⚠️ **强度声明**：这是当前数据下的**一种解释**，不是已被实验证伪的结论。震荡式（非单调）的失败模式同样可能由优化不稳（ramp 太陡 / LR 不匹配 / val 噪声）引起——参见 §6 H6。要把这条假设升级为"机制缺陷"，需要至少完成：(a) ramp_steps=30K + α_end=0.15 的窄带 ablation；(b) sf_gap 归一化版本验证。在两项之前，本节仅作为**方向选择的启发**，不作为否决 SF 路线的判决。
+> ⚠️ **强度声明（更新）**：本节作为机制假设的**支持度从"待验证"升级到"中度支持"**——基于 §10.5 Finding D 的相变型失败 + GT 性能永久损失证据。但仍**不构成判决**：要把"机制缺陷"上升为"已证实"，仍需 (a) ramp_steps=30K + α_end=0.15 的窄带 ablation 排除优化因素；(b) sf_gap 归一化版本验证。当前置信度：**SF-pair 在当前 backbone 容量 / 训练 schedule 下不可用**——是否对所有 backbone / schedule 都不可用，仍开放。
 
 ### 10.3 与 rollout_loss 的对比
 
@@ -279,6 +283,112 @@ img_frac  ≈ 80-90%   ← hop0 像素重建（与 exposure bias 无关）
 **image_aux 占了 80-90% 的梯度**，它在做 hop0 的像素级重建。这对图像质量有帮助，但**对 transport chain 的 exposure bias 完全没有帮助**——它只影响 hop0，而 exposure bias 从 hop1 开始累积。
 
 当前 rollout λ=0.25 相对 image_aux λ=0.12 看似不低，但因为 rollout_loss 的绝对值远小于 image_aux_loss（latent MSE ~0.001 vs pixel loss ~0.005-0.015），实际加权后 rollout 贡献被严重压缩。
+
+---
+
+## 10.5 Finding D：相变型失败 + GT 性能永久损失（深度机制分析）
+
+### D.1 关键观察：失败是相变而非渐进
+
+把 Finding C 升级（val 不走 SF 路径）+ 全表 val_pair_total 重新看：
+
+| Step | sf_alpha | val_select | val_pair_total（GT 输入下）| 训练后 SF 累积步数 |
+|---|---|---|---|---|
+| 87200 | 0.000 | 0.000567 | 0.000001 | 0 |
+| 91200 | 0.000 | 0.000584 | 0.000000 | 0 |
+| 92800 | 0.105 | **0.000538** ⭐ | **0.000000** | 950 |
+| 93200 | 0.140 | 0.000551 | **0.000196** ← 跳变 | 1350 |
+| 93600 | 0.180 | 0.000939 | 0.000210 | 1750 |
+| 94000 | 0.220 | 0.001025 | 0.000203 | 2150 |
+| 94400 | 0.260 | 0.000744 | 0.000199 | 2550 |
+| 94800 | 0.300 | 0.000654 | 0.000155 | 2950 |
+| 95200 | 0.335 | 0.001323 | 0.000295 | 3350 |
+
+**两个独立现象**：
+
+1. **相变**：950 步 SF 训练（α 0→0.105）val_pair_total 完全不动；再 400 步（α 0.105→0.140）就跳变 200,000×。这不是连续函数。
+
+2. **永久损失**：α=0.30 时 val_select 从 0.001025 部分恢复到 0.000654，但 val_pair_total 仍在 0.000155 高位（baseline 是 0），**模型对 GT 输入的 pair 性能没有恢复**。如果只是优化不稳，应该看到对称的恢复。
+
+### D.2 机制猜想：参数空间盆地切换
+
+**假设**：DiT-S backbone 在 V3 200K 训练后位于一个**狭窄的 GT-optimal 盆地**。这个盆地有两个特征：
+- 入口很窄：需要长时间 GT-only 训练才能进入（解释 V3 200K 才达到的 0.000567 baseline）
+- 出口很易：任何持续的非 GT 输入扰动都会把参数推出盆地
+
+**SF 训练的实际效果**：
+- α ≤ 0.10：扰动幅度 + SF loss 梯度的合力还在盆地内可承受范围（参数有微小漂移但仍在盆地内）→ val_pair_total 保持 0
+- α 越过 ~0.12 临界点：扰动幅度超过盆地宽度，参数被推出 → val_pair_total 断崖跳变到 0.0002 量级
+- 出去后参数进入一个**对 SF-perturbed 输入更优、对 GT 输入次优**的新盆地
+- α 继续上升：参数在新盆地内做局部调整（α=0.30 比 α=0.22 select 更好），但**回不到原盆地**（val_pair_total 始终 0.000155+）
+
+**这与 catastrophic forgetting 的机制类似**，但触发因素不是任务切换而是**输入分布漂移**。
+
+### D.3 为什么 backbone 容量也是因素
+
+DiT-S 的容量决定了它**能否同时**对 GT 和 SF-perturbed 两种输入分布都给出好的 velocity 预测。当前观察到的相变暗示：
+
+- DiT-S 的 velocity 预测函数没有足够的"分布感知"自由度
+- 它只能选择一种"最优"输入分布去拟合
+- α 上升迫使它从"GT-optimal"切换到"SF-perturbed-optimal"
+- 切换是离散的（盆地之间没有平滑过渡）
+
+**这条假设的可证伪点**：
+- 如果换更大 backbone（DiT-B / DiT-L），相变临界点应该上移甚至消失（更大模型有更多容量同时拟合两种分布）
+- 如果加 conditioning 信号（告诉 backbone "当前输入是 GT 还是 predicted"），相变也应该消失
+- 这两条都是未来 ablation 的设计依据
+
+### D.4 与 Self-Forcing 原始论文场景的差异
+
+Self-Forcing（视频生成 / autoregressive LM 等）原始场景的成功依赖于：
+1. **大模型容量**（数十亿参数级），能同时处理 teacher-forced 和 self-generated 输入
+2. **stop-gradient on z_pred**：z_src_pred 不参与梯度，只作为 input；当前实现是否有 stop-grad 需要核对（见 D.5）
+3. **SF loss 是分布匹配（KL / MMD）而非 MSE**：MSE 对 outlier 敏感，input 偏移 + MSE 容易把模型拉偏
+4. **逐步 student-teacher 结构**：teacher 提供平滑参考，避免参数空间断裂
+
+我们当前的 SF-pair 实现：
+- ✅ backbone 小（DiT-S 几千万参数）
+- ❓ stop-grad 状态待核对
+- ❌ 用 MSE/endpoint loss 不是分布匹配
+- ❌ 没有独立 teacher，z_src_pred 来自同一个被训练的模型 → **自洽循环**：模型预测错 → SF 输入错 → 梯度把模型推得更错
+
+**第 4 条是关键**：当 z_src_pred 来自正在训练的模型本身，没有独立的"对照系"。早期模型预测尚未崩溃时这是温和的正则化；一旦预测开始偏离，**正反馈循环**会把模型快速推出盆地——这正好对应观察到的相变行为。
+
+### D.5 必须核对的代码细节（B3 之前先做）
+
+新增到验证清单：
+
+**B4. 核对 SF 实现中的 stop-grad 状态**
+- 查 `compute_self_forcing_z_src` 中 `z_src_pred` 是否带 `.detach()`
+- 如果**没有 detach** → SF loss 的梯度通过 z_src_pred 反向传播到模型本身 → 更强的自洽循环 → 解释为什么相变这么剧烈
+- 如果**有 detach** → 输入只是 noisy 但不形成显式自洽循环 → 失败更可能是分布偏移本身造成
+
+**B5. 比较 SF 训练前后模型参数变化幅度**
+- 取 step 91200（α=0）和 step 93200（α=0.14, 跳变后）的 ckpt，计算 backbone 参数 L2 距离
+- 与 V3 200K 训练中相邻 4000 步的参数距离对比
+- 如果 SF 训练带来的参数移动**远大于**正常训练同步数 → 直接证据支持"参数被推出盆地"假设
+
+### D.6 对方向选择的修正含义
+
+**对方向 1（Rollout-Heavy）的影响**：
+- rollout_loss 也涉及"模型在自己预测的 z_curr 上学习"——理论上有同样的盆地切换风险
+- 但 rollout 有几个保护因素：
+  - 每步都有 GT 监督（`step_loss = ||z_pred - z_gt||²`），不是只看下游
+  - rollout 在 V3 训练中**一直存在**（λ=0.25），模型已经适应了它，没有发生过盆地切换
+  - 加大权重是**渐进强化已有信号**，不是引入新分布
+- **结论**：方向 1 的相变风险**低于** SF-pair，但不为零。1A 的严格 Go/No-Go 阈值（§12）对捕捉相变信号是必要的——一旦 val_pair_total（GT 输入下）开始上涨就立即止损
+
+**对方向 3（pair_loss 渐进归零）的影响**：
+- 渐进降 pair_loss 等于**让模型逐步离开 GT-optimal 盆地**——本质和 SF 类似，只是机制不同
+- 风险更高：方向 3 没有任何回到 GT 的拉力（pair_loss 在缩小），可能比 SF 更快进入新盆地且回不去
+- **修正**：方向 3 必须在每个 phase 末尾**显式 eval pair_loss on GT inputs**，而不是只看 val_select。如果 GT pair 性能开始恶化就立即回滚
+
+**新方向（方向 4 候选）：双 backbone teacher-student**
+基于 D.4 第 4 条，如果未来还想做 SF 类的方法，应当：
+- 维护一个 EMA teacher backbone（参数缓慢跟踪 student）
+- z_src_pred 由 teacher 生成而非 student 自身
+- 这样 SF 输入有"独立对照系"，避免自洽循环
+- 实现成本：~50 行代码，需要新设计
 
 ---
 
@@ -395,11 +505,14 @@ self_forcing_pair: { enabled: false }   # 明确关闭 SF
 
 **Go/No-Go 判定**（双触发任一即止损，挂钩医生关心的 normal 档）：
 
-| 检查点 | val_select 阈值 | val_chain_normal_mse 阈值 | hop0 PSNR 阈值 |
-|--------|----------------|---------------------------|---------------|
-| +10K | > baseline × 1.05 → 止损 | > baseline × 1.10 → 止损 | < baseline − 0.5 dB → 止损 |
-| +25K | 无改善（≥ baseline）→ 止损 | 无改善（≥ baseline × 0.97）→ 止损 | < baseline − 0.3 dB → 止损 |
-| +50K | full-val eval + Path A redo | — | — |
+| 检查点 | val_select 阈值 | val_chain_normal_mse 阈值 | hop0 PSNR 阈值 | val_pair_total（相变监控）|
+|--------|----------------|---------------------------|---------------|-------------------------|
+| +5K | — | — | — | **> 0.00005 → 立即停**（相变早期信号）|
+| +10K | > baseline × 1.05 → 止损 | > baseline × 1.10 → 止损 | < baseline − 0.5 dB → 止损 | > 0.0001 → 止损 |
+| +25K | 无改善（≥ baseline）→ 止损 | 无改善（≥ baseline × 0.97）→ 止损 | < baseline − 0.3 dB → 止损 | > 0.00005 → 止损 |
+| +50K | full-val eval + Path A redo | — | — | — |
+
+**为什么加 val_pair_total 监控**：基于 §10.5 Finding D，模型从 GT-optimal 盆地被推出的最早信号是 val_pair_total 上涨（V4 SF pilot 中是从 0 → 0.000196 断崖跳变）。在 Rollout-Heavy 实验中，rollout_loss 也使用模型自预测输入，理论上有相同风险（虽然较低）。**val_pair_total 是相变早期警报，比 val_select 提前 1-2 个 val 点出现**，必须独立监控。
 
 **为什么阈值这么严**：之前 V4 SF 跑了 8400 步才看到 val_select 涨 146%，到那时 GPU 时间已经浪费。新阈值在 10K 步就强制 review，避免重复同样的浪费。
 

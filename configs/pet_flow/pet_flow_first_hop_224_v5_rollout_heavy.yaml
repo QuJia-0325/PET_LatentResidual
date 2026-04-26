@@ -1,10 +1,17 @@
 # V5 Rollout-Heavy (温和版) — 50K from 200K v3 best.pt
 #
-# 核心改动 vs 200K v3 baseline:
-#   rollout.lambda:    0.25 → 1.5  (6×, 加强 chain 监督)
-#   image_aux.lambda:  0.12 → 0.08 (÷1.5, 温和降低，保护 hop0 像素质量)
-#   step_weights:      [1.0, 1.1, 1.2, 1.3] → [0.8, 1.0, 1.5, 2.5] (末端温和加重)
-#   SF:                disabled
+# 仅改 3 个轴 vs 200K v3 baseline，其余参数严格对齐:
+#   rollout.lambda:       0.25 → 1.5  (6×, 加强 chain 监督)
+#   image_aux.lambda:     0.12 → 0.08 (÷1.5, 温和降低，保护 hop0 像素质量)
+#   rollout.step_weights: [1.30,1.20,1.10,1.00] → [0.8,1.0,1.5,2.5] (从头重→尾重)
+#   SF:                   disabled
+#
+# 已恢复到 200K v3 的参数（审计修复 0426）:
+#   pair_loss_weights:  [1.20,1.10,1.05,1.00] (头重，与 v3 一致)
+#   best_metric d20:    0.50 (与 v3 一致)
+#   lr:                 8e-5 (与 v3 一致)
+#   warmup_ratio:       0.15 (与 v3 一致)
+#   ema:                enabled, decay=0.9999 (与 v3 一致)
 #
 # 设计理由:
 #   - hop0 (D50→D20) 是结构级恢复，v_std=0.009634（最大），CeilGap=11.07 dB
@@ -80,7 +87,7 @@ training:
   best_metric: val_multi_objective
   best_metric_terms:
     - name: val_chain_d20_mse
-      weight: 0.15
+      weight: 0.50              # ← 恢复 200K v3 值 (was 0.15 in SF pilot)
     - name: val_chain_d10_mse
       weight: 0.45
     - name: val_chain_d4_mse
@@ -163,7 +170,7 @@ training:
     lambda_max: 0.08
 
 optimizer:
-  lr: 4.0e-5
+  lr: 8.0e-5                    # ← 恢复 200K v3 值 (was 4e-5 in SF pilot)
   weight_decay: 0.01
   first_hop_weight_decay: 0.0
   betas:
@@ -172,9 +179,17 @@ optimizer:
   backbone_lr_mult: 0.4
   first_hop_lr_mult: 3.5
 
+# EMA: 恢复 200K v3 配置 (SF pilot 遗漏了此块)
+ema:
+  enabled: true
+  decay: 0.9999
+  warmup_steps: 0
+  update_after_step: 0
+  update_every: 1
+
 lr_schedule:
   enabled: true
-  warmup_ratio: 0.05
+  warmup_ratio: 0.15              # ← 恢复 200K v3 值 (was 0.05 in SF pilot)
   min_lr: 2.0e-6
 
 transport:
@@ -190,11 +205,12 @@ transport:
     - 0.25
     - 0.25
   pair_weighting: manual
+  # 恢复 200K v3 值: 头重 (was 尾重 [1.00,1.05,1.10,1.20] in SF pilot)
   pair_loss_weights:
-    - 1.00
-    - 1.05
-    - 1.10
     - 1.20
+    - 1.10
+    - 1.05
+    - 1.00
 
 backbone:
   checkpoint_path: /data_2/qujiaxiang/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke/best.pt
