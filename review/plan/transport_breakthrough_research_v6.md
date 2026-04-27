@@ -76,7 +76,7 @@ rollout:
 
 每个 loss 通道有自己擅长的 hop：
 - **pair_loss**：在 GT 输入上学 velocity。hop0 困难度最大（v_std=0.009634，CeilGap=11.07 dB）→ **pair_loss_weights 头重**
-- **rollout_loss**：在 pred chain 上学级联一致性。但 rollout[hop0] 输入 ≡ GT z_D50（和 pair 重复，无独占信息）→ **step_weights 不应头重**
+- **rollout_loss**：在 pred chain 上学级联一致性。但 rollout[hop0] 输入 ≡ GT z_D50（与 pair 高度重叠，仅保留全步 endpoint 一致性辅助）→ **step_weights 不应头重**
 - rollout 的独占信号在 hop1-3（pred 输入 ≠ GT）。hop1 是 ExpoGap × v_std 的 sweet spot → **step_weights 中重**
 
 #### 数学依据
@@ -160,19 +160,39 @@ image_aux:
 
 | 文件 | 改动 | 行数 |
 |------|------|------|
-| `train_first_hop.py` | `total_loss` 加 `pair_loss_weight` 乘数 | **~3 行** |
-| `train_first_hop.py` | config 解析 `loss.pair_weight` | ~2 行 |
+| `train_first_hop.py` | config 解析 `loss.pair_weight`（含有效性校验） | **~4 行** |
+| `train_first_hop.py` | `total_loss` 加 `pair_loss_weight` 乘数 | **~1 行** |
+| `train_first_hop.py` | logging fraction 用加权后的 pair | **~1 行** |
+| `train_first_hop.py` | metrics JSONL 记录 `pair_loss_weight` | **~1 行** |
 | config: `pet_flow_first_hop_224_v6_transport_first.yaml` | V6 config | 新文件 |
 
-**总共 ~5 行代码改动 + 1 个新 config 文件。不引入新机制。**
+**总共 ~7 行代码改动 + 1 个新 config 文件。不引入新机制。**
 
-### 2.1 代码改动位置
+### 2.1 代码改动位置（已实现）
 
 ```python
-# train_first_hop.py, total_loss 计算处
-pair_loss_weight = float(cfg["loss"].get("pair_weight", 1.0))  # 新增，默认 1.0 向后兼容
+# train_first_hop.py L1361-1365: config 解析
+pair_loss_weight = float(cfg["loss"].get("pair_weight", 1.0))  # 默认 1.0 向后兼容
+if pair_loss_weight < 0 or not math.isfinite(pair_loss_weight):
+    raise ValueError(f"loss.pair_weight must be finite and non-negative, got {pair_loss_weight}")
+if pair_loss_weight != 1.0:
+    print(f"[config] loss.pair_weight = {pair_loss_weight:.4f}", flush=True)
 
+# train_first_hop.py L1919: total_loss
 total_loss = (
+    pair_loss_weight * pair_losses["total"]               # ← 加 pair_loss_weight
+    + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
+    + float(lambda_img) * loss_img
+    + foc_losses["lambda_foc"] * foc_losses["loss_total"]
+    + float(lambda_align) * loss_align
+)
+
+# train_first_hop.py L1936: logging fraction 同步更新
+pair_weighted = pair_loss_weight * pair_losses["total"]    # ← fraction 用加权后的 pair
+
+# train_first_hop.py L2138: metrics JSONL 记录
+"pair_loss_weight": pair_loss_weight,
+```
     pair_loss_weight * pair_losses["total"]               # ← 加 pair_loss_weight
     + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
     + float(lambda_img) * loss_img
@@ -226,10 +246,12 @@ lr_schedule:
 
 | 检查点 | 条件 | 动作 |
 |--------|------|------|
+| +1K | pair_loss < 5e-4 且无 NaN/Inf | 冷启动安全验证（AdamW 尺度不变性预期无问题） |
 | +10K | pair_frac ≈ 70-90%（Phase I，应 pair 主导） | 确认 pair_weight 生效 |
 | +50K | img_frac < 30%（Phase I 结束） | 确认 image 是辅助 |
 | +75K | roll_frac 开始上升（Phase II ramp 中） | 确认 rollout 渐进 |
 | +100K | roll_frac ≈ 30-50%（ramp 中） | 正常 |
+| +130K | img_frac < 30%（Phase II 末段，检测 image 上升趋势） | img_frac 连续上升趋势且 > 30% → 考虑停止实验 |
 | +150K | roll_frac ≈ 50-70%，img_frac < 25% | **核心验证** |
 | +200K | val_chain_normal_mse vs V3 best（0.000165） | 最终判定 |
 
@@ -273,3 +295,70 @@ lr_schedule:
 | transport 梯度占比 | 7-45% | 45-87% | **预期 ≥ 75%** |
 | 核心新机制 | 无 | 无 | **pair_weight（3 行代码）** |
 | loss 归一化 | 无 | 无 | **不使用**（自然 curriculum） |
+
+---
+
+## 8. Pilot 实验矩阵（Staged Execution）
+
+> V6 不直接启动 full 200K。按 staged pilot 递进，每阶段有明确 Go/No-Go 门控。
+
+### 8.1 实验矩阵
+
+| 实验 ID | pair_weight | λ_roll | λ_img | step_weights | pair_loss_weights | max_steps | 目的 |
+|---------|------------|--------|-------|--------------|-------------------|-----------|------|
+| **V6-P0** | 10.0 | 0→2.0 | 0.04 | [0.5,2.0,1.5,1.0] | [2.5,1.0,1.0,1.0] | 50K | 保守验证：数值稳定性、fraction 方向 |
+| **V6-P1** | 15.0 | 0→4.0 | 0.04 | [0.5,2.0,1.5,1.0] | [2.5,1.0,1.0,1.0] | 50K | 正式权重验证：transport pressure 是否可控 |
+| **V6-P2** | 15.0 | 0→4.0 | 0.04 | [0.5,2.0,1.5,1.0] | [2.5,1.0,1.0,1.0] | 150K | P1 通过后延长：验证 Phase II rollout ramp 接管 |
+| **V6-Full** | 15.0 | 0→4.0 | 0.04 | [0.5,2.0,1.5,1.0] | [2.5,1.0,1.0,1.0] | 200K | 完整实验（仅在 P2 通过后启动） |
+
+所有 pilot 共用：`alpha schedule`（warmup_ratio=0.25, ramp_ratio=0.50）、`lambda_scale_mode: none`、`lr=8e-5`、`warmup_ratio=0.15`。
+
+### 8.2 Pilot Go/No-Go 门控
+
+#### V6-P0（50K，保守权重）
+
+| 检查项 | 预期范围 | No-Go 条件 |
+|--------|---------|------------|
+| pair_frac @ 10K | 60-85% | < 40%（pair_weight 未生效）|
+| img_frac @ 50K | < 35% | > 50%（image 仍主导）|
+| grad_clip_pre | 无持续爆炸 | 连续 > 1000 步 clip ratio > 80% |
+| NaN / Inf | 无 | 任何出现即停 |
+| val_pair_total | 单调下降趋势 | 突然跳升 > 3× baseline |
+
+**P0 通过** → 启动 V6-P1  
+**P0 失败** → 降低 pair_weight 到 5.0 重试，或检查 loss scale
+
+#### V6-P1（50K，正式权重）
+
+| 检查项 | 预期范围 | No-Go 条件 |
+|--------|---------|------------|
+| pair_frac @ 10K | 70-90% | < 50% |
+| img_frac @ 50K | < 30% | > 40% |
+| total_loss @ 50K | 稳定下降 | loss spike > 5× 或持续震荡 |
+| val_pair_total | ≤ P0 同期水平 | 显著差于 P0 |
+| fixed-window chain MSE | 有下降趋势 | 无改善或上升 |
+
+**P1 通过** → 继续训练至 150K（即 V6-P2），无需重启  
+**P1 失败** → 降至 P0 权重（pair_weight=10, lambda_end=2.0）跑 full 200K
+
+#### V6-P2（150K，Phase II 验证）
+
+| 检查项 | 预期范围 | No-Go 条件 |
+|--------|---------|------------|
+| roll_frac @ 100K | 30-50% | < 15%（rollout ramp 失效）|
+| roll_frac @ 150K | 50-70% | < 30% |
+| img_frac @ 150K | < 25% | > 35%（image 重新主导）|
+| val_chain_normal_mse @ 150K | 已优于 V3 best（0.000165） | 150K 仍无改善趋势 |
+| best step 位置 | > 100K | best 仍停留在 < 50K |
+
+**P2 通过** → 继续训练至 200K（V6-Full）  
+**P2 失败** → 分析原因：若 image 重新主导，考虑 Phase III 追加 λ_img decay 到 0.02
+
+### 8.3 Pilot 最低启动条件
+
+| 前提 | 状态 | 说明 |
+|------|------|------|
+| `loss.pair_weight` 代码实现 | 待完成 | 含 config 解析、total_loss、logging fraction、metrics JSONL |
+| V6 config 文件创建 | 待完成 | 从 V3 200K config 派生 |
+| dry-run 通过（50-200 步） | 待完成 | 确认 pair_loss_weight 日志正确、无 NaN |
+| V5 / null-control 归因 | 并行进行 | 不阻塞 pilot 启动，但结果影响 V6-Full 决策 |

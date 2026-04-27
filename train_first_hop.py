@@ -1358,6 +1358,12 @@ def main() -> None:
     roll_cfg_runtime = train_cfg.get("rollout", {})
     image_aux_cfg = train_cfg.get("image_aux", {})
 
+    pair_loss_weight = float(cfg["loss"].get("pair_weight", 1.0))
+    if pair_loss_weight < 0 or not math.isfinite(pair_loss_weight):
+        raise ValueError(f"loss.pair_weight must be finite and non-negative, got {pair_loss_weight}")
+    if pair_loss_weight != 1.0:
+        print(f"[config] loss.pair_weight = {pair_loss_weight:.4f}", flush=True)
+
     rollout_warmup_steps = _resolve_schedule_steps(
         total_steps=max_steps,
         section=roll_cfg_runtime,
@@ -1910,7 +1916,7 @@ def main() -> None:
                 loss_align = F.mse_loss(align_proj.float(), z_ref.float())
 
             total_loss = (
-                pair_losses["total"]
+                pair_loss_weight * pair_losses["total"]
                 + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
                 + float(lambda_img) * loss_img
                 + foc_losses["lambda_foc"] * foc_losses["loss_total"]
@@ -1927,7 +1933,7 @@ def main() -> None:
                     + w_gate * (model.gate_pix_value().pow(2).mean())
                 )
 
-            pair_weighted = pair_losses["total"]
+            pair_weighted = pair_loss_weight * pair_losses["total"]
             roll_weighted = rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
             img_weighted = pair_weighted.new_tensor(float(lambda_img)) * loss_img
             foc_weighted = foc_losses["lambda_foc"] * foc_losses["loss_total"]
@@ -2129,6 +2135,7 @@ def main() -> None:
                 "lambda_roll_base": lambda_roll_base,
                 "lambda_roll_scale": lambda_roll_scale,
                 "rollout_straight_through": rollout_st,
+                "pair_loss_weight": pair_loss_weight,
                 "lambda_img": float(lambda_img),
                 "alpha": float(rollout_losses["alpha_mix"].item()),
                 "sf_alpha": float(sf_info["alpha_sf"].item()) if sf_info is not None else 0.0,
