@@ -73,6 +73,7 @@ CUDA_VISIBLE_DEVICES=${GPU_ID} nohup ${PYTHON} -u train_first_hop.py \
     > "${LOG_FILE}" 2>&1 &
 
 PID=$!
+echo "${PID}" > "${LOG_DIR}/v5_null_control_gpu${GPU_ID}.pid"
 echo "训练已启动 (PID=${PID})"
 echo ""
 echo "=== 监控 ==="
@@ -83,3 +84,6 @@ echo "=== 与 V5-main 对比 ==="
 echo "  null-control 用 baseline loss 权重继续训练"
 echo "  如果 null-control 也退化 → resume/LR 是主因"
 echo "  如果 null-control 持平 → V5 loss 改动是主因"
+echo ""
+echo "=== 训练完成后必须运行 full-val ==="
+echo "  bash review/0427/run_me/05_fullval_null_control.sh ${GPU_ID}"

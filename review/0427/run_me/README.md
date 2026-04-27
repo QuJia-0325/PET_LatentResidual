@@ -41,10 +41,12 @@ V5-main（rollout λ=1.5, image_aux=0.08, step_weights=[0.8,1.0,1.5,2.5]）跑�
 **具体做法**：
 1. 对 V3 200K best.pt 跑 `eval_first_hop_224_clip3.py --max-slices 0`（全量）
 2. 对 V5 best.pt 跑同样的 eval
-3. 对 V5 最新 checkpoint 跑同样的 eval
-4. 比较三者的 `chain_normal_psnr`（医生关心的 NORMAL 档）和 `transport_avg_psnr`
+3. 对 V5 `last.pt` 跑同样的 eval（如果存在）
+4. 对 V5 最新 `step_*.pt` 跑同样的 eval（如果存在）
+5. 比较 decoded PSNR，主字段为 `summary_psnr_clip3.NORMAL.mean`（NORMAL 档）和 `summary_psnr_clip3.D20.mean`（first-hop 档）
 
-**关键输出**：每个 ckpt 生成一个 JSON 文件，包含 per-hop 的 PSNR 和 MSE。
+**关键输出**：每个 ckpt 生成一个 JSON/CSV 文件，JSON 路径为 `<out-dir>/first_hop_224_val_clip3_eval.json`。
+该脚本输出 decoded PSNR 与 seam 指标；latent MSE 不在这个 JSON 中，latent MSE / TF-vs-rollout gap 由 Path A 脚本输出。
 
 **脚本**：`01_fullval_eval.sh [GPU_ID]`
 
@@ -92,7 +94,7 @@ D4->NORMAL   ...        ...        ...        ...
 - 使用 200K v3 **原始 config**（所有 loss 权重不变）
 - 仅改 run_name、resume 兼容性、max_steps
 - 从 V3 best.pt resume 继续训 50K 步
-- 对比训练结束后的 val 指标与 V3 baseline
+- 训练结束后必须再运行 full-val，不能用训练过程中的 rolling-val 作最终结论
 
 **Config**：`configs/pet_flow/pet_flow_first_hop_224_v5_null_control.yaml`
 - 基于 200K v3 config 复制
@@ -100,6 +102,10 @@ D4->NORMAL   ...        ...        ...        ...
 - **所有 loss 权重完全不变**（rollout λ=0.25, image_aux=0.12, step_weights=[1.30,1.20,1.10,1.00]）
 
 **脚本**：`03_null_control.sh [GPU_ID]`
+
+**训练后 full-val 脚本**：`05_fullval_null_control.sh [GPU_ID]`
+
+**注意**：Null-control 的训练过程仍使用 rolling-val 监控健康状态；归因结论只看 `05_fullval_null_control.sh` 输出的 full-val。
 
 ---
 
@@ -142,6 +148,18 @@ D4->NORMAL   ...        ...        ...        ...
 | V5 ≈ V3 | rollout 权重变化未影响 exposure bias |
 | V5 上升 ≥ 10% | rollout-heavy 反而加剧了链式误差 |
 
+### velocity_rebalance 解释边界
+
+当前 `velocity_rebalance` 不应作为有效机制变量解释。原因是现有 checkpoint `target_normalize=false`，且 config 使用 `endpoint_dt_normalize=true`。在 `z_pred = z_src + v * dt` 的定义下：
+
+```
+endpoint_err = ((z_pred - z_dst) / dt)^2
+             = (v - (z_dst - z_src) / dt)^2
+             = velocity_err
+```
+
+因此训练日志中 `vel_reb` 全程为 `1.0`，该机制当前等价于 no-op。Null-control 保留它只是为了与 V3 config 完全一致，不代表它有实际效果。
+
 ---
 
 ## 文件清单
@@ -152,7 +170,8 @@ review/0427/run_me/
 ├── 01_fullval_eval.sh         ← Full-val 评估 V3/V5
 ├── 02_pathA_baseline.sh       ← V3 Path A ExpoGap baseline
 ├── 03_null_control.sh         ← Null-control 训练（50K 步）
-└── 04_pathA_v5_best.sh        ← V5 Path A ExpoGap
+├── 04_pathA_v5_best.sh        ← V5 Path A ExpoGap
+└── 05_fullval_null_control.sh ← Null-Control 训练后 full-val
 
 configs/
 └── pet_flow/pet_flow_first_hop_224_v5_null_control.yaml  ← Null-control config
@@ -170,4 +189,7 @@ bash review/0427/run_me/02_pathA_baseline.sh 0
 # P1（并行，03 需要 ~30h）——回答"退化是 V5 loss 还是 resume/LR"
 bash review/0427/run_me/03_null_control.sh 2
 bash review/0427/run_me/04_pathA_v5_best.sh 0
+
+# 03 完成后必须执行，才可以做 null-control 归因
+bash review/0427/run_me/05_fullval_null_control.sh 2
 ```
