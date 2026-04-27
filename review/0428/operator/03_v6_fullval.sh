@@ -31,7 +31,7 @@ else
     CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
         --config "${V3_CONFIG}" \
         --checkpoint "${V3_DIR}/best.pt" \
-        --output-dir "${OUT_BASE}/v3_best" \
+        --out-dir "${OUT_BASE}/v3_best" \
         --max-slices 0
 fi
 
@@ -41,7 +41,7 @@ if [ -f "${V6_DIR}/best.pt" ]; then
     CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
         --config "${V6_CONFIG}" \
         --checkpoint "${V6_DIR}/best.pt" \
-        --output-dir "${OUT_BASE}/v6_best" \
+        --out-dir "${OUT_BASE}/v6_best" \
         --max-slices 0
 else
     echo "[V6 best] best.pt 不存在，跳过"
@@ -53,7 +53,7 @@ if [ -f "${V6_DIR}/last.pt" ]; then
     CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
         --config "${V6_CONFIG}" \
         --checkpoint "${V6_DIR}/last.pt" \
-        --output-dir "${OUT_BASE}/v6_last" \
+        --out-dir "${OUT_BASE}/v6_last" \
         --max-slices 0
 else
     echo "[V6 last] last.pt 不存在，跳过"

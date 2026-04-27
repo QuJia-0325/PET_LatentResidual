@@ -36,7 +36,7 @@ else
     CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
         --config "${V3_CONFIG}" \
         --checkpoint "${V3_DIR}/best.pt" \
-        --output-dir "${OUT_BASE}/v3_best" \
+        --out-dir "${OUT_BASE}/v3_best" \
         --max-slices 0
 fi
 
@@ -50,7 +50,7 @@ else
         CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
             --config "${V5_CONFIG}" \
             --checkpoint "${V5_DIR}/best.pt" \
-            --output-dir "${OUT_BASE}/v5_best" \
+            --out-dir "${OUT_BASE}/v5_best" \
             --max-slices 0
     else
         echo "[SKIP] V5 best.pt 不存在"
@@ -58,7 +58,7 @@ else
 fi
 
 # 3. Null-control 训练
-if [ -d "${NC_DIR}" ] && [ -f "${NC_DIR}/last.pt" ]; then
+if [ -d "${NC_DIR}" ] && { [ -f "${NC_DIR}/best.pt" ] || [ -f "${NC_DIR}/last.pt" ]; }; then
     echo "[OK] Null-control 训练目录存在: ${NC_DIR}"
     # 检查是否还在训练
     NC_JSONL="${NC_DIR}/metrics.jsonl"
@@ -67,16 +67,20 @@ if [ -d "${NC_DIR}" ] && [ -f "${NC_DIR}/last.pt" ]; then
         echo "  last step: ${LAST_STEP}"
     fi
     # Null-control fullval
-    NC_FULLVAL="/data_2/qujiaxiang/outputs/PET_LatentResidual/eval_0427_fullval/null_control_best"
-    if [ -f "${NC_FULLVAL}/first_hop_224_val_clip3_eval.json" ]; then
-        echo "[OK] Null-control fullval 已完成"
+    # 兼容两个可能的输出路径（0427 脚本用 eval_0427_fullval_null_control/null_best）
+    NC_FULLVAL_A="/data_2/qujiaxiang/outputs/PET_LatentResidual/eval_0427_fullval_null_control/null_best"
+    NC_FULLVAL_B="${OUT_BASE}/null_control_best"
+    if [ -f "${NC_FULLVAL_A}/first_hop_224_val_clip3_eval.json" ]; then
+        echo "[OK] Null-control fullval 已完成: ${NC_FULLVAL_A}"
+    elif [ -f "${NC_FULLVAL_B}/first_hop_224_val_clip3_eval.json" ]; then
+        echo "[OK] Null-control fullval 已完成: ${NC_FULLVAL_B}"
     else
         if [ -f "${NC_DIR}/best.pt" ]; then
             echo "[TODO] Null-control fullval 未完成，执行中..."
             CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
                 --config "${NC_CONFIG}" \
                 --checkpoint "${NC_DIR}/best.pt" \
-                --output-dir "${OUT_BASE}/null_control_best" \
+                --out-dir "${NC_FULLVAL_B}" \
                 --max-slices 0
         fi
     fi
