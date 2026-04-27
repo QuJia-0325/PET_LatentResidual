@@ -1,0 +1,1224 @@
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1856
+.000000 val_hop0_window_start_batch=1856.000000 val_select_score=0.000647
+[val] step=128400 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000906 val_hop0_img_total=0.008909 val_hop0_
+img_l1=0.003699 val_hop0_img_ssim=0.018644 val_hop0_img_seam=0.005488 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000466 val_chain_d10_mse=0
+.000387 val_chain_d4_mse=0.000327 val_chain_normal_mse=0.000291 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000973 val_rollout_step_1=0.000908 val_rollout_st
+ep_2=0.000851 val_rollout_step_3=0.000879 val_chain_tail_mse=0.000335 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1920
+.000000 val_hop0_window_start_batch=1920.000000 val_select_score=0.001138
+[val] step=128800 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000868 val_hop0_img_total=0.008170 val_hop0_
+img_l1=0.003305 val_hop0_img_ssim=0.017609 val_hop0_img_seam=0.004627 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000448 val_chain_d10_mse=0
+.000383 val_chain_d4_mse=0.000331 val_chain_normal_mse=0.000301 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000870 val_rollout_step_1=0.000873 val_rollout_st
+ep_2=0.000861 val_rollout_step_3=0.000865 val_chain_tail_mse=0.000338 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1984
+.000000 val_hop0_window_start_batch=1984.000000 val_select_score=0.001146
+[val] step=129200 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000874 val_hop0_img_total=0.006295 val_hop0_
+img_l1=0.002568 val_hop0_img_ssim=0.013464 val_hop0_img_seam=0.003612 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000327 val_chain_d10_mse=0
+.000290 val_chain_d4_mse=0.000249 val_chain_normal_mse=0.000229 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000881 val_rollout_step_1=0.000883 val_rollout_st
+ep_2=0.000853 val_rollout_step_3=0.000879 val_chain_tail_mse=0.000256 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2048
+.000000 val_hop0_window_start_batch=2048.000000 val_select_score=0.000861
+[val] step=129600 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000771 val_hop0_img_total=0.006906 val_hop0_
+img_l1=0.002808 val_hop0_img_ssim=0.014820 val_hop0_img_seam=0.003923 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000274 val_chain_d10_mse=0
+.000250 val_chain_d4_mse=0.000221 val_chain_normal_mse=0.000208 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000686 val_rollout_step_1=0.000682 val_rollout_st
+ep_2=0.000737 val_rollout_step_3=0.001026 val_chain_tail_mse=0.000226 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2112
+.000000 val_hop0_window_start_batch=2112.000000 val_select_score=0.000760
+[val] step=130000 val_pair_total=0.000003 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.001349 val_hop0_img_total=0.007287 val_hop0_
+img_l1=0.002989 val_hop0_img_ssim=0.015495 val_hop0_img_seam=0.004248 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000692 val_chain_d10_mse=0
+.000563 val_chain_d4_mse=0.000459 val_chain_normal_mse=0.000403 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001419 val_rollout_step_1=0.001332 val_rollout_st
+ep_2=0.001307 val_rollout_step_3=0.001324 val_chain_tail_mse=0.000475 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2176
+.000000 val_hop0_window_start_batch=2176.000000 val_select_score=0.001618
+[val] step=130400 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.001064 val_hop0_img_total=0.007066 val_hop0_
+img_l1=0.002866 val_hop0_img_ssim=0.015214 val_hop0_img_seam=0.003970 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000589 val_chain_d10_mse=0
+.000485 val_chain_d4_mse=0.000405 val_chain_normal_mse=0.000363 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001161 val_rollout_step_1=0.001051 val_rollout_st
+ep_2=0.001008 val_rollout_step_3=0.001015 val_chain_tail_mse=0.000417 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2240
+.000000 val_hop0_window_start_batch=2240.000000 val_select_score=0.001421
+[val] step=130800 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000716 val_hop0_img_total=0.007648 val_hop0_
+img_l1=0.003093 val_hop0_img_ssim=0.016465 val_hop0_img_seam=0.004384 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000398 val_chain_d10_mse=0
+.000351 val_chain_d4_mse=0.000312 val_chain_normal_mse=0.000294 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000739 val_rollout_step_1=0.000704 val_rollout_st
+ep_2=0.000690 val_rollout_step_3=0.000731 val_chain_tail_mse=0.000319 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2304
+.000000 val_hop0_window_start_batch=2304.000000 val_select_score=0.001079
+[val] step=131200 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000584 val_hop0_img_total=0.006085 val_hop0_
+img_l1=0.002413 val_hop0_img_ssim=0.013314 val_hop0_img_seam=0.003436 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000320 val_chain_d10_mse=0
+.000284 val_chain_d4_mse=0.000252 val_chain_normal_mse=0.000235 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000589 val_rollout_step_1=0.000546 val_rollout_st
+ep_2=0.000553 val_rollout_step_3=0.000656 val_chain_tail_mse=0.000257 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2368
+.000000 val_hop0_window_start_batch=2368.000000 val_select_score=0.000867
+[val] step=131600 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000539 val_hop0_img_total=0.005763 val_hop0_
+img_l1=0.002314 val_hop0_img_ssim=0.012446 val_hop0_img_seam=0.003376 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000261 val_chain_d10_mse=0
+.000227 val_chain_d4_mse=0.000196 val_chain_normal_mse=0.000182 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000535 val_rollout_step_1=0.000527 val_rollout_st
+ep_2=0.000534 val_rollout_step_3=0.000566 val_chain_tail_mse=0.000202 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2432
+.000000 val_hop0_window_start_batch=2432.000000 val_select_score=0.000682
+[val] step=132000 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000585 val_hop0_img_total=0.005781 val_hop0_
+img_l1=0.002295 val_hop0_img_ssim=0.012613 val_hop0_img_seam=0.003325 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000295 val_chain_d10_mse=0
+.000255 val_chain_d4_mse=0.000219 val_chain_normal_mse=0.000203 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000641 val_rollout_step_1=0.000580 val_rollout_st
+ep_2=0.000553 val_rollout_step_3=0.000553 val_chain_tail_mse=0.000226 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2496
+.000000 val_hop0_window_start_batch=2496.000000 val_select_score=0.000764
+[val] step=132400 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000651 val_hop0_img_total=0.005931 val_hop0_
+img_l1=0.002353 val_hop0_img_ssim=0.012975 val_hop0_img_seam=0.003346 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000355 val_chain_d10_mse=0
+.000309 val_chain_d4_mse=0.000268 val_chain_normal_mse=0.000248 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000688 val_rollout_step_1=0.000636 val_rollout_st
+ep_2=0.000627 val_rollout_step_3=0.000646 val_chain_tail_mse=0.000275 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2560
+.000000 val_hop0_window_start_batch=2560.000000 val_select_score=0.000930
+[val] step=132800 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000651 val_hop0_img_total=0.006414 val_hop0_
+img_l1=0.002531 val_hop0_img_ssim=0.014079 val_hop0_img_seam=0.003637 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000315 val_chain_d10_mse=0
+.000267 val_chain_d4_mse=0.000227 val_chain_normal_mse=0.000207 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000658 val_rollout_step_1=0.000647 val_rollout_st
+ep_2=0.000622 val_rollout_step_3=0.000678 val_chain_tail_mse=0.000233 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2624
+.000000 val_hop0_window_start_batch=2624.000000 val_select_score=0.000792
+[val] step=133200 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000604 val_hop0_img_total=0.007611 val_hop0_
+img_l1=0.003036 val_hop0_img_ssim=0.016610 val_hop0_img_seam=0.004231 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000230 val_chain_d10_mse=0
+.000207 val_chain_d4_mse=0.000184 val_chain_normal_mse=0.000171 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000595 val_rollout_step_1=0.000605 val_rollout_st
+ep_2=0.000598 val_rollout_step_3=0.000620 val_chain_tail_mse=0.000187 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2688
+.000000 val_hop0_window_start_batch=2688.000000 val_select_score=0.000630
+[val] step=133600 val_pair_total=0.000001 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000868 val_hop0_img_total=0.007752 val_hop0_
+img_l1=0.003110 val_hop0_img_ssim=0.016781 val_hop0_img_seam=0.004468 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000263 val_chain_d10_mse=0
+.000226 val_chain_d4_mse=0.000192 val_chain_normal_mse=0.000174 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000831 val_rollout_step_1=0.000845 val_rollout_st
+ep_2=0.000862 val_rollout_step_3=0.000949 val_chain_tail_mse=0.000197 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2752
+.000000 val_hop0_window_start_batch=2752.000000 val_select_score=0.000667
+[val] step=134000 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000921 val_hop0_img_total=0.006969 val_hop0_
+img_l1=0.002793 val_hop0_img_ssim=0.015113 val_hop0_img_seam=0.003986 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000357 val_chain_d10_mse=0
+.000299 val_chain_d4_mse=0.000251 val_chain_normal_mse=0.000223 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000891 val_rollout_step_1=0.000902 val_rollout_st
+ep_2=0.000887 val_rollout_step_3=0.001022 val_chain_tail_mse=0.000258 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2816
+.000000 val_hop0_window_start_batch=2816.000000 val_select_score=0.000874
+[val] step=134400 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000862 val_hop0_img_total=0.007863 val_hop0_
+img_l1=0.003151 val_hop0_img_ssim=0.017035 val_hop0_img_seam=0.004533 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000552 val_chain_d10_mse=0
+.000460 val_chain_d4_mse=0.000390 val_chain_normal_mse=0.000349 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000925 val_rollout_step_1=0.000863 val_rollout_st
+ep_2=0.000826 val_rollout_step_3=0.000819 val_chain_tail_mse=0.000399 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2880
+.000000 val_hop0_window_start_batch=2880.000000 val_select_score=0.001356
+[val] step=134800 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000912 val_hop0_img_total=0.008149 val_hop0_
+img_l1=0.003294 val_hop0_img_ssim=0.017516 val_hop0_img_seam=0.004757 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000314 val_chain_d10_mse=0
+.000275 val_chain_d4_mse=0.000237 val_chain_normal_mse=0.000219 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000918 val_rollout_step_1=0.000932 val_rollout_st
+ep_2=0.000894 val_rollout_step_3=0.000899 val_chain_tail_mse=0.000244 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2944
+.000000 val_hop0_window_start_batch=2944.000000 val_select_score=0.000823
+[val] step=135200 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000783 val_hop0_img_total=0.007543 val_hop0_
+img_l1=0.003012 val_hop0_img_ssim=0.016461 val_hop0_img_seam=0.004155 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000297 val_chain_d10_mse=0
+.000267 val_chain_d4_mse=0.000233 val_chain_normal_mse=0.000217 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000727 val_rollout_step_1=0.000721 val_rollout_st
+ep_2=0.000754 val_rollout_step_3=0.000960 val_chain_tail_mse=0.000239 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3008
+.000000 val_hop0_window_start_batch=3008.000000 val_select_score=0.000804
+[val] step=135600 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.001073 val_hop0_img_total=0.007037 val_hop0_
+img_l1=0.002810 val_hop0_img_ssim=0.015380 val_hop0_img_seam=0.003826 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000489 val_chain_d10_mse=0
+.000416 val_chain_d4_mse=0.000351 val_chain_normal_mse=0.000317 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001061 val_rollout_step_1=0.001021 val_rollout_st
+ep_2=0.001040 val_rollout_step_3=0.001189 val_chain_tail_mse=0.000361 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3072
+.000000 val_hop0_window_start_batch=3072.000000 val_select_score=0.001222
+[val] step=136000 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.001381 val_hop0_img_total=0.007151 val_hop0_
+img_l1=0.002836 val_hop0_img_ssim=0.015736 val_hop0_img_seam=0.003812 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000765 val_chain_d10_mse=0
+.000608 val_chain_d4_mse=0.000491 val_chain_normal_mse=0.000428 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001514 val_rollout_step_1=0.001377 val_rollout_st
+ep_2=0.001312 val_rollout_step_3=0.001290 val_chain_tail_mse=0.000509 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3136
+.000000 val_hop0_window_start_batch=3136.000000 val_select_score=0.001741
+[val] step=136400 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000740 val_hop0_img_total=0.007640 val_hop0_
+img_l1=0.003051 val_hop0_img_ssim=0.016689 val_hop0_img_seam=0.004162 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000407 val_chain_d10_mse=0
+.000355 val_chain_d4_mse=0.000314 val_chain_normal_mse=0.000295 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000760 val_rollout_step_1=0.000731 val_rollout_st
+ep_2=0.000715 val_rollout_step_3=0.000752 val_chain_tail_mse=0.000321 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3200
+.000000 val_hop0_window_start_batch=3200.000000 val_select_score=0.001089
+[val] step=136800 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000650 val_hop0_img_total=0.007569 val_hop0_
+img_l1=0.003001 val_hop0_img_ssim=0.016649 val_hop0_img_seam=0.004057 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000343 val_chain_d10_mse=0
+.000304 val_chain_d4_mse=0.000268 val_chain_normal_mse=0.000249 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000667 val_rollout_step_1=0.000624 val_rollout_st
+ep_2=0.000620 val_rollout_step_3=0.000690 val_chain_tail_mse=0.000274 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3264
+.000000 val_hop0_window_start_batch=3264.000000 val_select_score=0.000924
+[val] step=137200 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000581 val_hop0_img_total=0.006823 val_hop0_
+img_l1=0.002743 val_hop0_img_ssim=0.014772 val_hop0_img_seam=0.003874 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000308 val_chain_d10_mse=0
+.000272 val_chain_d4_mse=0.000239 val_chain_normal_mse=0.000223 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000580 val_rollout_step_1=0.000551 val_rollout_st
+ep_2=0.000559 val_rollout_step_3=0.000641 val_chain_tail_mse=0.000245 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3328
+.000000 val_hop0_window_start_batch=3328.000000 val_select_score=0.000826
+[val] step=137600 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000511 val_hop0_img_total=0.005008 val_hop0_
+img_l1=0.002047 val_hop0_img_ssim=0.010632 val_hop0_img_seam=0.003036 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000264 val_chain_d10_mse=0
+.000228 val_chain_d4_mse=0.000196 val_chain_normal_mse=0.000182 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000530 val_rollout_step_1=0.000505 val_rollout_st
+ep_2=0.000495 val_rollout_step_3=0.000508 val_chain_tail_mse=0.000202 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3392
+.000000 val_hop0_window_start_batch=3392.000000 val_select_score=0.000684
+[val] step=138000 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000664 val_hop0_img_total=0.005153 val_hop0_
+img_l1=0.002102 val_hop0_img_ssim=0.010970 val_hop0_img_seam=0.003076 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000345 val_chain_d10_mse=0
+.000298 val_chain_d4_mse=0.000256 val_chain_normal_mse=0.000236 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000730 val_rollout_step_1=0.000648 val_rollout_st
+ep_2=0.000630 val_rollout_step_3=0.000633 val_chain_tail_mse=0.000263 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3456
+.000000 val_hop0_window_start_batch=3456.000000 val_select_score=0.000892
+[val] step=138400 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000643 val_hop0_img_total=0.005710 val_hop0_
+img_l1=0.002339 val_hop0_img_ssim=0.012099 val_hop0_img_seam=0.003459 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000334 val_chain_d10_mse=0
+.000284 val_chain_d4_mse=0.000243 val_chain_normal_mse=0.000223 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000645 val_rollout_step_1=0.000636 val_rollout_st
+ep_2=0.000622 val_rollout_step_3=0.000674 val_chain_tail_mse=0.000250 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3520
+.000000 val_hop0_window_start_batch=3520.000000 val_select_score=0.000848
+[val] step=138800 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000660 val_hop0_img_total=0.005417 val_hop0_
+img_l1=0.002211 val_hop0_img_ssim=0.011537 val_hop0_img_seam=0.003216 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000280 val_chain_d10_mse=0
+.000245 val_chain_d4_mse=0.000214 val_chain_normal_mse=0.000198 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000668 val_rollout_step_1=0.000667 val_rollout_st
+ep_2=0.000637 val_rollout_step_3=0.000667 val_chain_tail_mse=0.000219 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3584
+.000000 val_hop0_window_start_batch=3584.000000 val_select_score=0.000739
+[val] step=139200 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000619 val_hop0_img_total=0.005849 val_hop0_
+img_l1=0.002380 val_hop0_img_ssim=0.012473 val_hop0_img_seam=0.003508 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000234 val_chain_d10_mse=0
+.000207 val_chain_d4_mse=0.000183 val_chain_normal_mse=0.000172 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000592 val_rollout_step_1=0.000602 val_rollout_st
+ep_2=0.000624 val_rollout_step_3=0.000667 val_chain_tail_mse=0.000187 val_chain_
+samples=428.000000 val_chain_unique_slices=428.000000 val_main_batches_evaluated
+=54.000000 val_hop0_batches_evaluated=54.000000 val_main_window_start_batch=3648
+.000000 val_hop0_window_start_batch=3648.000000 val_select_score=0.000633
+[val] step=139600 val_pair_total=0.000239 val_pair_velocity=0.000119 val_pair_en
+dpoint=0.000119 val_rollout_total=0.000956 val_hop0_img_total=0.007749 val_hop0_
+img_l1=0.002999 val_hop0_img_ssim=0.017376 val_hop0_img_seam=0.004060 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000273 val_chain_d10_mse=0
+.000227 val_chain_d4_mse=0.000188 val_chain_normal_mse=0.000165 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000895 val_rollout_step_1=0.000926 val_rollout_st
+ep_2=0.000935 val_rollout_step_3=0.001093 val_chain_tail_mse=0.000194 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=0.00
+0000 val_hop0_window_start_batch=0.000000 val_select_score=0.000656
+[val] step=140000 val_pair_total=0.000253 val_pair_velocity=0.000127 val_pair_en
+dpoint=0.000127 val_rollout_total=0.000907 val_hop0_img_total=0.006869 val_hop0_
+img_l1=0.002707 val_hop0_img_ssim=0.015105 val_hop0_img_seam=0.003860 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000456 val_chain_d10_mse=0
+.000378 val_chain_d4_mse=0.000319 val_chain_normal_mse=0.000284 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000950 val_rollout_step_1=0.000901 val_rollout_st
+ep_2=0.000861 val_rollout_step_3=0.000908 val_chain_tail_mse=0.000327 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=64.0
+00000 val_hop0_window_start_batch=64.000000 val_select_score=0.001111
+[val] step=140400 val_pair_total=0.000245 val_pair_velocity=0.000122 val_pair_en
+dpoint=0.000122 val_rollout_total=0.000893 val_hop0_img_total=0.006633 val_hop0_
+img_l1=0.002590 val_hop0_img_ssim=0.014720 val_hop0_img_seam=0.003629 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000485 val_chain_d10_mse=0
+.000408 val_chain_d4_mse=0.000349 val_chain_normal_mse=0.000315 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000918 val_rollout_step_1=0.000899 val_rollout_st
+ep_2=0.000873 val_rollout_step_3=0.000876 val_chain_tail_mse=0.000357 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=128.
+000000 val_hop0_window_start_batch=128.000000 val_select_score=0.001213
+[val] step=140800 val_pair_total=0.000242 val_pair_velocity=0.000121 val_pair_en
+dpoint=0.000121 val_rollout_total=0.000902 val_hop0_img_total=0.007285 val_hop0_
+img_l1=0.002834 val_hop0_img_ssim=0.016212 val_hop0_img_seam=0.003976 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000335 val_chain_d10_mse=0
+.000295 val_chain_d4_mse=0.000254 val_chain_normal_mse=0.000233 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000908 val_rollout_step_1=0.000917 val_rollout_st
+ep_2=0.000880 val_rollout_step_3=0.000898 val_chain_tail_mse=0.000261 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=192.
+000000 val_hop0_window_start_batch=192.000000 val_select_score=0.000878
+[val] step=141200 val_pair_total=0.000187 val_pair_velocity=0.000094 val_pair_en
+dpoint=0.000094 val_rollout_total=0.000790 val_hop0_img_total=0.007802 val_hop0_
+img_l1=0.003038 val_hop0_img_ssim=0.017381 val_hop0_img_seam=0.004182 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000278 val_chain_d10_mse=0
+.000251 val_chain_d4_mse=0.000221 val_chain_normal_mse=0.000208 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000703 val_rollout_step_1=0.000698 val_rollout_st
+ep_2=0.000755 val_rollout_step_3=0.001050 val_chain_tail_mse=0.000226 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=256.
+000000 val_hop0_window_start_batch=256.000000 val_select_score=0.000762
+[val] step=141600 val_pair_total=0.000358 val_pair_velocity=0.000179 val_pair_en
+dpoint=0.000179 val_rollout_total=0.001262 val_hop0_img_total=0.010904 val_hop0_
+img_l1=0.004241 val_hop0_img_ssim=0.024391 val_hop0_img_seam=0.005658 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000669 val_chain_d10_mse=0
+.000544 val_chain_d4_mse=0.000443 val_chain_normal_mse=0.000391 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001344 val_rollout_step_1=0.001248 val_rollout_st
+ep_2=0.001202 val_rollout_step_3=0.001236 val_chain_tail_mse=0.000460 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=320.
+000000 val_hop0_window_start_batch=320.000000 val_select_score=0.001565
+[val] step=142000 val_pair_total=0.000331 val_pair_velocity=0.000166 val_pair_en
+dpoint=0.000166 val_rollout_total=0.001145 val_hop0_img_total=0.010511 val_hop0_
+img_l1=0.004093 val_hop0_img_ssim=0.023489 val_hop0_img_seam=0.005452 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000622 val_chain_d10_mse=0
+.000505 val_chain_d4_mse=0.000417 val_chain_normal_mse=0.000370 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001242 val_rollout_step_1=0.001126 val_rollout_st
+ep_2=0.001093 val_rollout_step_3=0.001101 val_chain_tail_mse=0.000431 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=384.
+000000 val_hop0_window_start_batch=384.000000 val_select_score=0.001469
+[val] step=142400 val_pair_total=0.000205 val_pair_velocity=0.000103 val_pair_en
+dpoint=0.000103 val_rollout_total=0.000747 val_hop0_img_total=0.011102 val_hop0_
+img_l1=0.004333 val_hop0_img_ssim=0.024763 val_hop0_img_seam=0.005790 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000427 val_chain_d10_mse=0
+.000373 val_chain_d4_mse=0.000329 val_chain_normal_mse=0.000308 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000771 val_rollout_step_1=0.000744 val_rollout_st
+ep_2=0.000721 val_rollout_step_3=0.000750 val_chain_tail_mse=0.000337 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=448.
+000000 val_hop0_window_start_batch=448.000000 val_select_score=0.001140
+[val] step=142800 val_pair_total=0.000156 val_pair_velocity=0.000078 val_pair_en
+dpoint=0.000078 val_rollout_total=0.000581 val_hop0_img_total=0.011447 val_hop0_
+img_l1=0.004456 val_hop0_img_ssim=0.025604 val_hop0_img_seam=0.005902 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000315 val_chain_d10_mse=0
+.000279 val_chain_d4_mse=0.000247 val_chain_normal_mse=0.000230 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000586 val_rollout_step_1=0.000544 val_rollout_st
+ep_2=0.000552 val_rollout_step_3=0.000654 val_chain_tail_mse=0.000252 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=512.
+000000 val_hop0_window_start_batch=512.000000 val_select_score=0.000851
+[val] step=143200 val_pair_total=0.000148 val_pair_velocity=0.000074 val_pair_en
+dpoint=0.000074 val_rollout_total=0.000567 val_hop0_img_total=0.012158 val_hop0_
+img_l1=0.004772 val_hop0_img_ssim=0.026952 val_hop0_img_seam=0.006484 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000281 val_chain_d10_mse=0
+.000243 val_chain_d4_mse=0.000210 val_chain_normal_mse=0.000195 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000556 val_rollout_step_1=0.000551 val_rollout_st
+ep_2=0.000560 val_rollout_step_3=0.000609 val_chain_tail_mse=0.000216 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=576.
+000000 val_hop0_window_start_batch=576.000000 val_select_score=0.000732
+[val] step=143600 val_pair_total=0.000169 val_pair_velocity=0.000085 val_pair_en
+dpoint=0.000085 val_rollout_total=0.000583 val_hop0_img_total=0.009790 val_hop0_
+img_l1=0.003841 val_hop0_img_ssim=0.021719 val_hop0_img_seam=0.005197 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000302 val_chain_d10_mse=0
+.000260 val_chain_d4_mse=0.000222 val_chain_normal_mse=0.000206 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000635 val_rollout_step_1=0.000576 val_rollout_st
+ep_2=0.000554 val_rollout_step_3=0.000555 val_chain_tail_mse=0.000229 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=640.
+000000 val_hop0_window_start_batch=640.000000 val_select_score=0.000777
+[val] step=144000 val_pair_total=0.000186 val_pair_velocity=0.000093 val_pair_en
+dpoint=0.000093 val_rollout_total=0.000654 val_hop0_img_total=0.006478 val_hop0_
+img_l1=0.002587 val_hop0_img_ssim=0.014117 val_hop0_img_seam=0.003619 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000355 val_chain_d10_mse=0
+.000307 val_chain_d4_mse=0.000265 val_chain_normal_mse=0.000246 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000698 val_rollout_step_1=0.000640 val_rollout_st
+ep_2=0.000631 val_rollout_step_3=0.000641 val_chain_tail_mse=0.000273 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=704.
+000000 val_hop0_window_start_batch=704.000000 val_select_score=0.000923
+[val] step=144400 val_pair_total=0.000176 val_pair_velocity=0.000088 val_pair_en
+dpoint=0.000088 val_rollout_total=0.000653 val_hop0_img_total=0.007065 val_hop0_
+img_l1=0.002790 val_hop0_img_ssim=0.015561 val_hop0_img_seam=0.003856 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000329 val_chain_d10_mse=0
+.000276 val_chain_d4_mse=0.000232 val_chain_normal_mse=0.000212 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000661 val_rollout_step_1=0.000650 val_rollout_st
+ep_2=0.000623 val_rollout_step_3=0.000681 val_chain_tail_mse=0.000240 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=768.
+000000 val_hop0_window_start_batch=768.000000 val_select_score=0.000816
+[val] step=144800 val_pair_total=0.000163 val_pair_velocity=0.000082 val_pair_en
+dpoint=0.000082 val_rollout_total=0.000617 val_hop0_img_total=0.007506 val_hop0_
+img_l1=0.002985 val_hop0_img_ssim=0.016397 val_hop0_img_seam=0.004214 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000245 val_chain_d10_mse=0
+.000218 val_chain_d4_mse=0.000193 val_chain_normal_mse=0.000179 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000612 val_rollout_step_1=0.000620 val_rollout_st
+ep_2=0.000608 val_rollout_step_3=0.000630 val_chain_tail_mse=0.000197 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=832.
+000000 val_hop0_window_start_batch=832.000000 val_select_score=0.000663
+[val] step=145200 val_pair_total=0.000092 val_pair_velocity=0.000046 val_pair_en
+dpoint=0.000046 val_rollout_total=0.000878 val_hop0_img_total=0.007320 val_hop0_
+img_l1=0.002895 val_hop0_img_ssim=0.016076 val_hop0_img_seam=0.004058 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000263 val_chain_d10_mse=0
+.000224 val_chain_d4_mse=0.000190 val_chain_normal_mse=0.000174 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000836 val_rollout_step_1=0.000858 val_rollout_st
+ep_2=0.000879 val_rollout_step_3=0.000954 val_chain_tail_mse=0.000196 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=896.
+000000 val_hop0_window_start_batch=896.000000 val_select_score=0.000664
+[val] step=145600 val_pair_total=0.000026 val_pair_velocity=0.000013 val_pair_en
+dpoint=0.000013 val_rollout_total=0.000914 val_hop0_img_total=0.007785 val_hop0_
+img_l1=0.003113 val_hop0_img_ssim=0.016931 val_hop0_img_seam=0.004392 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000344 val_chain_d10_mse=0
+.000285 val_chain_d4_mse=0.000238 val_chain_normal_mse=0.000211 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000873 val_rollout_step_1=0.000890 val_rollout_st
+ep_2=0.000877 val_rollout_step_3=0.001038 val_chain_tail_mse=0.000245 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=960.
+000000 val_hop0_window_start_batch=960.000000 val_select_score=0.000831
+[val] step=146000 val_pair_total=0.000027 val_pair_velocity=0.000013 val_pair_en
+dpoint=0.000013 val_rollout_total=0.000869 val_hop0_img_total=0.005946 val_hop0_
+img_l1=0.002387 val_hop0_img_ssim=0.012857 val_hop0_img_seam=0.003448 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000565 val_chain_d10_mse=0
+.000468 val_chain_d4_mse=0.000394 val_chain_normal_mse=0.000352 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000940 val_rollout_step_1=0.000874 val_rollout_st
+ep_2=0.000827 val_rollout_step_3=0.000816 val_chain_tail_mse=0.000404 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1024
+.000000 val_hop0_window_start_batch=1024.000000 val_select_score=0.001375
+[val] step=146400 val_pair_total=0.000028 val_pair_velocity=0.000014 val_pair_en
+dpoint=0.000014 val_rollout_total=0.000939 val_hop0_img_total=0.006148 val_hop0_
+img_l1=0.002511 val_hop0_img_ssim=0.013050 val_hop0_img_seam=0.003736 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000340 val_chain_d10_mse=0
+.000294 val_chain_d4_mse=0.000253 val_chain_normal_mse=0.000233 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000949 val_rollout_step_1=0.000950 val_rollout_st
+ep_2=0.000922 val_rollout_step_3=0.000931 val_chain_tail_mse=0.000260 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1088
+.000000 val_hop0_window_start_batch=1088.000000 val_select_score=0.000879
+[val] step=146800 val_pair_total=0.000023 val_pair_velocity=0.000011 val_pair_en
+dpoint=0.000011 val_rollout_total=0.000795 val_hop0_img_total=0.006121 val_hop0_
+img_l1=0.002491 val_hop0_img_ssim=0.013043 val_hop0_img_seam=0.003691 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000307 val_chain_d10_mse=0
+.000273 val_chain_d4_mse=0.000237 val_chain_normal_mse=0.000219 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000744 val_rollout_step_1=0.000738 val_rollout_st
+ep_2=0.000768 val_rollout_step_3=0.000958 val_chain_tail_mse=0.000243 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1152
+.000000 val_hop0_window_start_batch=1152.000000 val_select_score=0.000819
+[val] step=147200 val_pair_total=0.000030 val_pair_velocity=0.000015 val_pair_en
+dpoint=0.000015 val_rollout_total=0.001010 val_hop0_img_total=0.006547 val_hop0_
+img_l1=0.002682 val_hop0_img_ssim=0.013885 val_hop0_img_seam=0.003943 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000469 val_chain_d10_mse=0
+.000399 val_chain_d4_mse=0.000336 val_chain_normal_mse=0.000305 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001014 val_rollout_step_1=0.000952 val_rollout_st
+ep_2=0.000959 val_rollout_step_3=0.001129 val_chain_tail_mse=0.000347 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1216
+.000000 val_hop0_window_start_batch=1216.000000 val_select_score=0.001174
+[val] step=147600 val_pair_total=0.000048 val_pair_velocity=0.000024 val_pair_en
+dpoint=0.000024 val_rollout_total=0.001432 val_hop0_img_total=0.006554 val_hop0_
+img_l1=0.002685 val_hop0_img_ssim=0.013885 val_hop0_img_seam=0.003975 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000785 val_chain_d10_mse=0
+.000619 val_chain_d4_mse=0.000496 val_chain_normal_mse=0.000430 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001547 val_rollout_step_1=0.001431 val_rollout_st
+ep_2=0.001374 val_rollout_step_3=0.001350 val_chain_tail_mse=0.000515 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1280
+.000000 val_hop0_window_start_batch=1280.000000 val_select_score=0.001762
+[val] step=148000 val_pair_total=0.000026 val_pair_velocity=0.000013 val_pair_en
+dpoint=0.000013 val_rollout_total=0.000764 val_hop0_img_total=0.014503 val_hop0_
+img_l1=0.005563 val_hop0_img_ssim=0.032915 val_hop0_img_seam=0.007108 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000419 val_chain_d10_mse=0
+.000361 val_chain_d4_mse=0.000316 val_chain_normal_mse=0.000296 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000790 val_rollout_step_1=0.000761 val_rollout_st
+ep_2=0.000731 val_rollout_step_3=0.000768 val_chain_tail_mse=0.000325 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1344
+.000000 val_hop0_window_start_batch=1344.000000 val_select_score=0.001100
+[val] step=148400 val_pair_total=0.000019 val_pair_velocity=0.000010 val_pair_en
+dpoint=0.000010 val_rollout_total=0.000663 val_hop0_img_total=0.013273 val_hop0_
+img_l1=0.005185 val_hop0_img_ssim=0.029572 val_hop0_img_seam=0.006955 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000359 val_chain_d10_mse=0
+.000315 val_chain_d4_mse=0.000278 val_chain_normal_mse=0.000260 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000688 val_rollout_step_1=0.000643 val_rollout_st
+ep_2=0.000631 val_rollout_step_3=0.000688 val_chain_tail_mse=0.000284 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1408
+.000000 val_hop0_window_start_batch=1408.000000 val_select_score=0.000961
+[val] step=148800 val_pair_total=0.000016 val_pair_velocity=0.000008 val_pair_en
+dpoint=0.000008 val_rollout_total=0.000598 val_hop0_img_total=0.012817 val_hop0_
+img_l1=0.004945 val_hop0_img_ssim=0.028906 val_hop0_img_seam=0.006451 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000322 val_chain_d10_mse=0
+.000283 val_chain_d4_mse=0.000248 val_chain_normal_mse=0.000230 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000595 val_rollout_step_1=0.000563 val_rollout_st
+ep_2=0.000574 val_rollout_step_3=0.000669 val_chain_tail_mse=0.000254 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1472
+.000000 val_hop0_window_start_batch=1472.000000 val_select_score=0.000857
+[val] step=149200 val_pair_total=0.000014 val_pair_velocity=0.000007 val_pair_en
+dpoint=0.000007 val_rollout_total=0.000519 val_hop0_img_total=0.013538 val_hop0_
+img_l1=0.005197 val_hop0_img_ssim=0.030678 val_hop0_img_seam=0.006714 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000268 val_chain_d10_mse=0
+.000230 val_chain_d4_mse=0.000198 val_chain_normal_mse=0.000184 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000533 val_rollout_step_1=0.000512 val_rollout_st
+ep_2=0.000508 val_rollout_step_3=0.000521 val_chain_tail_mse=0.000204 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1536
+.000000 val_hop0_window_start_batch=1536.000000 val_select_score=0.000691
+[val] step=149600 val_pair_total=0.000022 val_pair_velocity=0.000011 val_pair_en
+dpoint=0.000011 val_rollout_total=0.000671 val_hop0_img_total=0.014705 val_hop0_
+img_l1=0.005663 val_hop0_img_ssim=0.033191 val_hop0_img_seam=0.007435 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000347 val_chain_d10_mse=0
+.000297 val_chain_d4_mse=0.000254 val_chain_normal_mse=0.000234 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000735 val_rollout_step_1=0.000658 val_rollout_st
+ep_2=0.000636 val_rollout_step_3=0.000640 val_chain_tail_mse=0.000262 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1600
+.000000 val_hop0_window_start_batch=1600.000000 val_select_score=0.000887
+[val] step=150000 val_pair_total=0.000020 val_pair_velocity=0.000010 val_pair_en
+dpoint=0.000010 val_rollout_total=0.000653 val_hop0_img_total=0.010334 val_hop0_
+img_l1=0.004106 val_hop0_img_ssim=0.022590 val_hop0_img_seam=0.005806 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000349 val_chain_d10_mse=0
+.000297 val_chain_d4_mse=0.000253 val_chain_normal_mse=0.000233 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000661 val_rollout_step_1=0.000647 val_rollout_st
+ep_2=0.000631 val_rollout_step_3=0.000673 val_chain_tail_mse=0.000261 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1664
+.000000 val_hop0_window_start_batch=1664.000000 val_select_score=0.000885
+[val] step=150400 val_pair_total=0.000018 val_pair_velocity=0.000009 val_pair_en
+dpoint=0.000009 val_rollout_total=0.000660 val_hop0_img_total=0.007958 val_hop0_
+img_l1=0.003224 val_hop0_img_ssim=0.017061 val_hop0_img_seam=0.004682 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000293 val_chain_d10_mse=0
+.000253 val_chain_d4_mse=0.000220 val_chain_normal_mse=0.000204 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000669 val_rollout_step_1=0.000663 val_rollout_st
+ep_2=0.000634 val_rollout_step_3=0.000676 val_chain_tail_mse=0.000226 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1728
+.000000 val_hop0_window_start_batch=1728.000000 val_select_score=0.000764
+[val] step=150800 val_pair_total=0.000017 val_pair_velocity=0.000009 val_pair_en
+dpoint=0.000009 val_rollout_total=0.000674 val_hop0_img_total=0.008688 val_hop0_
+img_l1=0.003511 val_hop0_img_ssim=0.018702 val_hop0_img_seam=0.005008 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000249 val_chain_d10_mse=0
+.000220 val_chain_d4_mse=0.000193 val_chain_normal_mse=0.000179 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000637 val_rollout_step_1=0.000658 val_rollout_st
+ep_2=0.000682 val_rollout_step_3=0.000732 val_chain_tail_mse=0.000197 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1792
+.000000 val_hop0_window_start_batch=1792.000000 val_select_score=0.000666
+[val] step=151200 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000957 val_hop0_img_total=0.008659 val_hop0_
+img_l1=0.003515 val_hop0_img_ssim=0.018514 val_hop0_img_seam=0.005153 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000279 val_chain_d10_mse=0
+.000231 val_chain_d4_mse=0.000191 val_chain_normal_mse=0.000168 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000898 val_rollout_step_1=0.000929 val_rollout_st
+ep_2=0.000939 val_rollout_step_3=0.001088 val_chain_tail_mse=0.000196 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1856
+.000000 val_hop0_window_start_batch=1856.000000 val_select_score=0.000667
+[val] step=151600 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000919 val_hop0_img_total=0.009237 val_hop0_
+img_l1=0.003791 val_hop0_img_ssim=0.019481 val_hop0_img_seam=0.005756 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000487 val_chain_d10_mse=0
+.000399 val_chain_d4_mse=0.000333 val_chain_normal_mse=0.000297 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000991 val_rollout_step_1=0.000917 val_rollout_st
+ep_2=0.000855 val_rollout_step_3=0.000897 val_chain_tail_mse=0.000343 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1920
+.000000 val_hop0_window_start_batch=1920.000000 val_select_score=0.001169
+[val] step=152000 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000887 val_hop0_img_total=0.008496 val_hop0_
+img_l1=0.003391 val_hop0_img_ssim=0.018467 val_hop0_img_seam=0.004887 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000469 val_chain_d10_mse=0
+.000395 val_chain_d4_mse=0.000338 val_chain_normal_mse=0.000307 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000894 val_rollout_step_1=0.000893 val_rollout_st
+ep_2=0.000878 val_rollout_step_3=0.000882 val_chain_tail_mse=0.000347 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1984
+.000000 val_hop0_window_start_batch=1984.000000 val_select_score=0.001177
+[val] step=152400 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000902 val_hop0_img_total=0.006533 val_hop0_
+img_l1=0.002631 val_hop0_img_ssim=0.014086 val_hop0_img_seam=0.003807 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000342 val_chain_d10_mse=0
+.000298 val_chain_d4_mse=0.000254 val_chain_normal_mse=0.000233 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000905 val_rollout_step_1=0.000906 val_rollout_st
+ep_2=0.000879 val_rollout_step_3=0.000917 val_chain_tail_mse=0.000262 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2048
+.000000 val_hop0_window_start_batch=2048.000000 val_select_score=0.000884
+[val] step=152800 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000790 val_hop0_img_total=0.007167 val_hop0_
+img_l1=0.002876 val_hop0_img_ssim=0.015512 val_hop0_img_seam=0.004121 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000287 val_chain_d10_mse=0
+.000258 val_chain_d4_mse=0.000226 val_chain_normal_mse=0.000213 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000706 val_rollout_step_1=0.000701 val_rollout_st
+ep_2=0.000754 val_rollout_step_3=0.001043 val_chain_tail_mse=0.000232 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2112
+.000000 val_hop0_window_start_batch=2112.000000 val_select_score=0.000782
+[val] step=153200 val_pair_total=0.000003 val_pair_velocity=0.000002 val_pair_en
+dpoint=0.000002 val_rollout_total=0.001369 val_hop0_img_total=0.007557 val_hop0_
+img_l1=0.003062 val_hop0_img_ssim=0.016194 val_hop0_img_seam=0.004471 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000719 val_chain_d10_mse=0
+.000578 val_chain_d4_mse=0.000468 val_chain_normal_mse=0.000410 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001451 val_rollout_step_1=0.001359 val_rollout_st
+ep_2=0.001316 val_rollout_step_3=0.001332 val_chain_tail_mse=0.000486 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2176
+.000000 val_hop0_window_start_batch=2176.000000 val_select_score=0.001656
+[val] step=153600 val_pair_total=0.000002 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.001076 val_hop0_img_total=0.007340 val_hop0_
+img_l1=0.002937 val_hop0_img_ssim=0.015932 val_hop0_img_seam=0.004190 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000614 val_chain_d10_mse=0
+.000499 val_chain_d4_mse=0.000413 val_chain_normal_mse=0.000369 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001177 val_rollout_step_1=0.001067 val_rollout_st
+ep_2=0.001012 val_rollout_step_3=0.001028 val_chain_tail_mse=0.000427 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2240
+.000000 val_hop0_window_start_batch=2240.000000 val_select_score=0.001456
+[val] step=154000 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000729 val_hop0_img_total=0.007923 val_hop0_
+img_l1=0.003166 val_hop0_img_ssim=0.017184 val_hop0_img_seam=0.004615 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000416 val_chain_d10_mse=0
+.000363 val_chain_d4_mse=0.000320 val_chain_normal_mse=0.000300 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000754 val_rollout_step_1=0.000718 val_rollout_st
+ep_2=0.000703 val_rollout_step_3=0.000740 val_chain_tail_mse=0.000328 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2304
+.000000 val_hop0_window_start_batch=2304.000000 val_select_score=0.001110
+[val] step=154400 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000598 val_hop0_img_total=0.006309 val_hop0_
+img_l1=0.002472 val_hop0_img_ssim=0.013902 val_hop0_img_seam=0.003607 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000335 val_chain_d10_mse=0
+.000293 val_chain_d4_mse=0.000258 val_chain_normal_mse=0.000240 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000604 val_rollout_step_1=0.000558 val_rollout_st
+ep_2=0.000564 val_rollout_step_3=0.000674 val_chain_tail_mse=0.000263 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2368
+.000000 val_hop0_window_start_batch=2368.000000 val_select_score=0.000891
+[val] step=154800 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000559 val_hop0_img_total=0.005964 val_hop0_
+img_l1=0.002367 val_hop0_img_ssim=0.012974 val_hop0_img_seam=0.003530 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000273 val_chain_d10_mse=0
+.000234 val_chain_d4_mse=0.000201 val_chain_normal_mse=0.000185 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000552 val_rollout_step_1=0.000546 val_rollout_st
+ep_2=0.000553 val_rollout_step_3=0.000588 val_chain_tail_mse=0.000207 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2432
+.000000 val_hop0_window_start_batch=2432.000000 val_select_score=0.000700
+[val] step=155200 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000596 val_hop0_img_total=0.005978 val_hop0_
+img_l1=0.002345 val_hop0_img_ssim=0.013138 val_hop0_img_seam=0.003485 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000309 val_chain_d10_mse=0
+.000264 val_chain_d4_mse=0.000224 val_chain_normal_mse=0.000208 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000654 val_rollout_step_1=0.000591 val_rollout_st
+ep_2=0.000564 val_rollout_step_3=0.000563 val_chain_tail_mse=0.000232 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2496
+.000000 val_hop0_window_start_batch=2496.000000 val_select_score=0.000787
+[val] step=155600 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000671 val_hop0_img_total=0.006136 val_hop0_
+img_l1=0.002405 val_hop0_img_ssim=0.013523 val_hop0_img_seam=0.003505 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000372 val_chain_d10_mse=0
+.000319 val_chain_d4_mse=0.000273 val_chain_normal_mse=0.000253 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000706 val_rollout_step_1=0.000655 val_rollout_st
+ep_2=0.000650 val_rollout_step_3=0.000668 val_chain_tail_mse=0.000282 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2560
+.000000 val_hop0_window_start_batch=2560.000000 val_select_score=0.000955
+[val] step=156000 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000668 val_hop0_img_total=0.006651 val_hop0_
+img_l1=0.002593 val_hop0_img_ssim=0.014703 val_hop0_img_seam=0.003827 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000330 val_chain_d10_mse=0
+.000275 val_chain_d4_mse=0.000232 val_chain_normal_mse=0.000211 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000674 val_rollout_step_1=0.000664 val_rollout_st
+ep_2=0.000639 val_rollout_step_3=0.000697 val_chain_tail_mse=0.000239 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2624
+.000000 val_hop0_window_start_batch=2624.000000 val_select_score=0.000815
+[val] step=156400 val_pair_total=0.000001 val_pair_velocity=0.000001 val_pair_en
+dpoint=0.000001 val_rollout_total=0.000621 val_hop0_img_total=0.007891 val_hop0_
+img_l1=0.003111 val_hop0_img_ssim=0.017338 val_hop0_img_seam=0.004456 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000240 val_chain_d10_mse=0
+.000213 val_chain_d4_mse=0.000188 val_chain_normal_mse=0.000174 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000605 val_rollout_step_1=0.000623 val_rollout_st
+ep_2=0.000618 val_rollout_step_3=0.000644 val_chain_tail_mse=0.000192 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2688
+.000000 val_hop0_window_start_batch=2688.000000 val_select_score=0.000646
+[val] step=156800 val_pair_total=0.000001 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000891 val_hop0_img_total=0.008031 val_hop0_
+img_l1=0.003184 val_hop0_img_ssim=0.017514 val_hop0_img_seam=0.004690 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000275 val_chain_d10_mse=0
+.000232 val_chain_d4_mse=0.000196 val_chain_normal_mse=0.000178 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000857 val_rollout_step_1=0.000866 val_rollout_st
+ep_2=0.000884 val_rollout_step_3=0.000975 val_chain_tail_mse=0.000202 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2752
+.000000 val_hop0_window_start_batch=2752.000000 val_select_score=0.000685
+[val] step=157200 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000931 val_hop0_img_total=0.007204 val_hop0_
+img_l1=0.002856 val_hop0_img_ssim=0.015718 val_hop0_img_seam=0.004186 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000373 val_chain_d10_mse=0
+.000308 val_chain_d4_mse=0.000256 val_chain_normal_mse=0.000228 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000906 val_rollout_step_1=0.000908 val_rollout_st
+ep_2=0.000893 val_rollout_step_3=0.001033 val_chain_tail_mse=0.000264 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2816
+.000000 val_hop0_window_start_batch=2816.000000 val_select_score=0.000897
+[val] step=157600 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000881 val_hop0_img_total=0.008138 val_hop0_
+img_l1=0.003226 val_hop0_img_ssim=0.017743 val_hop0_img_seam=0.004757 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000576 val_chain_d10_mse=0
+.000473 val_chain_d4_mse=0.000397 val_chain_normal_mse=0.000355 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000949 val_rollout_step_1=0.000886 val_rollout_st
+ep_2=0.000840 val_rollout_step_3=0.000833 val_chain_tail_mse=0.000409 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2880
+.000000 val_hop0_window_start_batch=2880.000000 val_select_score=0.001391
+[val] step=158000 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000935 val_hop0_img_total=0.008419 val_hop0_
+img_l1=0.003369 val_hop0_img_ssim=0.018202 val_hop0_img_seam=0.004988 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000328 val_chain_d10_mse=0
+.000282 val_chain_d4_mse=0.000242 val_chain_normal_mse=0.000223 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000940 val_rollout_step_1=0.000951 val_rollout_st
+ep_2=0.000916 val_rollout_step_3=0.000929 val_chain_tail_mse=0.000249 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=2944
+.000000 val_hop0_window_start_batch=2944.000000 val_select_score=0.000844
+[val] step=158400 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000808 val_hop0_img_total=0.007814 val_hop0_
+img_l1=0.003083 val_hop0_img_ssim=0.017175 val_hop0_img_seam=0.004373 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000310 val_chain_d10_mse=0
+.000275 val_chain_d4_mse=0.000238 val_chain_normal_mse=0.000221 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000747 val_rollout_step_1=0.000743 val_rollout_st
+ep_2=0.000782 val_rollout_step_3=0.000993 val_chain_tail_mse=0.000245 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3008
+.000000 val_hop0_window_start_batch=3008.000000 val_select_score=0.000825
+[val] step=158800 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.001091 val_hop0_img_total=0.007286 val_hop0_
+img_l1=0.002876 val_hop0_img_ssim=0.016028 val_hop0_img_seam=0.004030 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000508 val_chain_d10_mse=0
+.000427 val_chain_d4_mse=0.000358 val_chain_normal_mse=0.000323 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001084 val_rollout_step_1=0.001045 val_rollout_st
+ep_2=0.001053 val_rollout_step_3=0.001199 val_chain_tail_mse=0.000369 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3072
+.000000 val_hop0_window_start_batch=3072.000000 val_select_score=0.001252
+[val] step=159200 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.001395 val_hop0_img_total=0.007410 val_hop0_
+img_l1=0.002906 val_hop0_img_ssim=0.016407 val_hop0_img_seam=0.004023 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000794 val_chain_d10_mse=0
+.000624 val_chain_d4_mse=0.000500 val_chain_normal_mse=0.000435 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001539 val_rollout_step_1=0.001397 val_rollout_st
+ep_2=0.001313 val_rollout_step_3=0.001294 val_chain_tail_mse=0.000520 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3136
+.000000 val_hop0_window_start_batch=3136.000000 val_select_score=0.001781
+[val] step=159600 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000751 val_hop0_img_total=0.007898 val_hop0_
+img_l1=0.003122 val_hop0_img_ssim=0.017357 val_hop0_img_seam=0.004369 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000425 val_chain_d10_mse=0
+.000366 val_chain_d4_mse=0.000321 val_chain_normal_mse=0.000301 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000771 val_rollout_step_1=0.000746 val_rollout_st
+ep_2=0.000727 val_rollout_step_3=0.000759 val_chain_tail_mse=0.000330 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3200
+.000000 val_hop0_window_start_batch=3200.000000 val_select_score=0.001118
+[val] step=160000 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000663 val_hop0_img_total=0.007831 val_hop0_
+img_l1=0.003070 val_hop0_img_ssim=0.017336 val_hop0_img_seam=0.004267 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000359 val_chain_d10_mse=0
+.000313 val_chain_d4_mse=0.000274 val_chain_normal_mse=0.000254 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000682 val_rollout_step_1=0.000636 val_rollout_st
+ep_2=0.000631 val_rollout_step_3=0.000706 val_chain_tail_mse=0.000281 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3264
+.000000 val_hop0_window_start_batch=3264.000000 val_select_score=0.000949
+[val] step=160400 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000598 val_hop0_img_total=0.007046 val_hop0_
+img_l1=0.002803 val_hop0_img_ssim=0.015353 val_hop0_img_seam=0.004051 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000322 val_chain_d10_mse=0
+.000280 val_chain_d4_mse=0.000244 val_chain_normal_mse=0.000227 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000596 val_rollout_step_1=0.000566 val_rollout_st
+ep_2=0.000575 val_rollout_step_3=0.000662 val_chain_tail_mse=0.000251 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3328
+.000000 val_hop0_window_start_batch=3328.000000 val_select_score=0.000848
+[val] step=160800 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000525 val_hop0_img_total=0.005169 val_hop0_
+img_l1=0.002089 val_hop0_img_ssim=0.011053 val_hop0_img_seam=0.003166 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000276 val_chain_d10_mse=0
+.000235 val_chain_d4_mse=0.000200 val_chain_normal_mse=0.000186 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000546 val_rollout_step_1=0.000520 val_rollout_st
+ep_2=0.000508 val_rollout_step_3=0.000524 val_chain_tail_mse=0.000207 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3392
+.000000 val_hop0_window_start_batch=3392.000000 val_select_score=0.000703
+[val] step=161200 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000682 val_hop0_img_total=0.005313 val_hop0_
+img_l1=0.002144 val_hop0_img_ssim=0.011393 val_hop0_img_seam=0.003211 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000359 val_chain_d10_mse=0
+.000306 val_chain_d4_mse=0.000261 val_chain_normal_mse=0.000241 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000747 val_rollout_step_1=0.000664 val_rollout_st
+ep_2=0.000650 val_rollout_step_3=0.000656 val_chain_tail_mse=0.000270 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3456
+.000000 val_hop0_window_start_batch=3456.000000 val_select_score=0.000914
+[val] step=161600 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000661 val_hop0_img_total=0.005891 val_hop0_
+img_l1=0.002389 val_hop0_img_ssim=0.012563 val_hop0_img_seam=0.003609 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000348 val_chain_d10_mse=0
+.000293 val_chain_d4_mse=0.000248 val_chain_normal_mse=0.000228 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000660 val_rollout_step_1=0.000655 val_rollout_st
+ep_2=0.000641 val_rollout_step_3=0.000692 val_chain_tail_mse=0.000256 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3520
+.000000 val_hop0_window_start_batch=3520.000000 val_select_score=0.000871
+[val] step=162000 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000680 val_hop0_img_total=0.005589 val_hop0_
+img_l1=0.002256 val_hop0_img_ssim=0.011990 val_hop0_img_seam=0.003355 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000292 val_chain_d10_mse=0
+.000252 val_chain_d4_mse=0.000218 val_chain_normal_mse=0.000201 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000682 val_rollout_step_1=0.000687 val_rollout_st
+ep_2=0.000658 val_rollout_step_3=0.000692 val_chain_tail_mse=0.000224 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=3584
+.000000 val_hop0_window_start_batch=3584.000000 val_select_score=0.000757
+[val] step=162400 val_pair_total=0.000000 val_pair_velocity=0.000000 val_pair_en
+dpoint=0.000000 val_rollout_total=0.000638 val_hop0_img_total=0.006039 val_hop0_
+img_l1=0.002430 val_hop0_img_ssim=0.012973 val_hop0_img_seam=0.003659 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000244 val_chain_d10_mse=0
+.000213 val_chain_d4_mse=0.000187 val_chain_normal_mse=0.000175 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000610 val_rollout_step_1=0.000619 val_rollout_st
+ep_2=0.000642 val_rollout_step_3=0.000691 val_chain_tail_mse=0.000192 val_chain_
+samples=428.000000 val_chain_unique_slices=428.000000 val_main_batches_evaluated
+=54.000000 val_hop0_batches_evaluated=54.000000 val_main_window_start_batch=3648
+.000000 val_hop0_window_start_batch=3648.000000 val_select_score=0.000648
+[val] step=162800 val_pair_total=0.000242 val_pair_velocity=0.000121 val_pair_en
+dpoint=0.000121 val_rollout_total=0.000970 val_hop0_img_total=0.008012 val_hop0_
+img_l1=0.003068 val_hop0_img_ssim=0.018069 val_hop0_img_seam=0.004260 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000285 val_chain_d10_mse=0
+.000234 val_chain_d4_mse=0.000192 val_chain_normal_mse=0.000169 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000908 val_rollout_step_1=0.000938 val_rollout_st
+ep_2=0.000952 val_rollout_step_3=0.001108 val_chain_tail_mse=0.000198 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=0.00
+0000 val_hop0_window_start_batch=0.000000 val_select_score=0.000674
+[val] step=163200 val_pair_total=0.000258 val_pair_velocity=0.000129 val_pair_en
+dpoint=0.000129 val_rollout_total=0.000925 val_hop0_img_total=0.007088 val_hop0_
+img_l1=0.002766 val_hop0_img_ssim=0.015673 val_hop0_img_seam=0.004036 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000474 val_chain_d10_mse=0
+.000389 val_chain_d4_mse=0.000324 val_chain_normal_mse=0.000289 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000969 val_rollout_step_1=0.000919 val_rollout_st
+ep_2=0.000874 val_rollout_step_3=0.000930 val_chain_tail_mse=0.000334 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=64.0
+00000 val_hop0_window_start_batch=64.000000 val_select_score=0.001138
+[val] step=163600 val_pair_total=0.000251 val_pair_velocity=0.000125 val_pair_en
+dpoint=0.000125 val_rollout_total=0.000914 val_hop0_img_total=0.006851 val_hop0_
+img_l1=0.002648 val_hop0_img_ssim=0.015294 val_hop0_img_seam=0.003795 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000505 val_chain_d10_mse=0
+.000419 val_chain_d4_mse=0.000355 val_chain_normal_mse=0.000320 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000940 val_rollout_step_1=0.000919 val_rollout_st
+ep_2=0.000893 val_rollout_step_3=0.000900 val_chain_tail_mse=0.000365 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=128.
+000000 val_hop0_window_start_batch=128.000000 val_select_score=0.001241
+[val] step=164000 val_pair_total=0.000248 val_pair_velocity=0.000124 val_pair_en
+dpoint=0.000124 val_rollout_total=0.000927 val_hop0_img_total=0.007510 val_hop0_
+img_l1=0.002893 val_hop0_img_ssim=0.016804 val_hop0_img_seam=0.004161 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000350 val_chain_d10_mse=0
+.000303 val_chain_d4_mse=0.000259 val_chain_normal_mse=0.000238 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000931 val_rollout_step_1=0.000940 val_rollout_st
+ep_2=0.000904 val_rollout_step_3=0.000929 val_chain_tail_mse=0.000266 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=192.
+000000 val_hop0_window_start_batch=192.000000 val_select_score=0.000901
+[val] step=164400 val_pair_total=0.000192 val_pair_velocity=0.000096 val_pair_en
+dpoint=0.000096 val_rollout_total=0.000808 val_hop0_img_total=0.008045 val_hop0_
+img_l1=0.003103 val_hop0_img_ssim=0.018019 val_hop0_img_seam=0.004379 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000290 val_chain_d10_mse=0
+.000258 val_chain_d4_mse=0.000225 val_chain_normal_mse=0.000211 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000721 val_rollout_step_1=0.000715 val_rollout_st
+ep_2=0.000775 val_rollout_step_3=0.001066 val_chain_tail_mse=0.000231 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=256.
+000000 val_hop0_window_start_batch=256.000000 val_select_score=0.000780
+[val] step=164800 val_pair_total=0.000365 val_pair_velocity=0.000182 val_pair_en
+dpoint=0.000182 val_rollout_total=0.001279 val_hop0_img_total=0.011266 val_hop0_
+img_l1=0.004336 val_hop0_img_ssim=0.025339 val_hop0_img_seam=0.005959 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000694 val_chain_d10_mse=0
+.000558 val_chain_d4_mse=0.000452 val_chain_normal_mse=0.000398 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001368 val_rollout_step_1=0.001271 val_rollout_st
+ep_2=0.001212 val_rollout_step_3=0.001248 val_chain_tail_mse=0.000470 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=320.
+000000 val_hop0_window_start_batch=320.000000 val_select_score=0.001603
+[val] step=165200 val_pair_total=0.000336 val_pair_velocity=0.000168 val_pair_en
+dpoint=0.000168 val_rollout_total=0.001162 val_hop0_img_total=0.010849 val_hop0_
+img_l1=0.004183 val_hop0_img_ssim=0.024372 val_hop0_img_seam=0.005730 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000645 val_chain_d10_mse=0
+.000517 val_chain_d4_mse=0.000424 val_chain_normal_mse=0.000376 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001260 val_rollout_step_1=0.001148 val_rollout_st
+ep_2=0.001102 val_rollout_step_3=0.001118 val_chain_tail_mse=0.000439 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=384.
+000000 val_hop0_window_start_batch=384.000000 val_select_score=0.001502
+[val] step=165600 val_pair_total=0.000210 val_pair_velocity=0.000105 val_pair_en
+dpoint=0.000105 val_rollout_total=0.000762 val_hop0_img_total=0.011455 val_hop0_
+img_l1=0.004425 val_hop0_img_ssim=0.025684 val_hop0_img_seam=0.006091 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000445 val_chain_d10_mse=0
+.000385 val_chain_d4_mse=0.000337 val_chain_normal_mse=0.000315 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000786 val_rollout_step_1=0.000758 val_rollout_st
+ep_2=0.000736 val_rollout_step_3=0.000763 val_chain_tail_mse=0.000345 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=448.
+000000 val_hop0_window_start_batch=448.000000 val_select_score=0.001171
+[val] step=166000 val_pair_total=0.000159 val_pair_velocity=0.000080 val_pair_en
+dpoint=0.000080 val_rollout_total=0.000595 val_hop0_img_total=0.011799 val_hop0_
+img_l1=0.004552 val_hop0_img_ssim=0.026509 val_hop0_img_seam=0.006191 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000329 val_chain_d10_mse=0
+.000286 val_chain_d4_mse=0.000252 val_chain_normal_mse=0.000234 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000598 val_rollout_step_1=0.000556 val_rollout_st
+ep_2=0.000562 val_rollout_step_3=0.000673 val_chain_tail_mse=0.000258 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=512.
+000000 val_hop0_window_start_batch=512.000000 val_select_score=0.000871
+[val] step=166400 val_pair_total=0.000153 val_pair_velocity=0.000076 val_pair_en
+dpoint=0.000076 val_rollout_total=0.000587 val_hop0_img_total=0.012543 val_hop0_
+img_l1=0.004877 val_hop0_img_ssim=0.027943 val_hop0_img_seam=0.006801 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000292 val_chain_d10_mse=0
+.000250 val_chain_d4_mse=0.000214 val_chain_normal_mse=0.000198 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000573 val_rollout_step_1=0.000572 val_rollout_st
+ep_2=0.000580 val_rollout_step_3=0.000633 val_chain_tail_mse=0.000221 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=576.
+000000 val_hop0_window_start_batch=576.000000 val_select_score=0.000749
+[val] step=166800 val_pair_total=0.000174 val_pair_velocity=0.000087 val_pair_en
+dpoint=0.000087 val_rollout_total=0.000596 val_hop0_img_total=0.010087 val_hop0_
+img_l1=0.003919 val_hop0_img_ssim=0.022494 val_hop0_img_seam=0.005445 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000314 val_chain_d10_mse=0
+.000268 val_chain_d4_mse=0.000227 val_chain_normal_mse=0.000210 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000651 val_rollout_step_1=0.000587 val_rollout_st
+ep_2=0.000566 val_rollout_step_3=0.000568 val_chain_tail_mse=0.000235 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=640.
+000000 val_hop0_window_start_batch=640.000000 val_select_score=0.000796
+[val] step=167200 val_pair_total=0.000191 val_pair_velocity=0.000095 val_pair_en
+dpoint=0.000095 val_rollout_total=0.000675 val_hop0_img_total=0.006680 val_hop0_
+img_l1=0.002642 val_hop0_img_ssim=0.014639 val_hop0_img_seam=0.003781 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000369 val_chain_d10_mse=0
+.000315 val_chain_d4_mse=0.000271 val_chain_normal_mse=0.000251 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000715 val_rollout_step_1=0.000658 val_rollout_st
+ep_2=0.000654 val_rollout_step_3=0.000666 val_chain_tail_mse=0.000279 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=704.
+000000 val_hop0_window_start_batch=704.000000 val_select_score=0.000946
+[val] step=167600 val_pair_total=0.000181 val_pair_velocity=0.000090 val_pair_en
+dpoint=0.000090 val_rollout_total=0.000671 val_hop0_img_total=0.007278 val_hop0_
+img_l1=0.002846 val_hop0_img_ssim=0.016114 val_hop0_img_seam=0.004035 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000343 val_chain_d10_mse=0
+.000283 val_chain_d4_mse=0.000237 val_chain_normal_mse=0.000216 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000677 val_rollout_step_1=0.000667 val_rollout_st
+ep_2=0.000639 val_rollout_step_3=0.000705 val_chain_tail_mse=0.000245 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=768.
+000000 val_hop0_window_start_batch=768.000000 val_select_score=0.000835
+[val] step=168000 val_pair_total=0.000166 val_pair_velocity=0.000083 val_pair_en
+dpoint=0.000083 val_rollout_total=0.000635 val_hop0_img_total=0.007727 val_hop0_
+img_l1=0.003045 val_hop0_img_ssim=0.016970 val_hop0_img_seam=0.004397 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000255 val_chain_d10_mse=0
+.000224 val_chain_d4_mse=0.000197 val_chain_normal_mse=0.000182 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000622 val_rollout_step_1=0.000639 val_rollout_st
+ep_2=0.000628 val_rollout_step_3=0.000654 val_chain_tail_mse=0.000201 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=832.
+000000 val_hop0_window_start_batch=832.000000 val_select_score=0.000678
+[val] step=168400 val_pair_total=0.000094 val_pair_velocity=0.000047 val_pair_en
+dpoint=0.000047 val_rollout_total=0.000894 val_hop0_img_total=0.007529 val_hop0_
+img_l1=0.002950 val_hop0_img_ssim=0.016623 val_hop0_img_seam=0.004241 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000273 val_chain_d10_mse=0
+.000230 val_chain_d4_mse=0.000194 val_chain_normal_mse=0.000177 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000850 val_rollout_step_1=0.000872 val_rollout_st
+ep_2=0.000893 val_rollout_step_3=0.000979 val_chain_tail_mse=0.000200 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=896.
+000000 val_hop0_window_start_batch=896.000000 val_select_score=0.000680
+[val] step=168800 val_pair_total=0.000027 val_pair_velocity=0.000013 val_pair_en
+dpoint=0.000013 val_rollout_total=0.000931 val_hop0_img_total=0.008013 val_hop0_
+img_l1=0.003177 val_hop0_img_ssim=0.017515 val_hop0_img_seam=0.004573 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000357 val_chain_d10_mse=0
+.000293 val_chain_d4_mse=0.000243 val_chain_normal_mse=0.000215 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000888 val_rollout_step_1=0.000906 val_rollout_st
+ep_2=0.000893 val_rollout_step_3=0.001057 val_chain_tail_mse=0.000250 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=960.
+000000 val_hop0_window_start_batch=960.000000 val_select_score=0.000851
+[val] step=169200 val_pair_total=0.000028 val_pair_velocity=0.000014 val_pair_en
+dpoint=0.000014 val_rollout_total=0.000888 val_hop0_img_total=0.006123 val_hop0_
+img_l1=0.002435 val_hop0_img_ssim=0.013315 val_hop0_img_seam=0.003595 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000587 val_chain_d10_mse=0
+.000479 val_chain_d4_mse=0.000400 val_chain_normal_mse=0.000357 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000961 val_rollout_step_1=0.000894 val_rollout_st
+ep_2=0.000841 val_rollout_step_3=0.000835 val_chain_tail_mse=0.000412 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1024
+.000000 val_hop0_window_start_batch=1024.000000 val_select_score=0.001405
+[val] step=169600 val_pair_total=0.000029 val_pair_velocity=0.000014 val_pair_en
+dpoint=0.000014 val_rollout_total=0.000958 val_hop0_img_total=0.006323 val_hop0_
+img_l1=0.002561 val_hop0_img_ssim=0.013498 val_hop0_img_seam=0.003879 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000353 val_chain_d10_mse=0
+.000301 val_chain_d4_mse=0.000258 val_chain_normal_mse=0.000237 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000966 val_rollout_step_1=0.000966 val_rollout_st
+ep_2=0.000941 val_rollout_step_3=0.000957 val_chain_tail_mse=0.000265 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1088
+.000000 val_hop0_window_start_batch=1088.000000 val_select_score=0.000899
+[val] step=170000 val_pair_total=0.000024 val_pair_velocity=0.000012 val_pair_en
+dpoint=0.000012 val_rollout_total=0.000818 val_hop0_img_total=0.006296 val_hop0_
+img_l1=0.002540 val_hop0_img_ssim=0.013493 val_hop0_img_seam=0.003835 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000319 val_chain_d10_mse=0
+.000280 val_chain_d4_mse=0.000241 val_chain_normal_mse=0.000223 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000763 val_rollout_step_1=0.000759 val_rollout_st
+ep_2=0.000794 val_rollout_step_3=0.000988 val_chain_tail_mse=0.000248 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1152
+.000000 val_hop0_window_start_batch=1152.000000 val_select_score=0.000837
+[val] step=170400 val_pair_total=0.000031 val_pair_velocity=0.000016 val_pair_en
+dpoint=0.000016 val_rollout_total=0.001028 val_hop0_img_total=0.006736 val_hop0_
+img_l1=0.002736 val_hop0_img_ssim=0.014360 val_hop0_img_seam=0.004100 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000486 val_chain_d10_mse=0
+.000409 val_chain_d4_mse=0.000342 val_chain_normal_mse=0.000310 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001036 val_rollout_step_1=0.000974 val_rollout_st
+ep_2=0.000974 val_rollout_step_3=0.001143 val_chain_tail_mse=0.000354 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1216
+.000000 val_hop0_window_start_batch=1216.000000 val_select_score=0.001200
+[val] step=170800 val_pair_total=0.000050 val_pair_velocity=0.000025 val_pair_en
+dpoint=0.000025 val_rollout_total=0.001451 val_hop0_img_total=0.006735 val_hop0_
+img_l1=0.002737 val_hop0_img_ssim=0.014343 val_hop0_img_seam=0.004119 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000812 val_chain_d10_mse=0
+.000633 val_chain_d4_mse=0.000504 val_chain_normal_mse=0.000437 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.001569 val_rollout_step_1=0.001453 val_rollout_st
+ep_2=0.001382 val_rollout_step_3=0.001369 val_chain_tail_mse=0.000524 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1280
+.000000 val_hop0_window_start_batch=1280.000000 val_select_score=0.001799
+[val] step=171200 val_pair_total=0.000027 val_pair_velocity=0.000014 val_pair_en
+dpoint=0.000014 val_rollout_total=0.000778 val_hop0_img_total=0.014887 val_hop0_
+img_l1=0.005673 val_hop0_img_ssim=0.033876 val_hop0_img_seam=0.007450 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000434 val_chain_d10_mse=0
+.000371 val_chain_d4_mse=0.000323 val_chain_normal_mse=0.000301 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000804 val_rollout_step_1=0.000778 val_rollout_st
+ep_2=0.000746 val_rollout_step_3=0.000780 val_chain_tail_mse=0.000332 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1344
+.000000 val_hop0_window_start_batch=1344.000000 val_select_score=0.001126
+[val] step=171600 val_pair_total=0.000020 val_pair_velocity=0.000010 val_pair_en
+dpoint=0.000010 val_rollout_total=0.000678 val_hop0_img_total=0.013620 val_hop0_
+img_l1=0.005283 val_hop0_img_ssim=0.030444 val_hop0_img_seam=0.007254 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000373 val_chain_d10_mse=0
+.000324 val_chain_d4_mse=0.000284 val_chain_normal_mse=0.000265 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000702 val_rollout_step_1=0.000657 val_rollout_st
+ep_2=0.000644 val_rollout_step_3=0.000707 val_chain_tail_mse=0.000291 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1408
+.000000 val_hop0_window_start_batch=1408.000000 val_select_score=0.000985
+[val] step=172000 val_pair_total=0.000017 val_pair_velocity=0.000009 val_pair_en
+dpoint=0.000009 val_rollout_total=0.000615 val_hop0_img_total=0.013148 val_hop0_
+img_l1=0.005039 val_hop0_img_ssim=0.029737 val_hop0_img_seam=0.006750 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000335 val_chain_d10_mse=0
+.000290 val_chain_d4_mse=0.000252 val_chain_normal_mse=0.000234 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000608 val_rollout_step_1=0.000578 val_rollout_st
+ep_2=0.000592 val_rollout_step_3=0.000695 val_chain_tail_mse=0.000259 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1472
+.000000 val_hop0_window_start_batch=1472.000000 val_select_score=0.000876
+[val] step=172400 val_pair_total=0.000015 val_pair_velocity=0.000008 val_pair_en
+dpoint=0.000008 val_rollout_total=0.000534 val_hop0_img_total=0.013877 val_hop0_
+img_l1=0.005292 val_hop0_img_ssim=0.031529 val_hop0_img_seam=0.007023 val_foc_to
+tal=0.000000 val_foc_gap=0.000000 val_chain_d20_mse=0.000278 val_chain_d10_mse=0
+.000236 val_chain_d4_mse=0.000201 val_chain_normal_mse=0.000187 val_chain_d20_ra
+w_mse=nan val_chain_d10_raw_mse=nan val_chain_d4_raw_mse=nan val_chain_normal_ra
+w_mse=nan val_rollout_step_0=0.000546 val_rollout_step_1=0.000527 val_rollout_st
+ep_2=0.000524 val_rollout_step_3=0.000537 val_chain_tail_mse=0.000208 val_chain_
+samples=512.000000 val_chain_unique_slices=512.000000 val_main_batches_evaluated
+=64.000000 val_hop0_batches_evaluated=64.000000 val_main_window_start_batch=1536
+.000000 val_hop0_window_start_batch=1536.000000 val_select_score=0.000707
+

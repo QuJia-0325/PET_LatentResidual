@@ -1,0 +1,74 @@
+V3 200K transport training log snapshot
+generated_at: 2026-04-27 19:17:03
+source_metrics: /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_200k_transport_v3/metrics.jsonl
+snapshot_metrics_in_repo: review/0427/logs_train/v3_200k_transport_metrics_snapshot_20260427_1916.jsonl
+tmux_tail_in_repo: review/0427/logs_train/v3_200k_transport_tmux_tail_20260427_1916.log
+stdout_log_note: review/0424/logs/transport_v3_200k_train_gpu1.log stopped updating at 2026-04-25 03:35; metrics.jsonl is the reliable live log.
+
+[process]
+config: configs/pet_flow/pet_flow_first_hop_224_200k_transport_v3.yaml
+output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_200k_transport_v3
+target_steps: 200000
+status: still running at snapshot time
+
+[progress]
+train_rows: 3452
+val_rows: 431
+last_train_step: 172600
+last_val_step: 172400
+progress_percent: 86.30%
+recent_rate_steps_per_hour: 1500.98
+eta_hours: 18.25
+eta_time: 2026-04-28 13:31:24
+
+[best rolling-val; training selection metric, not full-val PSNR]
+step: 86800
+val_select_score: 0.0005923646864545162
+val_rollout_total: 0.0005818444046781224
+val_chain_d20_mse: 0.00020531884177898974
+val_chain_d10_mse: 0.0001911198973516548
+val_chain_d4_mse: 0.00017439017892684205
+val_chain_normal_mse: 0.0001645001004817459
+val_chain_tail_mse: 0.00017667005892008092
+val_hop0_img_total: 0.006943807666175417
+
+[latest rolling-val; training window metric, not full-val PSNR]
+step: 172400
+val_select_score: 0.0007069263657569991
+val_rollout_total: 0.0005335942573765351
+val_chain_d20_mse: 0.00027819907734283333
+val_chain_d10_mse: 0.00023614507585989486
+val_chain_d4_mse: 0.000201201964671327
+val_chain_normal_mse: 0.00018698651649629028
+val_chain_tail_mse: 0.0002081111856758374
+val_hop0_img_total: 0.013876713197532808
+
+[latest train core]
+step: 172600
+loss: 0.0011702749179676175
+pair: 1.4812896552029997e-05
+roll: 0.00010749828652478755
+img: 0.009404894895851612
+pair_frac: 0.012657620944082737
+roll_frac: 0.022964322939515114
+img_frac: 0.9643779993057251
+lambda_roll: 0.25
+lambda_img: 0.12
+alpha: 1.0
+lr_firsthop: 2.4128000704380676e-05
+lr_backbone: 2.757485794786363e-06
+gate_pix: 0.11775748431682587
+lambda_hop_0: 0.04367629438638687
+dead_branch_streak: 0
+
+[checkpoint files]
+2026-04-25 12:07:15 3762884718 best.pt
+2026-04-24 01:07:38 5621 config.yaml
+2026-04-24 14:39:28 3762987430 step_020000.pt
+2026-04-24 21:38:59 3762987430 step_040000.pt
+2026-04-25 03:47:20 3762987430 step_060000.pt
+2026-04-25 09:56:21 3762987430 step_080000.pt
+2026-04-25 18:22:34 3762987430 step_100000.pt
+2026-04-26 07:49:13 3762987430 step_120000.pt
+2026-04-26 21:28:26 3762987430 step_140000.pt
+2026-04-27 10:52:27 3762987430 step_160000.pt

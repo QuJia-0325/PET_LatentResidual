@@ -72,6 +72,14 @@ PSNR 使用封装好的 `calc_psnr_clip3`，即按 `clip_max=3` 方案计算。
 
 训练日志里的 `val_select_score` / `val_chain_*_mse` 是训练期间的 rolling-window validation，通常只评估一个窗口，不等价于 full-val PSNR。
 
+本次同步到仓库的训练日志快照：
+
+- `review/0427/logs_train/v3_200k_transport_metrics_snapshot_20260427_1916.jsonl`
+- `review/0427/logs_train/v3_200k_transport_progress_summary_20260427_1916.log`
+- `review/0427/logs_train/v3_200k_transport_tmux_tail_20260427_1916.log`
+
+注意：早期 stdout 文件 `review/0424/logs/transport_v3_200k_train_gpu1.log` 停在 2026-04-25 03:35，不能反映当前进度；当前可靠训练进度来自输出目录的 `metrics.jsonl`，这里已经复制成上述 snapshot 文件。
+
 截至本文档生成时的训练状态：
 
 | 指标 | step | value |
