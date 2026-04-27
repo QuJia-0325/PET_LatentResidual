@@ -1,0 +1,53 @@
+V3 200K best.pt full-val clip3 evaluation summary
+generated_at: 2026-04-27 18:23:24
+result_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/eval_0427_fullval/v3_best/first_hop_224_val_clip3_eval.json
+result_csv: /data_2/qujiaxiang/outputs/PET_LatentResidual/eval_0427_fullval/v3_best/first_hop_224_val_clip3_eval.csv
+raw_eval_log_extract: /home/qujiaxiang/project/PET_LatentResidual/review/0427/logs_eval/v3_200k_best_fullval_clip3_extract.log
+source_combined_log: /home/qujiaxiang/project/PET_LatentResidual/review/0427/logs_eval/p0_01_fullval_gpu2.log
+
+[meta]
+psnr_metric: src.utils.metrics.calc_psnr_clip3
+config: configs/pet_flow/pet_flow_first_hop_224_200k_transport_v3.yaml
+checkpoint: /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_200k_transport_v3/best.pt
+split: val
+max_slices: 0
+num_eval_slices: 7403
+batch_size: 8
+device: cuda:0
+rollout_timepoints: ['D50', 'D20', 'D10', 'D4', 'NORMAL']
+decode_mode: both
+seam_patch_size: 14
+seam_zone_width: 3
+
+[summary_psnr_clip3 mean/std/min/max, n=7403]
+D50: mean=42.622378, std=7.256314, min=31.137290, max=72.068423, n=7403
+D20: mean=35.544402, std=8.871269, min=22.902620, max=75.760022, n=7403
+D10: mean=35.976761, std=8.388256, min=23.588481, max=73.717835, n=7403
+D4: mean=36.557899, std=8.004230, min=24.751801, max=71.430710, n=7403
+NORMAL: mean=36.865045, std=7.545446, min=25.100327, max=67.284670, n=7403
+
+[cascade semantics]
+D50: decode z_D50 and compare with GT D50; this is encoder/decoder reconstruction, not transport.
+D20: D50 -> Pred D20, decode and compare with GT D20.
+D10: D50 -> Pred D20 -> Pred D10, decode and compare with GT D10.
+D4: D50 -> Pred D20 -> Pred D10 -> Pred D4, decode and compare with GT D4.
+NORMAL: D50 -> Pred D20 -> Pred D10 -> Pred D4 -> Pred NORMAL, decode and compare with GT NORMAL.
+
+[training rolling-val context; not the same metric as full-val PSNR]
+last_train_step: 171200
+best_rolling_val_step: 86800
+best_rolling_val_select_score: 0.0005923646864545162
+best_rolling_val_rollout_total: 0.0005818444046781224
+best_rolling_val_chain_d20_mse: 0.00020531884177898974
+best_rolling_val_chain_d10_mse: 0.0001911198973516548
+best_rolling_val_chain_d4_mse: 0.00017439017892684205
+best_rolling_val_chain_normal_mse: 0.0001645001004817459
+best_rolling_val_chain_tail_mse: 0.00017667005892008092
+last_val_step: 171200
+last_val_select_score: 0.0011259579788998053
+last_val_val_rollout_total: 0.0007782336265336198
+last_val_val_chain_d20_mse: 0.0004339937845543318
+last_val_val_chain_d10_mse: 0.0003707780228978663
+last_val_val_chain_d4_mse: 0.0003226393539534911
+last_val_val_chain_normal_mse: 0.00030115703850697173
+last_val_val_chain_tail_mse: 0.00033152480511944304
