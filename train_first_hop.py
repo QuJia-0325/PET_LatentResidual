@@ -1432,8 +1432,12 @@ def main() -> None:
 
     lr_cfg = cfg.get("lr_schedule", {})
     lr_sched_enabled = bool(lr_cfg.get("enabled", True))
+    # Allow LR cosine to use a different total-steps than max_steps.
+    # This is needed when resuming with a shorter max_steps but wanting
+    # the LR curve to behave as if training were still the original length.
+    lr_total_steps = int(lr_cfg.get("total_steps_override", 0)) or max_steps
     lr_warmup_steps = _resolve_schedule_steps(
-        total_steps=max_steps,
+        total_steps=lr_total_steps,
         section=lr_cfg,
         steps_key="warmup_steps",
         ratio_key="warmup_ratio",
@@ -1458,7 +1462,8 @@ def main() -> None:
     )
     if lr_sched_enabled:
         print(
-            f"[lr_schedule] warmup+cosine enabled: warmup_steps={lr_warmup_steps}, min_lr={lr_min:.3e}",
+            f"[lr_schedule] warmup+cosine enabled: warmup_steps={lr_warmup_steps}, min_lr={lr_min:.3e}"
+            + (f", total_steps_override={lr_total_steps}" if lr_total_steps != max_steps else ""),
             flush=True,
         )
     else:
@@ -1795,7 +1800,7 @@ def main() -> None:
         if lr_sched_enabled:
             lr_now = get_warmup_cosine_lr(
                 step=step,
-                max_steps=max_steps,
+                max_steps=lr_total_steps,
                 base_lr=base_lr,
                 warmup_steps=lr_warmup_steps,
                 min_lr=lr_min,

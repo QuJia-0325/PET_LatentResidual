@@ -191,6 +191,7 @@ lr_schedule:
   enabled: true
   warmup_ratio: 0.15              # ← 恢复 200K v3 值 (was 0.05 in SF pilot)
   min_lr: 2.0e-6
+  total_steps_override: 200000   # LR cosine 仍按 200K 计算，避免 resume 时 LR 被压缩
 
 transport:
   method: mean_flow
