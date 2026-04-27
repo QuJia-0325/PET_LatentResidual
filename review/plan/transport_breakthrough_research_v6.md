@@ -2,7 +2,7 @@
 
 **Supersedes**: v5（rollout-heavy resume 实验）
 **核心发现**: V3 200K 训练数据证明 **rollout 梯度占比高（32%）时模型达到 best（step 86800），之后 image_aux 重新主导（88-93%），模型不再改善**
-**V6 核心方向**: Transport-First 从 scratch 训练，方案 A（给 pair 加 λ_p 乘数）+ 延长 alpha schedule + 头重 step_weights
+**V6 核心方向**: Transport-First 从 scratch 训练，方案 A（给 pair 加 λ_p 乘数）+ 延长 alpha schedule + 通道-跳分离加权
 
 ---
 
@@ -70,24 +70,47 @@ rollout:
   # alpha 与 rollout lambda 同步 ramp
 ```
 
-### 1.4 头重 step_weights（按困难度分配）
+### 1.4 通道-跳分离加权设计
 
-| Hop | v_std | PSNR gap | 困难度 | step_weight |
-|-----|-------|----------|--------|-------------|
-| hop0 (D50→D20) | 0.009634 | 10.79 dB | **最难** | **2.5** |
-| hop1 (D20→D10) | 0.002946 | ~10 dB | 中高 | **1.5** |
-| hop2 (D10→D4) | 0.000775 | ~10 dB | 中低 | **1.0** |
-| hop3 (D4→NORMAL) | 0.000141 | ~10 dB | **最简单** | **0.5** |
+#### 核心原理
+
+每个 loss 通道有自己擅长的 hop：
+- **pair_loss**：在 GT 输入上学 velocity。hop0 困难度最大（v_std=0.009634，CeilGap=11.07 dB）→ **pair_loss_weights 头重**
+- **rollout_loss**：在 pred chain 上学级联一致性。但 rollout[hop0] 输入 ≡ GT z_D50（和 pair 重复，无独占信息）→ **step_weights 不应头重**
+- rollout 的独占信号在 hop1-3（pred 输入 ≠ GT）。hop1 是 ExpoGap × v_std 的 sweet spot → **step_weights 中重**
+
+#### 数学依据
+
+rollout 通道在 hop k 的有效信号强度：
+
+$$S_{rollout}^{(k)} = \text{ExpoGap}_k \times v_{std}^{(k)}$$
+
+| Hop | ExpoGap | v_std | S | 归一化 |
+|-----|---------|-------|---|--------|
+| 0 | 0.00 | 0.0096 | 0.000 | 0（与 pair 重复） |
+| **1** | 3.38 | 0.0029 | **0.0098** | **2.65（sweet spot）** |
+| 2 | 4.71 | 0.00078 | 0.0037 | 0.99 |
+| 3 | 6.32 | 0.00014 | 0.0009 | 0.24（Jacobian 饱和） |
+
+hop3 虽然 ExpoGap 最大（6.32），但 v_std 极小（0.000141），Jacobian 饱和导致加权无效。
+
+#### rollout step_weights（中重，押 hop1 sweet spot）
 
 ```yaml
-step_weights: [2.5, 1.5, 1.0, 0.5]   # 头重：按困难度分配
+step_weights: [0.5, 2.0, 1.5, 1.0]
 ```
 
-**为什么头重而非尾重**：
-- V3 原始设计 [1.30, 1.20, 1.10, 1.00] 就是头重（对的）
-- hop0 的 v_std 是 hop3 的 68×，是全链最大瓶颈
-- hop3 的 PSNR gap 只有 0.31 dB，几乎不需要额外关注
-- image_aux 已经给 hop0 额外像素监督，step_weights 头重让 rollout 也集中在 hop0
+#### pair_loss_weights（头重，hop0 的 GT-input velocity 是独占信号）
+
+```yaml
+pair_loss_weights: [2.5, 1.0, 1.0, 1.0]
+```
+
+**为什么 pair 头重、rollout 中重**：
+- pair[hop0] 是 hop0 的独占信号（GT segment 全段采样，rollout 无法提供）
+- rollout[hop0] 输入 = GT z_D50，和 pair[hop0] 退化重叠，加权是浪费
+- rollout 在 hop1 有最大的独占信息量（exposure bias 开始 + Jacobian 足够大）
+- hop3 的 Jacobian ≈ hop1 的 1/21，即使 4× 加权也只达到 hop1 baseline 的 19%
 
 ### 1.5 预期梯度分布
 
@@ -99,20 +122,24 @@ step_weights: [2.5, 1.5, 1.0, 0.5]   # 头重：按困难度分配
 
 **Phase III（150K-200K）**：
 
-全局分布：pair ≈ 17-22%，rollout ≈ 57-70%，image ≈ 5-21%
+全局分布（V3 step 86800 raw loss 估算）：pair ≈ 27%，rollout ≈ 70%，image ≈ 3%
 
-Per-hop 分布（step_weights [2.5, 1.5, 1.0, 0.5]，Σw=5.5）：
+Per-hop 监督压力分布：
+- step_weights [0.5, 2.0, 1.5, 1.0]，Σw=5.0
+- pair_loss_weights [2.5, 1.0, 1.0, 1.0]，Σ(p×c)=1.375
 
-| Hop | 来自 rollout | 来自 pair | 来自 image | 合计 |
-|-----|-------------|----------|----------|------|
-| hop0 (D50→D20) | 31.8% | 4.3% | 14% | **50.1%** |
-| hop1 (D20→D10) | 19.1% | 4.3% | 0% | **23.4%** |
-| hop2 (D10→D4) | 12.7% | 4.3% | 0% | **17.0%** |
-| hop3 (D4→NORMAL) | 6.4% | 4.3% | 0% | **10.7%** |
+| Hop | 来自 pair | 来自 rollout | 来自 image | 合计 | 独占信号 |
+|-----|----------|------------|----------|------|---------|
+| hop0 (D50→D20) | **17.1%** | 7.0% | 2.6% | 26.7% | **19.7%**（pair+image 独占）|
+| hop1 (D20→D10) | 6.8% | **28.1%** | 0% | **34.9%** | **34.9%**（全部独占）|
+| hop2 (D10→D4) | 6.8% | 21.1% | 0% | 27.9% | 27.9% |
+| hop3 (D4→NORMAL) | 6.8% | 14.0% | 0% | 20.8% | 20.8% |
 
-**hop0 拿到最多梯度（50.1%）** — 最难的跳得到最多资源
-**hop3 拿到最少梯度（10.7%）** — 最简单的跳不浪费资源
-**transport 总占比 ≥ 79%** — transport 是主力
+**每个通道在自己擅长的 hop 上发力**：
+- pair 给 hop0 17.1%（GT-input velocity，独占信号）
+- rollout 给 hop1 28.1%（exposure bias sweet spot）
+- image 给 hop0 2.6%（像素域补充）
+- **没有通道在重复别人的工作**
 
 ### 1.6 image_aux 配置
 
@@ -170,14 +197,21 @@ training:
     alpha_end: 1.0
     lambda_start: 0.0
     lambda_end: 4.0
-    step_weights: [2.5, 1.5, 1.0, 0.5]   # 头重
+    lambda_scale_mode: none  # effective lambda = 纯线性 ramp，不被 alpha 再缩放
+    step_weights: [0.5, 2.0, 1.5, 1.0]   # 中重：押 hop1 sweet spot
 
   image_aux:
     lambda_start: 0.04
     lambda_max: 0.04          # 固定，不 ramp
 
 loss:
-  pair_weight: 15.0           # V6 核心改动
+  pair_weight: 15.0           # V6 核心改动：让 pair 和 rollout/image 同量级竞争
+  pair:
+    velocity_weight: 1.0
+    endpoint_weight: 1.0
+
+transport:
+  pair_loss_weights: [2.5, 1.0, 1.0, 1.0]   # 头重：hop0 的 GT-input velocity 独占信号
 
 optimizer:
   lr: 8.0e-5                  # 与 V3 一致
@@ -209,7 +243,7 @@ lr_schedule:
 | full-val NORMAL PSNR | 36.87 dB | > 37.5 dB（+0.6 dB） |
 | transport 总梯度占比 @ 150K+ | 7-45% | **≥ 75%** |
 | best step 位置 | 86800（43%） | > 150K（75%，plateau 推迟） |
-| hop0 梯度集中度 | 无保证 | **≈ 50%**（最难的跳得到最多资源） |
+| hop0 梯度集中度 | 无保证 | **hop0 ≈ 27%（pair 17% + image 3% 独占），hop1 ≈ 35%（rollout sweet spot）** |
 
 ---
 
@@ -234,7 +268,8 @@ lr_schedule:
 | pair 权重 | 1.0（默认） | 1.0 | **15.0** |
 | rollout λ | 0.02→0.25 | 1.5（固定） | **0→4.0（ramp）** |
 | image_aux λ | 0.005→0.12 | 0.08 | **0.04（固定）** |
-| step_weights | [1.30,1.20,1.10,1.00]（头重） | [0.8,1.0,1.5,2.5]（尾重） | **[2.5,1.5,1.0,0.5]（头重加强）** |
+| step_weights | [1.30,1.20,1.10,1.00]（头重） | [0.8,1.0,1.5,2.5]（尾重） | **[0.5,2.0,1.5,1.0]（中重，押 hop1）** |
+| pair_loss_weights | [1.20,1.10,1.05,1.00] | [1.20,1.10,1.05,1.00] | **[2.5,1.0,1.0,1.0]（头重，hop0 独占信号）** |
 | transport 梯度占比 | 7-45% | 45-87% | **预期 ≥ 75%** |
 | 核心新机制 | 无 | 无 | **pair_weight（3 行代码）** |
 | loss 归一化 | 无 | 无 | **不使用**（自然 curriculum） |
