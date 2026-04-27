@@ -141,21 +141,40 @@ bash review/0428/operator/04_v5_attribution.sh 0
 
 ---
 
-## GPU 分配建议
-
-### 方案 A：1 GPU
+## GPU 分配（2 GPU 并行）
 
 ```
-优先级 1: V6 训练（01_v6_train.sh）—— 独占 GPU ~5-6 天
-优先级 2: V5 归因（04_v5_attribution.sh）—— V6 训练完成后执行
-优先级 3: V6 fullval（03_v6_fullval.sh）—— V6 训练完成后执行
+GPU 0: V6 训练（01_v6_train.sh 0）         ← 主线，~5-6 天
+GPU 1: V5 归因（04_v5_attribution.sh 1）    ← 并行，含 null-control 训练 ~30h + fullval
 ```
 
-### 方案 B：2 GPU
+### 启动命令
+
+```bash
+cd /home/qujiaxiang/project/PET_LatentResidual
+
+# GPU 0: V6 训练（后台）
+nohup bash review/0428/operator/01_v6_train.sh 0 > /dev/null 2>&1 &
+
+# GPU 1: V5 归因（后台）
+# 注意：如果 null-control 训练未完成，需要先启动 null-control
+#   bash review/0427/operator/03_null_control.sh 1
+# null-control 训练完成后再跑归因：
+#   bash review/0428/operator/04_v5_attribution.sh 1
+nohup bash review/0427/operator/03_null_control.sh 1 > /dev/null 2>&1 &
+```
+
+### V5 归因完整流程（GPU 1）
 
 ```
-GPU 0: V6 训练（01_v6_train.sh 0）
-GPU 1: V5 归因（04_v5_attribution.sh 1）→ 完成后待命
+Step 1: null-control 训练（~30h）
+  bash review/0427/operator/03_null_control.sh 1
+
+Step 2: V5 归因 fullval（null-control 训练完成后）
+  bash review/0428/operator/04_v5_attribution.sh 1
+
+Step 3: GPU 1 空闲 → 待命，等 V6 完成后跑 fullval
+  bash review/0428/operator/03_v6_fullval.sh 1
 ```
 
 ---
