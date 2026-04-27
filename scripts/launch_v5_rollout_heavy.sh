@@ -9,6 +9,7 @@ V3_DIR="/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_200k_transpo
 V3_BEST="${V3_DIR}/best.pt"
 CONFIG="configs/pet_flow/pet_flow_first_hop_224_v5_rollout_heavy.yaml"
 NEW_STEPS=50000
+PYTHON_BIN="/home/qujiaxiang/.conda/envs/rae/bin/python"
 
 echo "=== V5 Rollout-Heavy Launch (温和版) ==="
 echo "[1/6] 检查 200K v3 best.pt ..."
@@ -18,7 +19,7 @@ if [ ! -f "${V3_BEST}" ]; then
 fi
 
 # 读取 resume step 和 val
-CKPT_INFO=$(python -c "
+CKPT_INFO=$("${PYTHON_BIN}" -c "
 import torch
 c = torch.load('${V3_BEST}', map_location='cpu')
 step = c.get('step', 0)
@@ -73,7 +74,7 @@ echo ""
 echo "[6/6] 启动训练 (GPU=${GPU_ID}) ..."
 echo "       log: ${LOG_FILE}"
 
-CUDA_VISIBLE_DEVICES=${GPU_ID} nohup python -u train_first_hop.py \
+CUDA_VISIBLE_DEVICES=${GPU_ID} nohup "${PYTHON_BIN}" -u train_first_hop.py \
     --config "${CONFIG}" \
     --resume "${V3_BEST}" \
     > "${LOG_FILE}" 2>&1 &
