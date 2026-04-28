@@ -122,11 +122,12 @@ Phase III(step 150K-200K): alpha=1, lambda=4.0        → 纯 Pred chain 精修
 ### 执行
 
 ```bash
-# 一键补齐所有 V5 归因实验
+# 检查/补齐 V3/V5 fullval；如果 null-control 已完成，也会补齐 null-control fullval
 bash review/0428/operator/04_v5_attribution.sh 0
 ```
 
-脚本会自动检查 0427 的结果是否存在，仅执行未完成的部分。
+脚本会自动检查 0427 的结果是否存在，仅执行未完成的 fullval 部分。
+如果 null-control 训练还没有完成，需要先运行 `review/0427/operator/03_null_control.sh`。
 
 ### V5 归因结果如何影响 V6
 
@@ -156,7 +157,7 @@ cd /home/qujiaxiang/project/PET_LatentResidual
 # GPU 0: V6 训练（后台）
 nohup bash review/0428/operator/01_v6_train.sh 0 > /dev/null 2>&1 &
 
-# GPU 1: V5 归因（后台）
+# GPU 1: V5 null-control 训练（后台）
 # 注意：如果 null-control 训练未完成，需要先启动 null-control
 #   bash review/0427/operator/03_null_control.sh 1
 # null-control 训练完成后再跑归因：

@@ -21,6 +21,7 @@ PYTHON="/home/qujiaxiang/.conda/envs/rae/bin/python"
 V3_DIR="/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_200k_transport_v3"
 V3_BEST="${V3_DIR}/best.pt"
 CONFIG="configs/pet_flow/pet_flow_first_hop_224_v5_null_control.yaml"
+NC_DIR="/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_v5_null_control"
 
 echo "=== Experiment 3: Null-Control ==="
 
@@ -53,22 +54,30 @@ MAX_STEPS=$((RESUME_STEP + 50000))
 echo "[1/3] Resume step=${RESUME_STEP}, val=${RESUME_VAL}"
 echo "      max_steps=${MAX_STEPS}"
 
-# 写入 max_steps
-sed -i "s/^  max_steps: .*/  max_steps: ${MAX_STEPS}/" "${CONFIG}"
-echo "[2/3] 已更新 config: max_steps=${MAX_STEPS}"
-
 LOG_DIR="review/0427/logs_train"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/v5_null_control_gpu${GPU_ID}.log"
+RUNTIME_CONFIG="${LOG_DIR}/v5_null_control_gpu${GPU_ID}_runtime.yaml"
+
+if [ -d "${NC_DIR}" ]; then
+    echo "ERROR: ${NC_DIR} 已存在。null-control 使用 require_fresh_output_dir=true，不能覆盖已有目录。"
+    echo "如果这是已完成/正在运行的实验，请用 04_v5_attribution.sh 检查或评估；如果要重跑，请先手动处理旧目录。"
+    exit 1
+fi
+
+# 生成 runtime config，避免 sed -i 污染 tracked config。
+cp "${CONFIG}" "${RUNTIME_CONFIG}"
+sed -i "s/^  max_steps: .*/  max_steps: ${MAX_STEPS}/" "${RUNTIME_CONFIG}"
+echo "[2/3] 已生成 runtime config: ${RUNTIME_CONFIG} (max_steps=${MAX_STEPS})"
 
 echo "[3/3] 启动 null-control (GPU=${GPU_ID}) ..."
-echo "  config: ${CONFIG}"
+echo "  config: ${RUNTIME_CONFIG}"
 echo "  resume: ${V3_BEST}"
 echo "  log: ${LOG_FILE}"
 echo ""
 
 CUDA_VISIBLE_DEVICES=${GPU_ID} nohup ${PYTHON} -u train_first_hop.py \
-    --config "${CONFIG}" \
+    --config "${RUNTIME_CONFIG}" \
     --resume "${V3_BEST}" \
     > "${LOG_FILE}" 2>&1 &
 

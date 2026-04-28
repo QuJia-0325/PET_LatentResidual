@@ -21,6 +21,25 @@ NC_CONFIG="configs/pet_flow/pet_flow_first_hop_224_v5_null_control.yaml"
 OUT_BASE="/data_2/qujiaxiang/outputs/PET_LatentResidual/eval_0428_v5_attribution"
 mkdir -p "${OUT_BASE}"
 
+latest_step_ckpt() {
+    local dir="$1"
+    find "${dir}" -maxdepth 1 -type f -name 'step_*.pt' -printf '%T@ %p\n' 2>/dev/null \
+        | sort -nr | awk 'NR==1 {print $2}'
+}
+
+choose_ckpt() {
+    local dir="$1"
+    if [ -f "${dir}/best.pt" ]; then
+        echo "${dir}/best.pt"
+        return 0
+    fi
+    if [ -f "${dir}/last.pt" ]; then
+        echo "${dir}/last.pt"
+        return 0
+    fi
+    latest_step_ckpt "${dir}"
+}
+
 echo "=== V5 归因实验闭环 ==="
 echo ""
 
@@ -58,8 +77,13 @@ else
 fi
 
 # 3. Null-control 训练
-if [ -d "${NC_DIR}" ] && { [ -f "${NC_DIR}/best.pt" ] || [ -f "${NC_DIR}/last.pt" ]; }; then
+NC_CKPT=""
+if [ -d "${NC_DIR}" ]; then
+    NC_CKPT="$(choose_ckpt "${NC_DIR}")"
+fi
+if [ -n "${NC_CKPT}" ] && [ -f "${NC_CKPT}" ]; then
     echo "[OK] Null-control 训练目录存在: ${NC_DIR}"
+    echo "  eval checkpoint: ${NC_CKPT}"
     # 检查是否还在训练
     NC_JSONL="${NC_DIR}/metrics.jsonl"
     if [ -f "${NC_JSONL}" ]; then
@@ -75,14 +99,12 @@ if [ -d "${NC_DIR}" ] && { [ -f "${NC_DIR}/best.pt" ] || [ -f "${NC_DIR}/last.pt
     elif [ -f "${NC_FULLVAL_B}/first_hop_224_val_clip3_eval.json" ]; then
         echo "[OK] Null-control fullval 已完成: ${NC_FULLVAL_B}"
     else
-        if [ -f "${NC_DIR}/best.pt" ]; then
-            echo "[TODO] Null-control fullval 未完成，执行中..."
-            CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
-                --config "${NC_CONFIG}" \
-                --checkpoint "${NC_DIR}/best.pt" \
-                --out-dir "${NC_FULLVAL_B}" \
-                --max-slices 0
-        fi
+        echo "[TODO] Null-control fullval 未完成，执行中..."
+        CUDA_VISIBLE_DEVICES="${GPU_ID}" ${PYTHON} eval_first_hop_224_clip3.py \
+            --config "${NC_CONFIG}" \
+            --checkpoint "${NC_CKPT}" \
+            --out-dir "${NC_FULLVAL_B}" \
+            --max-slices 0
     fi
 else
     echo "[TODO] Null-control 训练未启动。如需启动:"
@@ -93,4 +115,4 @@ echo ""
 echo "=== 归因分析完成。比较结果: ==="
 echo "  V3 baseline: ${V3_FULLVAL} 或 ${OUT_BASE}/v3_best"
 echo "  V5 best:     ${V5_FULLVAL} 或 ${OUT_BASE}/v5_best"
-echo "  Null-control: ${OUT_BASE}/null_control_best"
+echo "  Null-control: /data_2/qujiaxiang/outputs/PET_LatentResidual/eval_0427_fullval_null_control/null_best 或 ${OUT_BASE}/null_control_best"
