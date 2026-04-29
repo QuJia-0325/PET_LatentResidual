@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""E1: Hop0 Error Budget Decomposition (eval only, no training).
+"""E1: Error Budget Decomposition (eval only, no training).
 
-Decomposes the D50→D20 PSNR gap into three additive components:
-  1. Decoder ceiling gap:  PSNR(decode(z_gt_D20), x_gt_D20) vs perfect
-  2. Transport-only gap:   MSE(z_pred_D20, z_gt_D20) in latent space
-  3. Off-manifold amplif.: PSNR(decode(z_pred), decode(z_gt)) vs PSNR(decode(z_pred), x_gt)
+Diagnostically decomposes the decoded-space PSNR gap:
+    1. Decoder ceiling gap: PSNR(decode(z_gt_D20), x_gt_D20) vs perfect
+    2. Decoder-mediated transport discrepancy: PSNR(decode(z_pred), decode(z_gt))
+    3. Decoder/reference residual: PSNR(decode(z_pred), decode(z_gt)) vs PSNR(decode(z_pred), x_gt)
+
+The PSNR gaps are diagnostic dB-domain differences, not linear MSE-domain error shares.
 
 Usage:
     python scripts/diagnose_error_budget.py \
@@ -171,7 +173,7 @@ def main():
         lmse_stats = summarize(latent_mse_per_tp[tp])
 
         gap_total = ceil_stats["mean"] - e2e_stats["mean"]  # Total gap = ceiling - actual
-        gap_transport = ceil_stats["mean"] - pred_gt_stats["mean"]  # Decoder cancels, isolates latent error
+        gap_transport = ceil_stats["mean"] - pred_gt_stats["mean"]  # decoded-space transport discrepancy
         gap_decoder = pred_gt_stats["mean"] - e2e_stats["mean"]  # Residual from decode(z_gt) ≠ x_raw
 
         results[tp] = {
@@ -220,16 +222,16 @@ def main():
         )
     print("=" * 80)
 
-    # Gate check for FOC-lite
+    # Gate check for transport bottleneck plausibility
     d20 = results.get("D20", {})
     tfrac = d20.get("transport_fraction", 0)
-    print(f"\n[GATE] D20 transport_fraction = {tfrac*100:.1f}%")
+    print(f"\n[GATE] D20 decoder-mediated transport_fraction = {tfrac*100:.1f}%")
     if tfrac >= 0.30:
-        print("[GATE] PASS: ODE integration error accounts for ≥30% of hop0 gap.")
-        print("[GATE] FOC-lite hypothesis is plausible — proceed to E2.")
+        print("[GATE] PASS: Transport-related decoded discrepancy accounts for ≥30% of hop0 gap.")
+        print("[GATE] Transport bottleneck is plausible; use E2/Path A to distinguish integration error from velocity bias.")
     else:
-        print("[GATE] FAIL: ODE integration error accounts for <30% of hop0 gap.")
-        print("[GATE] FOC-lite should be deprioritized. Focus on decoder-side or encoder interventions.")
+        print("[GATE] FAIL: Transport-related decoded discrepancy accounts for <30% of hop0 gap.")
+        print("[GATE] Prioritize decoder-side, encoder-side, or metric/audit diagnostics before transport-specific changes.")
 
     print(f"\nSaved: {out_path}")
 
