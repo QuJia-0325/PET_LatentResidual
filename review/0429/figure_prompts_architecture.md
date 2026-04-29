@@ -58,17 +58,17 @@ GLOBAL STYLE CONTRACT:
 
 ## 图 1：Overall Pipeline（PET latent transport 全局流程）
 
-**图的任务**：在一张宽图中讲清楚系统主线：低剂量 PET → frozen RAE latent → 4-hop latent transport → frozen decoder → normal-dose PET；同时明确 hop0-only pixel prior、scheduled mixing、三类 loss 的作用位置。
+**图的任务**：纯架构图——展示数据流和模块连接关系。**不包含训练 loss**（loss 移到图 3 训练策略图中）。
 
-**推荐尺寸**：`2600×1080 px`，宽高比约 `2.4:1`。
+**推荐尺寸**：`2600×900 px`，宽高比约 `2.9:1`（去掉底部 supervision 后更扁）。
 
 ### Prompt v3.2 — GPT-5.3 多轮润色后的最终版
 
 ```text
-Create a minimal, publication-quality architecture figure for a top-tier ML conference (ICML / ICLR / NeurIPS). The figure must be clean, uncluttered, and visually balanced, focusing on a single core idea: a latent-only 4-hop transport pipeline with a first-hop-only pixel prior.
+Create a minimal, publication-quality architecture figure for a top-tier ML conference (ICML / ICLR / NeurIPS). The figure must be clean, uncluttered, and visually balanced, focusing on a single core idea: a latent-only 4-hop transport pipeline with a first-hop-only pixel prior. This is a PURE ARCHITECTURE DIAGRAM — no training losses, no supervision signals.
 
 CANVAS:
-- Wide panoramic layout, aspect ratio ~2.4:1 (2600×1080 px)
+- Wide panoramic layout, aspect ratio ~2.9:1 (2600×900 px)
 - Pure white background, no panels, no background boxes
 - Generous whitespace and margins
 
@@ -165,35 +165,16 @@ RIGHT: DECODER AND OUTPUT (small)
 "Reconstructed normal-dose PET"
 
 --------------------------------------------------
-SUPERVISION (MINIMAL ANNOTATION ONLY)
---------------------------------------------------
-
-L_pair:
-- Small text under left of chain:
-  "L_pair: velocity + endpoint"
-- Four short vertical dashed rose lines upward (one per hop)
-
-L_roll:
-- Thin horizontal bracket under the 4 hops
-- Label centered:
-  "L_roll: chain consistency"
-
-L_img:
-- Local inset under Hop 0:
-  Hop 0 ↓ dashed line → mini decoder "Dec(z_D20_pred)" → small D20 image
-- Label:
-  "L_img (hop0 only)"
-
---------------------------------------------------
 STRICT RULES:
 --------------------------------------------------
-- No explanation panels
-- No legend box
+- No loss signals (L_pair, L_roll, L_img) — those belong in Fig 3
+- No supervision arrows or rose-colored elements
+- No mini-decoder / D20 pred inset
+- No explanation panels, no legend box
 - No horizontal bars inside hops
-- No extra text blocks
-- No large supervision boxes
 - No decorative elements
 - Keep everything minimal and balanced
+- This is ARCHITECTURE ONLY — data flow and module connections
 
 FINAL STYLE:
 - Clean, academic, minimal
@@ -361,18 +342,18 @@ STRICT RULES:
 
 ## 图 3：V6 Transport-First 三阶段训练策略
 
-**图的任务**：表达 V6 的训练压力重分配策略。Phase I 强化 GT-input transport；Phase II 逐步引入 rollout / α-mixing；Phase III open-loop refinement。保留 50K-75K chain-quality gate。
+**图的任务**：表达 V6 的训练压力重分配策略 + **三类 loss 的作用位置**（从 Fig 1 迁移到此）。Phase I 强化 GT-input transport；Phase II 逐步引入 rollout / α-mixing；Phase III open-loop refinement。保留 50K-75K chain-quality gate。
 
-**推荐尺寸**：`2200×1300 px`，宽高比约 `1.7:1`。
+**推荐尺寸**：`2200×1500 px`，宽高比约 `1.47:1`（增加一个 panel 放 supervision）。
 
-### Prompt v3.2 — GPT Image 2
+### Prompt v3.3 — GPT Image 2
 
 ```text
-Create a minimal, publication-quality multi-panel training figure for a top-tier ML conference (ICML / ICLR / NeurIPS). Clean data visualization, no chartjunk, Tufte-inspired.
+Create a minimal, publication-quality multi-panel training figure for a top-tier ML conference (ICML / ICLR / NeurIPS). Clean data visualization, no chartjunk, Tufte-inspired. This figure covers BOTH the training schedule AND supervision design (losses moved here from the architecture figure).
 
 CANVAS:
-- 2200×1300 px, pure white background
-- Three vertically stacked panels, shared x-axis (0 to 200K steps)
+- 2200×1500 px, pure white background
+- Four vertically stacked panels, shared x-axis (0 to 200K steps)
 - L-shaped axes only, no boxed frames
 - Generous vertical spacing between panels
 
@@ -448,6 +429,31 @@ BOTTOM: PHASE GATE TIMELINE
 Thin horizontal timeline with ticks: 50K, 65K, 75K, 150K, 200K
 Rose label at 65K: "go/no-go gate"
 Small slate text: "Phase I chain lag is expected, not a verdict"
+
+--------------------------------------------------
+PANEL (d): SUPERVISION DESIGN (from architecture)
+--------------------------------------------------
+A compact schematic showing how three losses attach to the 4-hop chain.
+Draw a simplified horizontal strip of four small amber boxes "H0 H1 H2 H3" at the top of this panel.
+
+Below the strip, show three loss annotations:
+
+1. L_pair (rose, dashed vertical taps):
+   - Four short dashed rose lines, one going UP to each hop box
+   - Label: "L_pair: velocity + endpoint (GT input, λ_p=15)"
+   - Annotation: "per-hop, pair_loss_weights = [2.5, 1.0, 1.0, 1.0]"
+
+2. L_roll (rose, horizontal bracket):
+   - One thin rose bracket spanning all 4 hop boxes
+   - Label: "L_roll: chain consistency (pred input, λ_r: 0→4)"
+   - Annotation: "step_weights = [0.5, 2.0, 1.5, 1.0]"
+
+3. L_img (sage, local to H0):
+   - One short dashed sage line from H0 downward
+   - Label: "L_img: pixel recon (hop0 only, λ_i=0.04)"
+   - Small text: "decode(z_D20_pred) vs x_GT_D20"
+
+Keep this panel compact — it's a supervision schematic, not a full architecture repeat.
 
 --------------------------------------------------
 STRICT RULES:
