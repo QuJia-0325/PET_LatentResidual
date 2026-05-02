@@ -167,13 +167,17 @@ V6 跑完后 GPU 0 释放。**σ-norm ablation 是当前最高优先级**——�
 
 ```bash
 # GPU 0 → A_main (120K, ~1.0 GPU·day @ 80 steps/min on A100)
-# A_main 使用 V6 reference step_weights，不依赖 sigma_dt code path → 可与 sanity 并行
+# A_main 使用 V6 reference step_weights，不依赖 sigma_dt code path → 可与 sanity 并行。
+# 这个并行路径走 `A` 快捷跱（无 gate）而不是 `main`（`main` 是双门 gate 的串行快捷跱）
 GPU=0 bash review/0502/scripts/run_ablation.sh A
 
 # C/D 依赖 sigma_dt normalizer code path，必须等 sanity Tier 1-4 全 PASS。
 # v3.1 脚本会拒绝启动除非存在 sanity-pass sentinel（由 run_ablation.sh sanity 在 PASS 后写入）:
 GPU=0 bash review/0502/scripts/run_ablation.sh C   # 120K, ~1.0 GPU·day
 GPU=0 bash review/0502/scripts/run_ablation.sh D   # 120K, ~1.0 GPU·day，可选
+
+# 资源充足且确信 sanity 已 PASS 时，可用串行快捷跱（A→C，两者双门 gate）:
+GPU=0 bash review/0502/scripts/run_ablation.sh main
 ```
 
 **A_main best.pt 路径**（agent4 v3.1 修正，为后续 eval/summarize 给出明确路径）：
@@ -433,6 +437,36 @@ T+5d    开始写 paper σ-norm 节
 
 **最坏情况**：sanity light Tier 1-3 FAIL → 整个 ablation 作废，需 debug 后重跑（+ 1.5 GPU·days）。这一项已由 4-agent 交叉审计 + [`verify_normalizers.py`](scripts/verify_normalizers.py) 的 FP64 验证（残差 2.71e-20）覆盖，**风险低但非零**——FP32/cuda 数值精度在长训练下的累积偏差只能由 mini full sanity (Tier 4) 排除。
 
+### 6.1 论文必须遵守的写作纪律（codex 2026-05-03 review 固化）
+
+**禁止表述**（来自 codex review §9）：
+
+- ❌ "V6 proves Grönwall optimality"
+- ❌ "V6 is clearly better than V3"
+- ❌ "Uniform result at 120K proves final 200K behavior"
+- ❌ "D_closed_form is a theorem-level optimum"
+- ❌ "Chain NORMAL MSE can be directly compared to D20 MSE without scale normalization"
+
+**推荐表述**：
+
+- ✅ 方法描述：*"We isolate rollout-channel step weighting under a fixed pair-supervised transport setup. A σ-normalized coordinate system removes the natural (σ·dt)² scale from per-hop latent rollout errors. The A/B sanity condition is algebraically equivalent to the raw V6 rollout objective and verifies the implementation path before testing uniform and closed-form hop weighting."*
+- ✅ 若 C ≈ A：*"Under the current pair-heavy V6 setup and a 120K compressed schedule, rollout step-weight shape contributes little beyond scale compensation."*
+- ✅ 若 C 显著差 vs A：*"After scale normalization, V6's middle-heavy weighting remains beneficial, suggesting a genuine hop-shape effect beyond (σ·dt)² magnitude compensation."*
+
+**确定性 caveat**（来自 codex Risk D）：训练 set `deterministic: true`，但 [`train_first_hop.py:49`](../../train_first_hop.py) 实际是 `torch.use_deterministic_algorithms(True, warn_only=True)`——`memory_efficient_attention` 与 `adaptive_avg_pool2d` backward 仍是非确定算子。所以：
+
+- A/B 不应期待 bit-identical
+- Tier 1 阈值 `<1e-4 rel` 是 *经验等价* 而非 *bit-equal*
+- A_main 与 C_uniform 单 seed 比较的 ±2% 浮动归入"非确定噪声"区间，不应解读为信号；> 5% rel 才视为有效差异
+
+**Pair channel confound caveat**（来自 codex Risk B）：当前 `loss.pair_weight=15`、`pair_loss_weights=[2.5,1,1,1]` 已让 pair/hop0 通道很强。若 C ≈ A，正确 narrative 是 *"under the current pair-heavy setup"*，**不要**外推到"hop weighting is universally unnecessary"。pair-uniform 的小规模复核留作 future work；不阻塞当前 paper。
+
+**V6 best vs last 不稳定 caveat**（来自 codex Risk F）：V6 best.pt @ step 185600 chain_normal=0.000170，但 last.pt @ step 200000 chain_normal=0.000355（**+108%**）。说明 Phase III 后段存在震荡。论文表中：
+
+- 报 best.pt 整行（按 §1.2 python snippet）
+- **同时**报 last.pt 行作为稳定性附录
+- 不把单点 best 包装为稳定收敛（避免 "V6 converges to ..." 这类表述；用 "V6 selects ckpt at step 185600 with chain_normal=0.000170" 更准确）
+
 ---
 
 ## 7. 决策清单（v3.1 修正 — 强化 sanity gate）
@@ -510,7 +544,7 @@ T+5d    开始写 paper σ-norm 节
 | run_ablation.sh CUBLAS | 未设 | **修复**：`export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"`，与 [`run_sanity_light.sh`](scripts/run_sanity_light.sh) 对齐 |
 | run_ablation.sh comparator 缺键 | silent pass | **修复**：缺 Tier 1/2/4 必需键 → overall_pass=False + 输出 missing keys 报警 + Tier 3 < 4 个 raw 键也 exit 1（防 light yaml 误用）|
 | run_ablation.sh main/C/D 纵容启动 | 无 gate | **修复**：增 `require_sanity_pass` 函数 + sentinel `${ABLATION_INDEX_DIR}/.sanity_pass`；sanity PASS 写入 / FAIL 清除；main 中 C 拒绝启动除非 sentinel 存在或 ALLOW_UNGATED=1（agent1 v3.1 追调）|
-| run_ablation.sh `main` 对 A_main 也 gate | 与 §2.2/§7 narrative 冲突 | **修复**：`main` 拆分为 A_main 先跑不带 gate → `require_sanity_pass "main → C_uniform"` → C；与 “A_main 不依赖 sigma_dt path” 一致 |
+| run_ablation.sh `main` 快捷跱 | 原 未 gate | **修复**：`main` 双门 gate — `require_sanity_pass "main"` 在 A_main 之前运行；A_main、C 串行，重复利用同一 sentinel；需与 sanity 并行跑 A_main 时使用显式 `bash run_ablation.sh A`（无 gate），sanity PASS 后再 `bash run_ablation.sh C`（agent6 codex review 确认这是更保守且不令人意外的设计）|
 | run_ablation.sh usage | 只提 ALLOW_UNGATED | 补列 SANITY_FRESH / SANITY_STEPS / MAX_STEPS / GPU 及说明 |
 | run_ablation.sh sanity 重跑冲突 | yaml `require_fresh_output_dir: true` 拦下第二次调用 | **修复**：脚本 sanity 分支检查旧输出目录，`SANITY_FRESH=1` 显式逃生门才清除（只动 A_sanity/B，不动 main）|
 | §3.2 mini sanity 默认步数 | 10K（agent2 警过 chain CV ~60%） | 默认 20K，10K 降为 smoke-only；agent4 反论也录入文中以供后续复议 |
@@ -554,7 +588,10 @@ T+5d    开始写 paper σ-norm 节
    - 如存在 且 `SANITY_FRESH=1` → `rm -rf` 两个目录后继续
    - 如存在 且 `SANITY_FRESH` 未设 → exit 4 + 提示调用示例
    - main / A_main / C / D 产出目录 **不受影响**（这些是正式跑，重跑需调用者手动重命名或清理）
-5. **`main` 拆分 gate 范围**（agent1 v3.1 追调）：之前 `main)` 在头部调用 `require_sanity_pass`，意味着 A_main 也被 gate 拦。但 §2.2/§7 明说 A_main 不依赖 `_compute_sigma_dt_normalizers` code path，可与 sanity 并行。v3.1 拆为：先 `run_one A_main`→再 `require_sanity_pass "main → C_uniform"`→再 `run_one C`。错误路径：A_main FAIL 不会报错退出，可依赖 train_first_hop 自身的崩溃 → `set -e` 处理。
+5. **`main` 快捷跱 双门 gate**（agent1 v3.1 追调 → codex review 确认保留）：之前一度打算 将 `main` 拆分为 “A_main 无 gate → sanity gate → C”，但这让 `main` 同时含含两种 gate 语义，调用者连看 5 行 shell 都不能预期“A_main 会不会被拦”。最终取保守语义：
+   - `main`：双门 gate。调用者明确讨论“我信任 sanity 已过，需要串行跑 A→C”。
+   - 与 sanity 并行：显式 `bash review/0502/scripts/run_ablation.sh A` （`A)` 分支不调用 `require_sanity_pass`，依据是 A_main 使用 V6 reference step_weights，不走 `_compute_sigma_dt_normalizers` code path）； sanity sentinel 写入后再 `bash run_ablation.sh C`。
+   - 这个语义与 codex 2026-05-03 review §4.3 推荐的操作模式完全一致。
 6. **usage 补全环境变量说明**（agent1 v3.1 追调）：原 usage 只提了 ALLOW_UNGATED。v3.1 补上 SANITY_STEPS / SANITY_FRESH / MAX_STEPS / GPU 以及 “10K 是 debug-only smoke” 警告。
 5. **10K smoke 不写 sentinel**：`SANITY_STEPS<20000` 即使 comparator PASS，也只证明脚本链路可跑，不足以解锁 C/D/main。v3.1 因此会清除/不写 `${ABLATION_INDEX_DIR}/.sanity_pass`，并提示改跑 `SANITY_STEPS=20000` 或默认 50K。
 
