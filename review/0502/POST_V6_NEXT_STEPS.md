@@ -470,6 +470,8 @@ T+5d    开始写 paper σ-norm 节
 
 ### 6.2 ⚠️ Eval methodology pitfall: rolling-window noise（root cause of "V6 best vs last +108%"）
 
+> **深入分析**：见 [ROLLING_WINDOW_TRADEOFF.md](ROLLING_WINDOW_TRADEOFF.md)（数学/代码/架构三维 Pareto 分析 + best.pt 极值选择偏差 landmine 暴露 + paired diff 判读规则补强）。本节给出**操作纪律**，不重复推导。
+
 **结论先**：V6 best.pt vs last.pt +108% **不是训练失稳，主要是 eval window sampling artifact**。
 
 **证据链**：

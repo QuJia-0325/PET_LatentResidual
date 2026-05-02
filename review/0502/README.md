@@ -9,6 +9,7 @@
 | [README.md](README.md) | 本文件——总索引 |
 | [SIGMA_NORMALIZE_ABLATION_PLAN.md](SIGMA_NORMALIZE_ABLATION_PLAN.md) | 完整数学推导 + 设计 + 解读矩阵 |
 | [POST_V6_NEXT_STEPS.md](POST_V6_NEXT_STEPS.md) | V6 跑完后的 v3.1 执行计划：sanity sentinel gate、20K mini full sanity、预算表与论文口径 |
+| [ROLLING_WINDOW_TRADEOFF.md](ROLLING_WINDOW_TRADEOFF.md) | rolling-window eval tradeoff 三维度合理性分析（数学/代码/架构）；揭示 `best.pt` 极值选择偏差为下一个未拆地雷，并提出讨论项 |
 | [AUDIT_RESPONSE.md](AUDIT_RESPONSE.md) | 第一轮外部 agent 审计意见的逐条回应（v2 修订记录）|
 | [AUDIT_RESPONSE_v3.md](AUDIT_RESPONSE_v3.md) | 第二轮 4-agent 交叉审计的回应（v3 修订记录，已 deprecated）|
 | [AUDIT_RESPONSE_v4.md](AUDIT_RESPONSE_v4.md) | 第三轮 4-agent 交叉审计的回应（v4 修订记录）|
