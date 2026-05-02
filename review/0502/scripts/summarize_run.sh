@@ -4,8 +4,21 @@
 # Quick best-checkpoint summary from a metrics.jsonl file (pure-python — no jq).
 # Pulls best/last of:
 #   val_chain_d20_mse, val_chain_d10_mse, val_chain_d4_mse, val_chain_normal_mse
-#   val_pair_total, val_rollout_total, val_multi_objective
+#   val_pair_total, val_rollout_total, val_select_score
 #   val_rollout_step_*_raw  (raw σ-norm-independent per-hop diagnostics)
+#
+# IMPORTANT — what this script reports vs what the paper table needs:
+#   • This script reports *per-metric independent minima* — for each metric it
+#     scans all rows and prints the row that minimizes THAT metric. Different
+#     metrics may come from DIFFERENT training steps.
+#   • The paper's headline A/B/C/D comparison is the *best.pt row*: a single
+#     step (the one that minimizes val_select_score and got copied to best.pt)
+#     reporting all metrics at THAT step. They are not the same.
+#   • Use this script for: quick sanity scan, "did chain collapse?", per-hop
+#     raw diagnostics. Do NOT cite these numbers in the paper table directly.
+#   • For the paper table use the snippet in POST_V6_NEXT_STEPS.md §1.2
+#     (loads best.pt, finds the matching step in metrics.jsonl, reports that
+#     row as a unit).
 #
 # Usage:
 #   bash review/0502/scripts/summarize_run.sh <run_dir>
@@ -85,7 +98,7 @@ primary = [
     "val_chain_d10_mse",
     "val_chain_d4_mse",
     "val_chain_normal_mse",
-    "val_multi_objective",
+    "val_select_score",
     "val_rollout_total",
     "val_pair_total",
 ]
