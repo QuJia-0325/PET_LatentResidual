@@ -1,0 +1,302 @@
+# Light sanity variant generated for memory-constrained A/B equivalence check.
+# It only loads D50/D20 images, disables full x_rollout image chain metrics,
+# and selects checkpoints by val_rollout_total instead of val_multi_objective.
+project_name: pet_first_hop_224
+rae_root: /home/qujiaxiang/project/RAE
+output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual
+# ================================================================
+# B Sanity — sigma-normalize rollout + V6-equivalent step_weights
+# ================================================================
+# 与 A (V6 baseline) **逐 hop SGD 梯度完全相等**（残差 ~1e-20）。
+#
+# 关键点：rollout_first_hop.py 计算 `loss_total = (stacked × w).sum() / w.sum()`，
+# 是加权"平均"（不是加权和），所以 A==B 的等价性同时要求：
+#   (1) 分子相等：Σ w_yaml · (raw / n) = Σ w_v6 · raw
+#   (2) 分母相等：Σ w_yaml = Σ w_v6
+# 充分条件：w_yaml = w_v6 × n  AND  Σ(w_v6 × n) = Σw_v6 (= 5.0)
+# 这要求 n_j = ρ_j / weighted_mean(ρ, w_v6)，其中 ρ_j = (σ_j·dt_j)²。
+#
+#   normalizer  n = [3.5816, 0.9303, 0.5794, 0.4795]  (preserve_v6_sum)
+#   step_weights = w_v6 × n = [1.7908, 1.8606, 0.8691, 0.4795]   sum=5.0
+#
+# 本 yaml 是 sigma-normalize ablation 的 SANITY CHECK：
+#   - 必须先跑通这一条，且 val_rollout_total 与 A baseline 几乎完全一致（误差 < 1%）
+#   - 否则 = 实现存在 bug（AMP / dtype / 顺序问题）
+#
+# 详见 review/0502/SIGMA_NORMALIZE_ABLATION_PLAN.md §2.1
+# ================================================================
+run_name: first_hop_224_sigma_norm_B_sanity_light
+seed: 42
+device: cuda:0
+
+data:
+  latent_dir: /data_2/qujiaxiang/lowdose_pet_ct/latents_224
+  raw_data_dir: /data_2/qujiaxiang
+  clamp_max: 10.0
+  image_size: 224
+  num_workers: 0
+  batch_size: 8
+  hop0_aux_batch_size: 2
+  verify_alignment: true
+  alignment_check_num_samples: 16
+  alignment_audit_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/alignment_224_audit/alignment_224_clip3_audit.json
+  train_include_x_rollout_first: true
+  train_include_full_x_rollout: false
+  latent_mmap: true
+  train_image_timepoints: [D50, D20]
+  val_image_timepoints: [D50, D20]
+  val_include_x_rollout_first: true
+  val_include_full_x_rollout: false
+  val_shuffle: false
+  rollout_timepoints:
+    - D50
+    - D20
+    - D10
+    - D4
+    - NORMAL
+  t_map:
+    D50: 2.0
+    D20: 5.0
+    D10: 10.0
+    D4: 25.0
+    NORMAL: 100.0
+
+training:
+  # Sanity check：50K steps 足以验证与 baseline 重合
+  max_steps: 50000
+  log_interval: 50
+  eval_interval: 400
+  save_interval: 10000
+  max_val_batches: 64
+  max_hop0_val_batches: 64
+  val_window_mode: rolling
+  amp: false
+  grad_clip: 0.5
+  deterministic: true
+  require_fresh_output_dir: true
+  metrics_jsonl_mode: write
+  require_chain_metrics: false
+  loss_balance_watch_enabled: true
+  loss_balance_watch_warn: true
+  loss_balance_watch_enforce: false
+  loss_balance_watch_warmup_steps: 1200
+  loss_balance_watch_patience: 200
+  loss_balance_dominance_threshold: 0.85
+  freeze_backbone: false
+  freeze_rae: true
+
+  best_metric: val_rollout_total
+  eval_chain_on_all_samples: true
+  eval_chain_unique_slices: true
+  eval_chain_max_unique_slices: 0
+
+  hop0_coverage_target:
+    - 0.15
+    - 0.60
+  gate_explosion_watch_steps: 800
+  gate_abs_max: 2.0
+  lambda_hop0_abs_max: 2.0
+  dead_branch_watch_steps: 10000
+  dead_branch_patience: 120
+  dead_branch_gate_eps: 0.0005
+  dead_branch_lambda_eps: 0.0005
+  img_loss_zero_eps: 0.0005
+  img_loss_zero_patience: 120
+  progress_bar: false
+  print_train_line_with_pbar: false
+  log_grad_norms: true
+  grad_finite_check: true
+  strict_resume_compat: true
+  resume_allow_metric_mismatch: false
+  resume_allow_config_mismatch: false
+  resume_allow_missing_compat_metadata: false
+  metrics_jsonl: true
+
+  rollout:
+    enabled: true
+    path:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    warmup_ratio: 0.25
+    ramp_ratio: 0.50
+    alpha_start: 0.0
+    alpha_end: 1.0
+    straight_through_mode: fixed
+    straight_through: true
+    eval_alpha: 1.00
+    lambda_start: 0.0
+    lambda_end: 4.0
+    lambda_scale_mode: none
+    endpoint_loss_weight: 0.25
+    loss_type: mse
+    # ============================================================
+    # B Sanity: σ-normalize ENABLED + V6-equivalent step_weights
+    # preserve_v6_sum 模式保证 Σ(w_v6 × n) = Σw_v6 = 5.0
+    # → 与 A 的 (stacked·w).sum()/w.sum() 分子分母都恒等
+    # ============================================================
+    sigma_normalize:
+      enabled: true
+      mode: sigma_dt_squared
+      relative_to: preserve_v6_sum
+      anchor_step_weights:
+        - 0.5
+        - 2.0
+        - 1.5
+        - 1.0
+    # = w_v6 [0.5, 2.0, 1.5, 1.0] × n_preserve_v6_sum [3.5816, 0.9303, 0.5794, 0.4795]
+    step_weights:
+      - 1.7908
+      - 1.8606
+      - 0.8691
+      - 0.4795
+
+  image_aux:
+    enabled: true
+    warmup_ratio: 0.0
+    ramp_ratio: 0.0
+    lambda_start: 0.04
+    lambda_max: 0.04
+
+optimizer:
+  lr: 8.0e-5
+  weight_decay: 0.01
+  first_hop_weight_decay: 0.0
+  betas:
+    - 0.9
+    - 0.95
+  backbone_lr_mult: 0.4
+  first_hop_lr_mult: 3.5
+
+ema:
+  enabled: true
+  decay: 0.9999
+  warmup_steps: 0
+  update_after_step: 0
+  update_every: 1
+
+lr_schedule:
+  enabled: true
+  warmup_ratio: 0.15
+  min_lr: 2.0e-6
+
+transport:
+  method: mean_flow
+  loss_type: mse
+  velocity_loss_weight: 1.0
+  endpoint_loss_weight: 1.0
+  endpoint_pair_weighting: true
+  endpoint_dt_normalize: true
+  pair_sample_probs:
+    - 0.25
+    - 0.25
+    - 0.25
+    - 0.25
+  pair_weighting: manual
+  pair_loss_weights:
+    - 2.5
+    - 1.0
+    - 1.0
+    - 1.0
+
+backbone:
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke/best.pt
+  model:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size:
+      - 384
+      - 2048
+    depth:
+      - 12
+      - 2
+    num_heads:
+      - 6
+      - 16
+    mlp_ratio: 4.0
+  data:
+    timepoints:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    t_map:
+      D50: 2.0
+      D20: 5.0
+      D10: 10.0
+      D4: 25.0
+      NORMAL: 100.0
+
+rae:
+  encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_input_size: 224
+  dinov2_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_mean:
+    - 0.0
+    - 0.0
+    - 0.0
+  encoder_std:
+    - 1.0
+    - 1.0
+    - 1.0
+  decoder_config_path: /home/qujiaxiang/project/RAE/vit-mae
+  decoder_patch_size: 14
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target_keywords:
+    - attention.qkv
+    - attention.projection
+    - attention.attention.query
+    - attention.attention.key
+    - attention.attention.value
+    - attention.output.dense
+    - .mlp.fc1
+    - .mlp.fc2
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+
+first_hop:
+  num_hops: 4
+  pixel_encoder_stem_channels: 32
+  pixel_encoder_hidden_channels: 64
+  pixel_encoder_max_ratio: 0.05
+  hop_residual_hidden_channels: 192
+  pixel_gate_init: 0.02
+  pixel_gate_floor: 0.001
+  lambda_hop_init: 0.10
+  lambda_hop_floor: 0.001
+  pixel_proj_init_std: 0.002
+  hop_residual_last_init_std: 0.01
+  pair_v_std:
+    - 0.009634
+    - 0.002946
+    - 0.000775
+    - 0.000141
+
+loss:
+  pair_weight: 15.0
+  pair:
+    velocity_weight: 1.0
+    endpoint_weight: 1.0
+    velocity_rebalance:
+      enabled: true
+      mode: sqrt_ratio
+      clip_min: 1.0
+      clip_max: 4.0
+      eps: 1.0e-12
+  image_aux:
+    l1_weight: 1.0
+    ssim_weight: 0.25
+    seam_weight: 0.1
+    border_width: 14
+    border_weight: 2.0
+    seam_patch_size: 14
+  regularizer:
+    enabled: false
+    lambda_hop_l2_weight: 0.0
+    gate_pix_l2_weight: 0.0

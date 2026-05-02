@@ -21,14 +21,21 @@ def _format_bytes(num_bytes: int) -> str:
     return f"{x:.1f}TB"
 
 
-def _torch_load_with_heartbeat(path: str, tag: str, map_location: str = "cpu", heartbeat_sec: float = 20.0):
+def _torch_load_with_heartbeat(
+    path: str,
+    tag: str,
+    map_location: str = "cpu",
+    heartbeat_sec: float = 20.0,
+    mmap: bool = False,
+):
     size_str = "unknown"
     try:
         size_str = _format_bytes(os.path.getsize(path))
     except OSError:
         pass
 
-    print(f"[io] loading {tag}: {path} ({size_str})", flush=True)
+    mmap_suffix = " mmap=True" if mmap else ""
+    print(f"[io] loading {tag}{mmap_suffix}: {path} ({size_str})", flush=True)
     t0 = time.time()
     stop_event = threading.Event()
 
@@ -40,7 +47,7 @@ def _torch_load_with_heartbeat(path: str, tag: str, map_location: str = "cpu", h
     thread = threading.Thread(target=_heartbeat, daemon=True)
     thread.start()
     try:
-        obj = torch.load(path, map_location=map_location)
+        obj = torch.load(path, map_location=map_location, mmap=mmap)
     finally:
         stop_event.set()
         thread.join(timeout=0.2)
@@ -75,6 +82,8 @@ class PETFirstHopAligned4HopDataset(Dataset):
         include_x_rollout_first: bool = True,
         include_full_x_rollout: bool = False,
         image_size: int = 224,
+        image_timepoints: Sequence[str] | None = None,
+        latent_mmap: bool = False,
     ) -> None:
         super().__init__()
         self.split = split
@@ -93,6 +102,7 @@ class PETFirstHopAligned4HopDataset(Dataset):
         self.alignment_audit_json = alignment_audit_json
         self.include_x_rollout_first = bool(include_x_rollout_first)
         self.include_full_x_rollout = bool(include_full_x_rollout)
+        self.latent_mmap = bool(latent_mmap)
 
         if self.alignment_check_num_samples <= 0:
             raise ValueError("alignment_check_num_samples must be positive")
@@ -117,6 +127,7 @@ class PETFirstHopAligned4HopDataset(Dataset):
             latent_path,
             tag=f"latents({split})",
             map_location="cpu",
+            mmap=self.latent_mmap,
         )
         self.latents: Dict[str, torch.Tensor] = {}
         for tp in self.TIMEPOINTS:
@@ -124,7 +135,8 @@ class PETFirstHopAligned4HopDataset(Dataset):
                 raise KeyError(f"Missing latent timepoint {tp!r} in {latent_path}")
             self.latents[tp] = latent_blob[tp].float()
 
-        self.images = self._load_images(raw_data_dir, split)
+        self.image_timepoints = self._resolve_required_image_timepoints(image_timepoints)
+        self.images = self._load_images(raw_data_dir, split, self.image_timepoints)
         self.num_slices = int(self.latents["NORMAL"].shape[0])
         self._verify_shapes()
 
@@ -139,17 +151,15 @@ class PETFirstHopAligned4HopDataset(Dataset):
 
     def _verify_shapes(self) -> None:
         latent_n = self.latents["NORMAL"].shape[0]
-        img_n = self.images["NORMAL"].shape[0]
-        if latent_n != img_n:
-            raise RuntimeError(
-                f"Slice count mismatch (latents NORMAL={latent_n}, images NORMAL={img_n})"
-            )
 
         for tp in self.TIMEPOINTS:
             if self.latents[tp].shape[0] != latent_n:
                 raise RuntimeError(f"Latent slice count mismatch at {tp}")
-            if self.images[tp].shape[0] != img_n:
-                raise RuntimeError(f"Image slice count mismatch at {tp}")
+            if tp in self.images and self.images[tp].shape[0] != latent_n:
+                raise RuntimeError(
+                    f"Image slice count mismatch at {tp}: "
+                    f"latents NORMAL={latent_n}, images {tp}={self.images[tp].shape[0]}"
+                )
 
     def _normalize_image(self, x: torch.Tensor) -> torch.Tensor:
         x = x.clamp(0, self.clamp_max)
@@ -164,9 +174,36 @@ class PETFirstHopAligned4HopDataset(Dataset):
             return x
         return F.interpolate(x, size=(self.image_size, self.image_size), mode="bicubic", align_corners=False)
 
-    def _load_images(self, raw_data_dir: str, split: str) -> Dict[str, torch.Tensor]:
+    def _resolve_required_image_timepoints(self, image_timepoints: Sequence[str] | None) -> List[str]:
+        if image_timepoints is not None:
+            requested = [str(tp) for tp in image_timepoints]
+        else:
+            # The training objective consumes D50 as hop0 pixel input and D20
+            # as hop0 image target. Full chain image metrics opt into all images.
+            requested = ["D50", "D20"]
+            if self.include_full_x_rollout:
+                requested.extend(self.rollout_timepoints)
+            if self.verify_alignment and not self.alignment_audit_json:
+                requested.extend(["D50", "D20", "NORMAL"])
+
+        allowed = set(self.TIMEPOINTS)
+        deduped: List[str] = []
+        for tp in requested:
+            if tp not in allowed:
+                raise ValueError(f"Unsupported image timepoint: {tp}")
+            if tp not in deduped:
+                deduped.append(tp)
+        if "D50" not in deduped or "D20" not in deduped:
+            raise ValueError("first-hop dataset requires image_timepoints to include D50 and D20")
+        return deduped
+
+    def _load_images(self, raw_data_dir: str, split: str, image_timepoints: Sequence[str]) -> Dict[str, torch.Tensor]:
         images: Dict[str, torch.Tensor] = {}
+        requested = set(image_timepoints)
+        print(f"[io] image timepoints({split})={list(image_timepoints)}", flush=True)
         for tp in ["D50", "D20", "D10", "D4"]:
+            if tp not in requested:
+                continue
             path = os.path.join(raw_data_dir, f"preprocessed_data_{tp}.pt")
             blob = _torch_load_with_heartbeat(
                 path,
@@ -177,14 +214,15 @@ class PETFirstHopAligned4HopDataset(Dataset):
             images[tp] = self._resize_if_needed(x)
 
         # NORMAL target shares x_0 in the raw PT files; D50 file is used as canonical source.
-        normal_path = os.path.join(raw_data_dir, "preprocessed_data_D50.pt")
-        normal_blob = _torch_load_with_heartbeat(
-            normal_path,
-            tag=f"raw({split},NORMAL_from_D50_x0)",
-            map_location="cpu",
-        )
-        normal = self._normalize_image(normal_blob[split]["x_0"]).float()
-        images["NORMAL"] = self._resize_if_needed(normal)
+        if "NORMAL" in requested:
+            normal_path = os.path.join(raw_data_dir, "preprocessed_data_D50.pt")
+            normal_blob = _torch_load_with_heartbeat(
+                normal_path,
+                tag=f"raw({split},NORMAL_from_D50_x0)",
+                map_location="cpu",
+            )
+            normal = self._normalize_image(normal_blob[split]["x_0"]).float()
+            images["NORMAL"] = self._resize_if_needed(normal)
         return images
 
     @staticmethod
@@ -306,14 +344,22 @@ class PETFirstHopAligned4HopDataset(Dataset):
     def __len__(self) -> int:
         return len(self.index)
 
+    def _image_or_zero(self, tp: str, slice_idx: int) -> torch.Tensor:
+        if tp in self.images:
+            return self.images[tp][slice_idx].clone()
+        # Non-hop0 pair rows do not consume x_src/x_dst in the current model/loss.
+        # Return a correctly shaped placeholder so mixed-pair batches collate.
+        template = next(iter(self.images.values()))
+        return torch.zeros_like(template[0])
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         pair_idx, slice_idx = self.index[idx]
         src_tp, dst_tp = self.PAIRS[pair_idx]
 
         z_src = self.latents[src_tp][slice_idx].clone()
         z_dst = self.latents[dst_tp][slice_idx].clone()
-        x_src = self.images[src_tp][slice_idx].clone()
-        x_dst = self.images[dst_tp][slice_idx].clone()
+        x_src = self._image_or_zero(src_tp, slice_idx)
+        x_dst = self._image_or_zero(dst_tp, slice_idx)
 
         z_rollout = torch.stack([self.latents[tp][slice_idx].clone() for tp in self.rollout_timepoints], dim=0)
 
@@ -335,6 +381,12 @@ class PETFirstHopAligned4HopDataset(Dataset):
             out["x_rollout_first"] = self.images[first_tp][slice_idx].clone()
 
         if self.include_full_x_rollout:
+            missing = [tp for tp in self.rollout_timepoints if tp not in self.images]
+            if missing:
+                raise RuntimeError(
+                    "include_full_x_rollout=true requires all rollout images to be loaded; "
+                    f"missing={missing}, loaded={sorted(self.images)}"
+                )
             x_rollout = torch.stack([self.images[tp][slice_idx].clone() for tp in self.rollout_timepoints], dim=0)
             out["x_rollout"] = x_rollout
 

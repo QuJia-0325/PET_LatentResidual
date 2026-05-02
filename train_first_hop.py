@@ -188,12 +188,14 @@ def build_dataloaders(cfg: Dict) -> tuple[DataLoader, DataLoader, DataLoader, Da
         alignment_check_num_samples=int(data_cfg.get("alignment_check_num_samples", 16)),
         alignment_audit_json=alignment_audit_json,
         image_size=int(data_cfg.get("image_size", 224)),
+        latent_mmap=bool(data_cfg.get("latent_mmap", False)),
     )
     train_set = PETFirstHopAligned4HopDataset(
         latent_path=os.path.join(latent_dir, "latents_train.pt"),
         split="train",
         include_x_rollout_first=bool(data_cfg.get("train_include_x_rollout_first", True)),
         include_full_x_rollout=bool(data_cfg.get("train_include_full_x_rollout", False)),
+        image_timepoints=data_cfg.get("train_image_timepoints", None),
         **common,
     )
     print(f"[startup] train dataset ready: {len(train_set)} pair-samples", flush=True)
@@ -202,6 +204,7 @@ def build_dataloaders(cfg: Dict) -> tuple[DataLoader, DataLoader, DataLoader, Da
         split="val",
         include_x_rollout_first=bool(data_cfg.get("val_include_x_rollout_first", True)),
         include_full_x_rollout=bool(data_cfg.get("val_include_full_x_rollout", True)),
+        image_timepoints=data_cfg.get("val_image_timepoints", None),
         **common,
     )
     print(f"[startup] val dataset ready: {len(val_set)} pair-samples", flush=True)
@@ -389,6 +392,78 @@ def resolve_rollout_lambda(base_lambda: float, alpha: float, roll_cfg: Dict) -> 
     raise ValueError("training.rollout.lambda_scale_mode must be one of {none, fixed, alpha, alpha_floor, alpha_min}")
 
 
+def _compute_sigma_dt_normalizers(
+    model: "PETFlowDiTFirstHop",
+    rollout_times: list[float],
+    mode: str = "sigma_dt_squared",
+    relative_to: str = "preserve_v6_sum",
+    anchor_step_weights: list[float] | None = None,
+) -> list[float]:
+    """Per-step normalizers applied to rollout step_loss for sigma-normalize ablation.
+
+    SGD invariance: raw rollout with step_weights=w is mathematically equivalent to
+    sigma-normalized rollout with step_weights=(w * normalizer), iff the divisor
+    `sum(step_weights)` is also preserved.
+
+    Because rollout_first_hop.py computes `loss_total = (stacked * w).sum() / w.sum()`,
+    the SGD direction equivalence between (raw, w) and (sigma-norm, w*n) **requires**
+    `sum(w*n) == sum(w)`. The `preserve_v6_sum` mode chooses `n` such that this holds
+    against an `anchor_step_weights` (defaulting to V6 = [0.5, 2.0, 1.5, 1.0]):
+
+        n_j = rho_j / weighted_mean(rho, anchor)
+
+    where rho_j = (sigma_j * dt_j)^2. With this choice and any user step_weights w,
+    `sum(w*n)` equals `sum(w)` whenever the user's w has the same per-hop ratio as
+    `anchor` (true for B_sanity by construction). For shape-changing conditions
+    (C uniform, D closed-form), users should additionally rescale step_weights so
+    that `sum(step_weights) == sum(anchor)` to keep the rollout-channel effective
+    lambda_roll constant across conditions (see review/0502/SIGMA_NORMALIZE_ABLATION_PLAN.md §2).
+    """
+    import statistics as _stats
+
+    sigma = [float(s) for s in model.pair_v_std.detach().cpu().tolist()]
+    num_steps = len(rollout_times) - 1
+    if len(sigma) != num_steps:
+        raise ValueError(
+            f"pair_v_std length ({len(sigma)}) must equal rollout_times-1 ({num_steps})"
+        )
+    dts = [float(rollout_times[j + 1]) - float(rollout_times[j]) for j in range(num_steps)]
+
+    mode_l = str(mode).lower()
+    if mode_l == "sigma_dt_squared":
+        raw = [(sigma[j] * dts[j]) ** 2 for j in range(num_steps)]
+    elif mode_l == "sigma_squared":
+        raw = [sigma[j] ** 2 for j in range(num_steps)]
+    else:
+        raise ValueError(f"sigma_normalize.mode must be one of {{sigma_dt_squared, sigma_squared}}, got {mode!r}")
+
+    rel_l = str(relative_to).lower()
+    if rel_l == "preserve_v6_sum":
+        # Default V6 anchor: w_v6 = [0.5, 2.0, 1.5, 1.0]. Override via anchor_step_weights.
+        anchor = list(anchor_step_weights) if anchor_step_weights is not None else [0.5, 2.0, 1.5, 1.0]
+        if len(anchor) != num_steps:
+            raise ValueError(
+                f"sigma_normalize.anchor_step_weights length ({len(anchor)}) must equal rollout steps ({num_steps})"
+            )
+        anchor_sum = sum(anchor)
+        if anchor_sum <= 0:
+            raise ValueError(f"sigma_normalize.anchor_step_weights must sum to > 0, got {anchor_sum}")
+        weighted_mean_rho = sum(anchor[j] * raw[j] for j in range(num_steps)) / anchor_sum
+        ref = weighted_mean_rho
+    elif rel_l == "median":
+        ref = _stats.median(raw)
+    elif rel_l == "max":
+        ref = max(raw)
+    elif rel_l == "min":
+        ref = min(raw)
+    elif rel_l == "none":
+        ref = 1.0
+    else:
+        raise ValueError(f"sigma_normalize.relative_to must be one of {{preserve_v6_sum, median, max, min, none}}, got {relative_to!r}")
+
+    return [r / ref for r in raw]
+
+
 def compute_rollout_losses(
     model: PETFlowDiTFirstHop,
     main_batch: Dict[str, torch.Tensor],
@@ -439,6 +514,19 @@ def compute_rollout_losses(
     )
     straight_through = resolve_rollout_straight_through(roll_cfg=roll_cfg, alpha=float(alpha_mix))
 
+    # Optional sigma-normalize ablation (review/0502): rescale per-hop rollout step_loss
+    # by 1 / (sigma_j * dt_j)^2 so that step_weights operate in normalized velocity space.
+    sigma_norm_cfg = roll_cfg.get("sigma_normalize", None)
+    step_normalizers = None
+    if isinstance(sigma_norm_cfg, dict) and bool(sigma_norm_cfg.get("enabled", False)):
+        step_normalizers = _compute_sigma_dt_normalizers(
+            model=model,
+            rollout_times=rollout_times,
+            mode=str(sigma_norm_cfg.get("mode", "sigma_dt_squared")),
+            relative_to=str(sigma_norm_cfg.get("relative_to", "preserve_v6_sum")),
+            anchor_step_weights=sigma_norm_cfg.get("anchor_step_weights", None),
+        )
+
     out = rollout_multistep_losses_first_hop(
         model=model,
         z_rollout=main_batch["z_rollout"],
@@ -448,6 +536,7 @@ def compute_rollout_losses(
         straight_through=straight_through,
         loss_type=str(roll_cfg.get("loss_type", "mse")),
         step_weights=step_weights,
+        step_normalizers=step_normalizers,
     )
     step_losses = out["step_losses"]
     return {
@@ -858,6 +947,7 @@ def evaluate(
     }
     for i in range(num_steps):
         sums[f"val_rollout_step_{i}"] = 0.0
+        sums[f"val_rollout_step_{i}_raw"] = 0.0
 
     main_count = 0
     chain_samples = 0
@@ -882,6 +972,17 @@ def evaluate(
         if bool(roll_cfg.get("enabled", True)):
             eval_alpha = roll_cfg.get("eval_alpha", roll_cfg.get("alpha_end", 1.0))
             eval_straight_through = resolve_rollout_straight_through(roll_cfg=roll_cfg, alpha=float(eval_alpha))
+            # Mirror training-time sigma-normalize so val_rollout_total uses the same loss form.
+            sigma_norm_cfg_eval = roll_cfg.get("sigma_normalize", None)
+            step_normalizers_eval = None
+            if isinstance(sigma_norm_cfg_eval, dict) and bool(sigma_norm_cfg_eval.get("enabled", False)):
+                step_normalizers_eval = _compute_sigma_dt_normalizers(
+                    model=model,
+                    rollout_times=rollout_times,
+                    mode=str(sigma_norm_cfg_eval.get("mode", "sigma_dt_squared")),
+                    relative_to=str(sigma_norm_cfg_eval.get("relative_to", "preserve_v6_sum")),
+                    anchor_step_weights=sigma_norm_cfg_eval.get("anchor_step_weights", None),
+                )
             roll_out = rollout_multistep_losses_first_hop(
                 model=model,
                 z_rollout=batch["z_rollout"],
@@ -891,10 +992,15 @@ def evaluate(
                 straight_through=eval_straight_through,
                 loss_type=str(roll_cfg.get("loss_type", "mse")),
                 step_weights=step_weights,
+                step_normalizers=step_normalizers_eval,
             )
             sums["val_rollout_total"] += float(roll_out["loss_total"].item())
             for i, step_loss in enumerate(roll_out["step_losses"]):
                 sums[f"val_rollout_step_{i}"] += float(step_loss.item())
+            # Persist raw step losses (independent of sigma-normalize) for ablation diagnostics.
+            step_losses_raw = roll_out.get("step_losses_raw", roll_out["step_losses"])
+            for i, step_loss_raw in enumerate(step_losses_raw):
+                sums[f"val_rollout_step_{i}_raw"] += float(step_loss_raw.item())
 
         if "x_rollout" in batch:
             if slice_idx_cpu is None:

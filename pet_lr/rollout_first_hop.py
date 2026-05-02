@@ -55,6 +55,7 @@ def rollout_multistep_losses_first_hop(
     straight_through: bool = True,
     loss_type: str = "mse",
     step_weights: Sequence[float] | None = None,
+    step_normalizers: Sequence[float] | None = None,
 ) -> Dict[str, object]:
     if z_rollout.dim() != 5:
         raise ValueError(f"Expected z_rollout [B,T,C,H,W], got {tuple(z_rollout.shape)}")
@@ -68,9 +69,15 @@ def rollout_multistep_losses_first_hop(
         step_weights = [1.0] * num_steps
     if len(step_weights) != num_steps:
         raise ValueError(f"step_weights length ({len(step_weights)}) must equal rollout steps ({num_steps})")
+    if step_normalizers is not None:
+        if len(step_normalizers) != num_steps:
+            raise ValueError(
+                f"step_normalizers length ({len(step_normalizers)}) must equal rollout steps ({num_steps})"
+            )
 
     preds: List[torch.Tensor] = [z_rollout[:, 0]]
     step_losses: List[torch.Tensor] = []
+    step_losses_raw: List[torch.Tensor] = []
     device = z_rollout.device
     z_curr = z_rollout[:, 0]
 
@@ -90,6 +97,10 @@ def rollout_multistep_losses_first_hop(
         z_pred = out["z_pred"]
         z_gt = z_rollout[:, hop_idx + 1]
         step_loss = _latent_loss(z_pred, z_gt, loss_type=loss_type)
+        # Always preserve the raw step_loss for diagnostics / multi-objective ckpt selection.
+        step_losses_raw.append(step_loss.detach())
+        if step_normalizers is not None:
+            step_loss = step_loss / float(step_normalizers[hop_idx])
         step_losses.append(step_loss)
         preds.append(z_pred)
 
@@ -109,6 +120,7 @@ def rollout_multistep_losses_first_hop(
     return {
         "z_preds": preds,
         "step_losses": step_losses,
+        "step_losses_raw": step_losses_raw,
         "loss_total": total,
         "z_final": preds[-1],
     }
