@@ -461,11 +461,129 @@ T+5d    开始写 paper σ-norm 节
 
 **Pair channel confound caveat**（来自 codex Risk B）：当前 `loss.pair_weight=15`、`pair_loss_weights=[2.5,1,1,1]` 已让 pair/hop0 通道很强。若 C ≈ A，正确 narrative 是 *"under the current pair-heavy setup"*，**不要**外推到"hop weighting is universally unnecessary"。pair-uniform 的小规模复核留作 future work；不阻塞当前 paper。
 
-**V6 best vs last 不稳定 caveat**（来自 codex Risk F）：V6 best.pt @ step 185600 chain_normal=0.000170，但 last.pt @ step 200000 chain_normal=0.000355（**+108%**）。说明 Phase III 后段存在震荡。论文表中：
+**V6 best vs last 不稳定 caveat**（来自 codex Risk F → 2026-05-03 后期 root-cause 分析修正）：V6 best.pt @ step 185600 chain_normal=0.000170，last.pt @ step 200000 chain_normal=0.000355（+108%）。**这并非训练失稳，是 eval methodology pitfall**——见 §6.2 详细分析。论文表中：
 
 - 报 best.pt 整行（按 §1.2 python snippet）
 - **同时**报 last.pt 行作为稳定性附录
-- 不把单点 best 包装为稳定收敛（避免 "V6 converges to ..." 这类表述；用 "V6 selects ckpt at step 185600 with chain_normal=0.000170" 更准确）
+- 不把单点 best 包装为稳定收敛
+- **更重要**：paper 表的所有数字必须用 `eval_first_hop_224_clip3.py --max-slices 0`（full-val）而非 metrics.jsonl 的 best.pt 那一行（后者是 64-batch rolling window，约 25% 噪声）
+
+### 6.2 ⚠️ Eval methodology pitfall: rolling-window noise（root cause of "V6 best vs last +108%"）
+
+**结论先**：V6 best.pt vs last.pt +108% **不是训练失稳，主要是 eval window sampling artifact**。
+
+**证据链**：
+
+1. V6 yaml 设置：`max_val_batches: 64`、`val_window_mode: rolling`（[`train_first_hop.py:842-849`](../../train_first_hop.py)）
+2. val_loader 总 **3648 batches** × `batch_size=8` = 29184 val samples（确认自 V6 metrics.jsonl 的 `val_main_window_start_batch` 字段，覆盖 0, 64, 128, ..., 3648 共 57 个 disjoint 窗口）
+3. **每次 eval 只看 64 batches ≈ 512 samples**——57 个窗口循环周期 = 22800 步
+4. metrics.jsonl V6 step 70000-82800 区间内 33 次 eval（33 个不同 window）的 `val_chain_normal_mse`：
+   - mean = 2.70e-4, std = 6.90e-5, **CV = 25.5%**
+5. 即同一时段、模型几乎不变的情况下，仅 window 切换就让 chain_normal 在 ±25% 范围波动
+6. step 75600 (1.95e-4) → step 76400 (3.69e-4, +90%)；step 81600 (1.82e-4) → step 82000 (3.10e-4, +70%)——**400 步内模型不会变这么多，是窗口子集"运气"**
+
+**含义**：
+
+- V6 best.pt @ step 185600 的 chain_normal=1.70e-4 **可能是"幸运 window"** 选出的偏低值
+- last.pt @ step 200000 的 chain_normal=3.55e-4 **可能是"困难 window"** 的偏高值
+- 数学上的 +108% 差距大概率被 ~25% 窗口噪声 ×2σ ≈ 50% 之外的部分解释，**真正的训练退化（如有）幅度小于看起来的 50%**
+- best_metric 选 ckpt 时也部分在选"哪个 step 的 window 更好"，不只是"哪个 step 模型更好"
+
+**数学/架构/逻辑核查（用户问题：是否有 bug）**：
+
+| 检查 | 结果 | 证据 |
+|---|---|---|
+| Mean-flow 更新 `z_pred = z_src + σ·v_raw·dt` | ✅ 正确 | [`model_first_hop.py:505-511`](../../pet_lr/model_first_hop.py) |
+| 加权平均 not 加权和 | ✅ 正确 | [`rollout_first_hop.py:117-119`](../../pet_lr/rollout_first_hop.py) |
+| EMA 包装 best.pt | ✅ 正确 | [`train_first_hop.py:2511-2532`](../../train_first_hop.py) |
+| `val_select_score` 写入 metrics.jsonl | ✅ 正确 | [`train_first_hop.py:2446`](../../train_first_hop.py) |
+| 确定性 algorithms `warn_only=True` | ⚠️ 已知 | [`train_first_hop.py:49`](../../train_first_hop.py) |
+| **rolling window with 64/3648 ratio** | **⚠️ ROOT CAUSE** | [`train_first_hop.py:838-849`](../../train_first_hop.py) `_resolve_eval_window` |
+
+**没有数学、架构、逻辑 bug**。问题在 eval methodology——以速度优先（每次 eval 只 64 batches × ~5s ≈ 320s = 5 min）牺牲了 chain MSE 的低噪声估计。这是合理的训练时取舍，但 **paper 时必须切换到 full-val**。
+
+**Paper 时强制纪律**：
+
+```bash
+# 不要从 metrics.jsonl 的 best.pt step 取数字。改用 full-val eval：
+python eval_first_hop_224_clip3.py \
+    --config review/0502/configs/A_control.yaml \
+    --checkpoint /data_2/.../A_main/run/.../best.pt \
+    --split val \
+    --max-slices 0   # 0 = full val set, no rolling
+# 同样跑 last.pt：
+python eval_first_hop_224_clip3.py \
+    --config review/0502/configs/A_control.yaml \
+    --checkpoint /data_2/.../A_main/run/.../ckpt_last.pt \
+    --split val \
+    --max-slices 0
+```
+
+得到的 PSNR_clip3 + chain MSE 才是 paper 表数字。**A/C/D 的 best.pt 比较也必须走这一步**——training metrics.jsonl 的 best.pt 行同样有 25% rolling 噪声，不能直接用作 ablation 主表。
+
+**Paper 时强制纪律（追加 v3.1 follow-up）**：
+
+- ✅ A/B/C/D 主表 chain MSE / PSNR_clip3：**必须** 用 `eval_first_hop_224_clip3.py --max-slices 0`
+- ✅ same-step paired 比较：在 metrics.jsonl 中找 A 与 C **共同存在** 的 step（同一 window）做 rel diff，比 best.pt 比较更鲁棒（因为 A_main 与 C_uniform 同 schedule、同 eval_interval、同 RNG → 同步遍历相同 window）
+- ❌ 不要直接抄 metrics.jsonl 的 best.pt 行进 paper 表（每条 line 都是 64-batch rolling window 局部估计）
+- ❌ 不要把 V6 metrics.jsonl 的 step 185600 chain_normal=1.70e-4 与 step 200000 chain_normal=3.55e-4 的对比写入 paper 当 "training instability" 证据——它主要是 window noise
+
+**附加保险（可选，不阻塞）**：A_main / C_uniform / D_closed_form yaml 在跑 main ablation 时**可以临时把 `max_val_batches` 提到 256**（从 64×4 倍）这样 eval 一次看 ~2000 samples，CV 降到 ~12-15%，chain MSE 数字更稳。代价：每次 eval 从 5 min 涨到 20 min × 300 evals = 1.7 GPU·hour 额外开销，可接受。但即使如此，paper 数字仍要走 `--max-slices 0` 全 val 复测。
+
+### 6.3 Risk 3 (120K compressed schedule) 处理纪律
+
+**事实**：A/C/D 用 120K，V6 用 200K。warmup_ratio/ramp_ratio 同为 0.25/0.50：
+
+| Run | Phase I (warmup) | Phase II (ramp) | Phase III |
+|---|---:|---:|---:|
+| V6 | 0-50K | 50K-150K | 150K-200K (50K) |
+| A_main 120K | 0-30K | 30K-90K | 90K-120K (**30K**) |
+
+**含义**：A_main 在 Phase III 仅训 30K 步（vs V6 的 50K）。这是 GPU·day 预算下的合理取舍，**但 claim scope 必须收敛**。
+
+**处理（不修代码，做 discipline）**：
+
+- paper 主 narrative 必须显式写 *"120K compressed schedule, controlled comparison within ablation"*，**不外推到** *"final convergence behavior at 200K"*
+- 灰区决策（rel diff ∈ [5%, 10%]）→ **pre-commit** 扩 200K，不允许事后改口"已经够了"
+- 灰区扩 200K 的实现：从 120K best.pt resume 继续训练 80K 步，新 yaml 设 `warmup_steps: 0, ramp_steps: 0, lambda_start: 4, lambda_end: 4, alpha_start: 1, alpha_end: 1, max_steps: 80000`（即直接进入 Phase III）。代价 = 0.7 GPU·day per condition
+- **不**修改当前 A/C/D yaml 的 warmup/ramp ratios（修改会破坏 sanity 与 main 共用 yaml 的对称性，且 sanity 20K 已与 ratios 锁死）
+
+**为什么不能"把 120K 的 ratio 改小让 Phase III 同样 50K"**：A_control.yaml 同时被 sanity（20K override）与 main（120K override）使用，ratios 在 yaml 里。如果改 A_control.yaml 的 ratios，sanity 也跟着变，破坏 A/B 等价（B_sanity.yaml 也会受影响）。若一定要做，需要拆分两个 yaml；当前优先级低。
+
+### 6.4 Risk 4 (pair channel confound) 处理协议
+
+**事实**：`loss.pair_weight=15`、`pair_loss_weights=[2.5, 1.0, 1.0, 1.0]`——pair channel 在 hop0 已经强。若 C ≈ A，无法区分：
+
+- 假说 H_pair：pair 通道吃掉 rollout shape 的能量，所以 shape 变化没显示
+- 假说 H_shape：rollout shape 真的不重要
+
+**处理**：A/C 主 ablation 完成后，跑 [`A_pair_uniform_spot.yaml`](configs/A_pair_uniform_spot.yaml)（60K, seed=42, pair_loss_weights=[1,1,1,1]，其余与 A_main 完全一致）。
+
+**启动**：
+```bash
+GPU=<free> bash review/0502/scripts/run_ablation.sh pair_uniform
+```
+
+**判读规则**（用 §6.2 same-step paired 协议做比较）：
+
+| A_main 60K vs A_pair_uniform_spot 60K, val_chain_normal_mse rel diff | 解读 |
+|---|---|
+| ≤ 5% | pair confound 不显著，C ≈ A 结论 paper 可保留 *"under the current pair-heavy setup"* 措辞 |
+| 5% - 10% | 灰区，建议在 paper 同时报告 spot check 数字作为 robustness check |
+| > 10% | pair_weight[0]=2.5 是主驱动；rollout shape 是 downstream effect。Paper narrative **必须**重新框架为 *"pair-channel weighting is the primary lever; rollout step-weight shape's contribution is conditional on pair-channel configuration"* |
+
+**成本**：60K @ 80 steps/min ≈ 12.5 GPU·hour ≈ 0.5 GPU·day。**单 seed 即可作 robustness check**（不要求 seed 复跑——这是 confound check，不是 main claim）。
+
+### 6.5 Risk 5 (hop residual claim scope) — paper framing 校准
+
+**事实**：[`HopResidualVelocityHead.lambda_hop_init=1e-3`](../../pet_lr/model_first_hop.py)，V6 训练日志 `lambda_hop_*` / `v_hop_abs` 一直在 1e-2 量级——hop residual 的 latent-space 贡献始终很小。**这不是 bug，是设计**：用户已确认 "Hop residual 的作用主要是 decoder 的伪影压制"——它在 latent space 是小幅 correction，但在 decoded image 上抑制 cross-hop seam artifact。
+
+**Paper framing 校准**（不动代码，改写作）：
+
+- ❌ 不要写 *"We propose a hop-residual velocity head as a core architectural contribution"*——证据强度不足
+- ✅ 改写 *"Our architecture augments the shared backbone velocity with a small hop-conditioned residual head (initialized to λ_hop ≈ 1e-3) whose primary role is to suppress decoder seam artifacts at hop boundaries; latent-space contribution remains small (|v_hop| ~ 1e-2 throughout training)."*
+- ✅ 论文 section 中将 hop residual 描述为 "implementation detail / safety branch" 而不是 "main innovation"
+- 如果 reviewer 要求量化证据：可补 1 个 60K ablation `lambda_hop_init=0`（关掉 hop residual）。decoded image 的 seam region PSNR_clip3 / LPIPS 是关键指标，预期会变差；latent chain MSE 预期变化 < 5%。**这个补实验不阻塞当前 paper**，但作为"可选 robustness"留底。
 
 ---
 
@@ -481,7 +599,12 @@ T+5d    开始写 paper σ-norm 节
 6. ⚠️ **A_main 完成后仅在全部 sanity tier 都 PASS 的前提下**启动 C_uniform 120K（～1 GPU·day）；C 依赖 sigma_dt normalizer code path，那条 path 必须与 A 等价才能化除 confound
 7. 🟠 **V6.1 让其跑完 200K**（GPU 1，～1.4 GPU·day）——不依赖 sanity，全程独立进行
 8. 🟣 **可选：D_closed_form 120K**（～1 GPU·day，视 GPU 0 是否有空）——也需 sanity PASS
-9. 📝 **主 ablation + V6.1 final 全部完成后开始写 paper σ-norm 节**
+8.5. 🟤 **A_main + C_uniform 主 ablation 完成后：A_pair_uniform_spot 60K**（Risk 4 spot check，～0.5 GPU·day，单 seed=42）——见 §6.4 判读规则
+8.6. 📐 **paper 表数字最终化**（任意空闲 GPU，～0.5 GPU·day 总计）：
+    - 对 A_main / C_uniform / D_closed_form / V6_resumed 的 best.pt + last.pt 各跑一次 `eval_first_hop_224_clip3.py --max-slices 0`
+    - 数字进 paper 表；training metrics.jsonl 里的 64-batch rolling 数字**仅**用于 sanity / monitoring
+    - 这一步是 §6.2 强制纪律，**不可跳过**
+9. 📝 **主 ablation + V6.1 final + spot check + full-val eval 全部完成后开始写 paper σ-norm 节**
 
 > **与 v2 的关键差异**：v2 说可以在 sanity Tier 1-3 PASS 后同时跑 GPU 0=A_main 与 GPU 1=C_uniform，v3 **只允许 A_main 与 sanity 并行**，C 必须等全部 tier (含 mini full Tier 4) 都 PASS。原因：C = `B_sanity.yaml 上 step_weights normalizer ON` 的生产设置，若 normalizer code path 有 bug，120K 跑出来的 C 数据是污染的，问题只能在最后发现 → +≥2 GPU·days 入坑。
 
@@ -555,6 +678,19 @@ T+5d    开始写 paper σ-norm 节
 | run_ablation.sh sanity 重跑被拦截时不清旧 sentinel | exit 4 但 `${SANITY_PASS_SENTINEL}` 仍指向上一轮 sanity → C/D 仍可被旧证据放行 | **修复**：sanity 分支 exit 4 路径前 `rm -f "${SANITY_PASS_SENTINEL}"`；操作员"我尝试重跑 sanity"的意图本身使旧 gate 失效（agent6 v3.1 follow-up）|
 | run_ablation.sh usage SANITY_PASS_MIN_STEPS | 未提 | 增加 `SANITY_PASS_MIN_STEPS=N` 行：默认 20000，仅 debug 重建可降低（agent6 v3.1 follow-up）|
 | summarize_run.sh 头注释 | 写"Quick best-checkpoint summary"易被误解为 best.pt 行汇总 | 增"IMPORTANT — what this script reports vs what the paper table needs"块，明言 per-metric 独立最小值口径与 §1.2 best.pt 行口径不同（agent6 v3.1 follow-up）|
+
+#### v3.1 三次 follow-up（codex2 风险三审 — 2026-05-03）
+
+| 项 | 之前 | 现在 |
+|---|----|------|
+| §6.1 V6 best vs last 解释 | "Phase III 后段震荡" | **修订**：root cause 是 eval rolling-window methodology，**不是**训练失稳。原文保留 best/last 双报纪律但增加 §6.2 引导 |
+| §6.2 全新 | 无 | 新增 "Eval methodology pitfall: rolling-window noise" 节：max_val_batches=64 / val_loader 3648 batches → 57 disjoint 窗口；CV=25.5%；adjacent-step 70-130% swings；paper 数字必须用 `eval_first_hop_224_clip3.py --max-slices 0` 全 val 复测 |
+| §6.3 全新 | 无 | 新增 "Risk 3 (120K compressed schedule) 处理纪律"：Phase III 30K vs V6 50K，paper 必须收敛到 "120K compressed schedule"，灰区 (5-10% rel diff) 触发 200K 续训；不动 yaml ratios |
+| §6.4 全新 | 无 | 新增 "Risk 4 (pair channel confound) 处理协议"：A_pair_uniform_spot 60K spot check，决策规则 ≤5% / 5-10% / >10% 三档；不阻塞主 ablation |
+| §6.5 全新 | 无 | 新增 "Risk 5 (hop residual claim scope)"：reframe 为 "decoder 伪影压制 branch"（用户确认）而非 "core architectural innovation"；不动代码 |
+| §7 决策清单 | 8 项, 主 ablation + V6.1 done = paper-write | 增 8.5 (A_pair_uniform_spot 60K) + 8.6 (`eval_first_hop_224_clip3.py --max-slices 0` 全 val 复测 paper 数字) |
+| configs/A_pair_uniform_spot.yaml | 不存在 | 新增：copy of A_control.yaml；run_name + max_steps=60K + save_interval=10K + pair_loss_weights=[1,1,1,1] 四项 delta；header comment block 说明 Risk 4 spot check 用途与决策规则 |
+| run_ablation.sh dispatch | 7 个分支 | 新增 `pair_uniform` 分支：`require_sanity_pass` gate + run_one A_pair_uniform_spot 60K；usage block 同步更新 |
 
 ## 9. 脚本修复记录（review/0502/scripts/run_ablation.sh）
 
@@ -634,6 +770,19 @@ ERROR: sentinel sanity_steps=10000 < SANITY_PASS_MIN_STEPS=20000.
   This sentinel was written by a smoke run, not a Tier-4 gate.
   Re-run with SANITY_STEPS=20000 (or larger):
     SANITY_FRESH=1 SANITY_STEPS=20000 bash review/0502/scripts/run_ablation.sh sanity
+
+# v3.1 三次 follow-up 验证（codex2 risk triage）：
+$ bash -n review/0502/scripts/run_ablation.sh && echo OK
+OK
+$ bash review/0502/scripts/run_ablation.sh pair_uniform
+ERROR: pair_uniform (Risk 4 spot) requires a sanity-pass sentinel at:
+  /Users/.../review/0502/runs/.sanity_pass             # ✅ gate 正确生效
+$ bash review/0502/scripts/run_ablation.sh
+Usage: ... {sanity|main|closed_form|A|B|C|D|pair_uniform}
+  pair_uniform: run A_pair_uniform_spot (60K, Risk 4 spot check) — requires sentinel  # ✅ usage 已更新
+$ python3 -c "import yaml; c=yaml.safe_load(open('review/0502/configs/A_pair_uniform_spot.yaml')); \
+    print(c['run_name'], c['training']['max_steps'], c['transport']['pair_loss_weights'])"
+first_hop_224_sigma_norm_A_pair_uniform_spot 60000 [1.0, 1.0, 1.0, 1.0]      # ✅ yaml delta 验证
 ```
 
 ---

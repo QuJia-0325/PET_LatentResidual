@@ -425,8 +425,15 @@ case "${CMD}" in
         require_sanity_pass "D (single)"
         run_one "D" "${REVIEW_DIR}/configs/D_closed_form.yaml" "120000"
         ;;
+    pair_uniform)
+        # Risk 4 spot check: A baseline with pair_loss_weights=[1,1,1,1] (vs A_main [2.5,1,1,1])
+        # 60K seed=42. Run AFTER A_main + C_uniform main ablation completes.
+        # Used to disambiguate whether pair_weight[0]=2.5 confounds the rollout-shape ablation.
+        require_sanity_pass "pair_uniform (Risk 4 spot)"
+        run_one "A_pair_uniform_spot" "${REVIEW_DIR}/configs/A_pair_uniform_spot.yaml" "60000"
+        ;;
     *)
-        echo "Usage: $0 {sanity|main|closed_form|A|B|C|D}" >&2
+        echo "Usage: $0 {sanity|main|closed_form|A|B|C|D|pair_uniform}" >&2
         echo "  sanity      : run A_sanity + B (default 50K each, set SANITY_STEPS=N to override)" >&2
         echo "                — multi-tier A==B equivalence gate; exits non-zero on FAIL" >&2
         echo "                — writes ${SANITY_PASS_SENTINEL} on PASS" >&2
@@ -436,6 +443,7 @@ case "${CMD}" in
         echo "  B           : run B (50K, single) — no gate (sanity-only condition)" >&2
         echo "  C           : run C (120K, single) — requires sanity-pass sentinel" >&2
         echo "  D           : run D (120K, single) — requires sanity-pass sentinel" >&2
+        echo "  pair_uniform: run A_pair_uniform_spot (60K, Risk 4 spot check) — requires sentinel" >&2
         echo "" >&2
         echo "Environment overrides:" >&2
         echo "  GPU=N             pin CUDA_VISIBLE_DEVICES (default: 0)" >&2
