@@ -173,6 +173,73 @@ class TestNormalizeRemoteUrl(unittest.TestCase):
             "gitee.com/jqu9/pet_latentresidual",
         )
 
+    def test_R17_https_userinfo_stripped(self):
+        """E1 (Round-5 external peer review of C2.2): URL userinfo of
+        the form ``user@`` or ``user:token@`` placed strictly before the
+        first ``/`` must be stripped before the scp ``:`` heuristic
+        runs. Without the strip, the ``:`` inside ``user:token`` was
+        misread as the scp ``host:path`` separator and the function
+        returned a wrong ``user/token@host/path`` form."""
+        self.assertEqual(
+            L._normalize_remote_url("https://user@gitee.com/jqu9/PET_LatentResidual.git"),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+        self.assertEqual(
+            L._normalize_remote_url(
+                "https://user:pass@gitee.com/jqu9/PET_LatentResidual.git"
+            ),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+
+    def test_R18_ssh_url_userinfo_stripped(self):
+        """E1: ``ssh://`` URL form with explicit user (or user:token)
+        must collapse to the same canonical form as the no-user
+        ``ssh://`` URL. R1c already covers ``ssh://git@host/path``;
+        this case extends to arbitrary userinfo."""
+        self.assertEqual(
+            L._normalize_remote_url(
+                "ssh://user:tok@gitee.com/jqu9/PET_LatentResidual.git"
+            ),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+        self.assertEqual(
+            L._normalize_remote_url(
+                "ssh://gituser@gitee.com/jqu9/PET_LatentResidual.git"
+            ),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+
+    def test_R19_userinfo_with_query_and_fragment(self):
+        """E1 + B2a interaction: a URL carrying userinfo, a query, and
+        a fragment all at once must still normalize to the canonical
+        ``host/path`` form. Composition test for the three independent
+        strips (userinfo, query, fragment)."""
+        self.assertEqual(
+            L._normalize_remote_url(
+                "https://user:tok@gitee.com/jqu9/PET_LatentResidual.git?token=abc#frag"
+            ),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+
+    def test_R20_scp_form_unaffected_by_userinfo_strip(self):
+        """E1 regression guard: the existing scp-style ``git@host:path``
+        form must still normalize correctly. The new userinfo strip
+        runs unconditionally, which means it ALSO peels off the leading
+        ``git@`` for scp-style inputs (since the ``@`` precedes the
+        first ``/``). The scp ``:`` heuristic that follows must then
+        still convert ``host:path`` to ``host/path``."""
+        self.assertEqual(
+            L._normalize_remote_url("git@gitee.com:jqu9/PET_LatentResidual.git"),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+        # Pathological scp form with userinfo before git@ is not in our
+        # supported input grammar; we only assert it does not crash.
+        result = L._normalize_remote_url(
+            "user:tok@gitee.com:jqu9/PET_LatentResidual.git"
+        )
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
 
 # ---------- parser ----------------------------------------------------------
 
@@ -281,6 +348,72 @@ class TestSafeReprUrl(unittest.TestCase):
         # column 0 of a fresh stderr line.
         self.assertNotIn("\n[info] hijacked", out)
         self.assertIn("\\n", out)
+
+
+# ---------- safe stderr block (D1) -----------------------------------------
+
+class TestSafeStderrBlock(unittest.TestCase):
+    """D1 hardening (Round-5 external peer review of C2.2): subprocess
+    stderr surfaced to the operator goes through `_safe_stderr_block` so
+    git's own diagnostics — which can echo a hostile remote URL or
+    embed ANSI / NUL / newline bytes — cannot corrupt the operator's
+    terminal. This complements `_safe_repr_url`, which is for single
+    URL strings; `_safe_stderr_block` is for multi-line subprocess
+    stderr blobs.
+    """
+
+    def test_plain_text_passthrough(self):
+        out = L._safe_stderr_block("fatal: unable to access 'host'")
+        # No control bytes in the input, so the output is unchanged.
+        self.assertEqual(out, "fatal: unable to access 'host'")
+
+    def test_ansi_escape_neutralised(self):
+        hostile = "\x1b[31mfatal\x1b[0m: hostile error"
+        out = L._safe_stderr_block(hostile)
+        self.assertNotIn("\x1b", out)
+        self.assertIn("\\x1b", out)
+
+    def test_nul_byte_neutralised(self):
+        hostile = "fatal:\x00 NUL injected"
+        out = L._safe_stderr_block(hostile)
+        self.assertNotIn("\x00", out)
+        self.assertIn("\\x00", out)
+
+    def test_newline_collapsed(self):
+        # Multi-line stderr (the common shape from `subprocess.run`) is
+        # collapsed to a single logical line via `\n` escapes. This
+        # prevents an attacker from forging additional stderr lines
+        # starting at column 0.
+        hostile = "fatal: unable to access 'host'\n[info] forged log line"
+        out = L._safe_stderr_block(hostile)
+        self.assertNotIn("\n[info] forged log line", out)
+        self.assertIn("\\n[info] forged log line", out)
+
+    def test_carriage_return_neutralised(self):
+        # \r alone could overwrite the previous logical line on a
+        # terminal; must be escaped.
+        hostile = "fatal: error\rOK"
+        out = L._safe_stderr_block(hostile)
+        self.assertNotIn("\r", out)
+        self.assertIn("\\r", out)
+
+    def test_none_returns_sentinel(self):
+        # Defensive: None inputs (e.g. a subprocess that produced no
+        # stderr) must not raise and must not echo "None" via str().
+        out = L._safe_stderr_block(None)
+        self.assertEqual(out, "<None>")
+
+    def test_url_in_stderr_blob_neutralised(self):
+        # The motivating threat: git's own message echoes the remote
+        # URL, which itself can be hostile. The stderr-block sanitizer
+        # is what closes that surface for the 3 git() / commit / push
+        # call sites that do not route through _safe_repr_url.
+        url = "https://gitee.com/\x1b[1;31mhostile\x1b[0m/repo.git"
+        stderr_blob = f"fatal: unable to access '{url}': could not connect\n"
+        out = L._safe_stderr_block(stderr_blob)
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\n", out)
+        self.assertIn("\\x1b", out)
 
 
 # ---------- resolver: pure-fn paths -----------------------------------------

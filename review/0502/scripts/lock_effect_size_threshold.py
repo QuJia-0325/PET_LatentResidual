@@ -236,8 +236,13 @@ def git(args: list[str], cwd: Path | None = None) -> str:
         text=True,
     )
     if res.returncode != 0:
+        # D1 (Round-5 peer review): wrap raw subprocess stderr through
+        # _safe_stderr_block so embedded ANSI/NUL/CR bytes from a hostile
+        # remote URL echoed back by git itself cannot corrupt the
+        # operator's terminal.
         sys.stderr.write(
-            f"git {' '.join(args)} failed (exit {res.returncode}):\n{res.stderr}\n"
+            f"git {' '.join(args)} failed (exit {res.returncode}):\n"
+            f"{_safe_stderr_block(res.stderr)}\n"
         )
         raise RuntimeError(f"git command failed: git {' '.join(args)}")
     return res.stdout.strip()
@@ -294,24 +299,60 @@ def _safe_repr_url(url: str) -> str:
     return repr(str(url))
 
 
+def _safe_stderr_block(text: str) -> str:
+    """Return a printable form of an arbitrary subprocess stderr blob with
+    control characters and ANSI escape sequences neutralised.
+
+    D1 hardening (Round-5 external peer review of C2.2): ``_safe_repr_url``
+    handles single URL strings but is unsuitable for multi-line stderr
+    captured from ``subprocess.run``. A hostile remote URL embedded in
+    git's own error message (e.g. ``fatal: unable to access '<URL>'``)
+    can re-introduce the terminal-corruption surface that B10 closed, if
+    the script writes ``proc.stderr`` to ``sys.stderr`` verbatim.
+
+    We use ``unicode_escape`` so that:
+      - ``\\x1b`` ANSI sequences render as the literal four bytes
+        ``\\x1b`` (no terminal mode change).
+      - NUL / C0 / DEL bytes render as ``\\xHH``.
+      - Real newlines render as the literal two bytes ``\\n``, collapsing
+        the entire stderr blob onto a single logical line. This keeps
+        diagnostic output legible in a log file while removing the
+        terminal-corruption surface.
+
+    Like ``_safe_repr_url``, this helper is purely cosmetic / defensive
+    and is NOT part of any matching or signing contract.
+    """
+    if text is None:
+        return "<None>"
+    s = str(text)
+    try:
+        return s.encode("unicode_escape").decode("ascii")
+    except (UnicodeEncodeError, UnicodeDecodeError):  # pragma: no cover
+        # Fallback: raw repr() always succeeds, never echoes bytes.
+        return repr(s)
+
+
 def _normalize_remote_url(url: str) -> str:
     """Normalize a git remote URL to a lowercased ``host/path`` form with any
     trailing ``.git`` stripped. The boundary anchor matters: per Q-A (b),
     `pet_latentresidual_fork` and `pet_latentresidual` must compare unequal.
 
     Supported input forms:
-      - ``git@host:path``           (scp-style ssh)
-      - ``ssh://git@host/path``     (URL-style ssh)
-      - ``ssh://host/path``         (URL-style ssh, no user)
-      - ``https://host/path``       (https)
-      - ``http://host/path``        (plain http — accepted for completeness)
-      - bare ``host/path``          (left as-is then lowercased)
+      - ``git@host:path``                       (scp-style ssh)
+      - ``ssh://[user[:tok]@]host/path``        (URL-style ssh, optional userinfo)
+      - ``https://[user[:tok]@]host/path``      (https, optional userinfo)
+      - ``http://[user[:tok]@]host/path``       (plain http — accepted for completeness)
+      - bare ``host/path``                      (left as-is then lowercased)
 
     Notes:
       - Whitespace at the boundaries is ignored.
       - URL fragments (``#...``) and query strings (``?...``) are stripped
         before comparison so that ``host/path.git#frag`` does not silently
         compare unequal to ``host/path``. (B2a, Lane B peer review.)
+      - URL userinfo (``user@`` or ``user:token@``) is stripped after the
+        scheme is removed, so a CI-injected credential prefix does not
+        cause a real-mismatch nor get confused with the scp-style ``:``
+        in ``host:path``. (E1, Round-5 external peer review of C2.2.)
       - The function is a pure helper so it can be unit-tested without a
         real repo. Anything beyond the listed forms (e.g. file paths,
         weird custom protocols) returns the raw lowercased input minus a
@@ -328,13 +369,26 @@ def _normalize_remote_url(url: str) -> str:
     sl = s.lower()
     if sl.startswith("ssh://"):
         s = s[len("ssh://"):]
-        if s.lower().startswith("git@"):
-            s = s[len("git@"):]
     # https:// or http://
     elif sl.startswith("https://"):
         s = s[len("https://"):]
     elif sl.startswith("http://"):
         s = s[len("http://"):]
+
+    # E1 (Round-5 peer review): strip URL userinfo (``user@`` or
+    # ``user:token@``) if it appears strictly before the first ``/``.
+    # Must run BEFORE the scp ``:`` heuristic — otherwise the ``:`` in
+    # ``user:token`` triggers a spurious scp-style host/path conversion
+    # for ``https://user:token@host/path``. The scp-style ``git@host:path``
+    # form is handled by the dedicated branch immediately below; that
+    # branch fires when the scheme strip above did NOT match (i.e. the
+    # URL had no ``ssh://`` / ``https://`` / ``http://`` prefix), so the
+    # leading ``git@`` is still intact at that point.
+    slash = s.find("/")
+    at = s.find("@")
+    if at != -1 and (slash == -1 or at < slash):
+        s = s[at + 1:]
+
     # scp-style ssh prefix: strip leading "git@" if present (without scheme).
     if s.lower().startswith("git@"):
         s = s[len("git@"):]
@@ -986,7 +1040,10 @@ def main() -> int:
             capture_output=True,
         )
         if proc.returncode != 0:
-            sys.stderr.write(f"git commit failed: {proc.stderr}\n")
+            # D1: sanitize stderr (see _safe_stderr_block).
+            sys.stderr.write(
+                f"git commit failed: {_safe_stderr_block(proc.stderr)}\n"
+            )
             return 8
         commit_hash = git(["rev-parse", "HEAD"], cwd=repo_root)
         print(f"Committed: {commit_hash}")
@@ -1083,8 +1140,12 @@ def main() -> int:
             text=True,
         )
         if proc.returncode != 0:
+            # D1: sanitize stderr (see _safe_stderr_block). git's own
+            # "fatal: unable to access '<URL>'" echoes the remote URL
+            # verbatim, which is the surface B10 was meant to close.
             sys.stderr.write(
-                f"git push {resolved_remote} {branch} failed:\n{proc.stderr}\n"
+                f"git push {_safe_repr_url(resolved_remote)} {branch} failed:\n"
+                f"{_safe_stderr_block(proc.stderr)}\n"
                 f"You committed locally; push manually to finalize.\n"
             )
             return 8
