@@ -584,15 +584,48 @@ python eval_first_hop_224_clip3.py \
 GPU=<free> bash review/0502/scripts/run_ablation.sh pair_uniform
 ```
 
-**判读规则**（用 §6.2 same-step paired 协议做比较）：
+**判读规则**（LOCKED 2026-05-03）：使用 [`paired_diff_judge.py`](scripts/paired_diff_judge.py) 在共同 step 窗口上对 `val_chain_normal_mse` 做 paired 比较，输出 mean ± SE ± CI95 + autocorr-corrected N_eff。**绝对不要用 best-vs-best**——其 3σ 检测下限 ~76%，根本测不出 confound 信号。
 
-| A_main 60K vs A_pair_uniform_spot 60K, val_chain_normal_mse rel diff | 解读 |
-|---|---|
-| ≤ 5% | pair confound 不显著，C ≈ A 结论 paper 可保留 *"under the current pair-heavy setup"* 措辞 |
-| 5% - 10% | 灰区，建议在 paper 同时报告 spot check 数字作为 robustness check |
-| > 10% | pair_weight[0]=2.5 是主驱动；rollout shape 是 downstream effect。Paper narrative **必须**重新框架为 *"pair-channel weighting is the primary lever; rollout step-weight shape's contribution is conditional on pair-channel configuration"* |
+```bash
+# 推荐窗口：[40000, 60000] —— 两 run 都已进 Phase II 中段，schedule 状态对齐
+python review/0502/scripts/paired_diff_judge.py \
+    --metrics-a /data_2/qujiaxiang/outputs/PET_LatentResidual/A_main/run-.../metrics.jsonl \
+    --config-a  review/0502/configs/A_control.yaml \
+    --metrics-b /data_2/qujiaxiang/outputs/PET_LatentResidual/A_pair_uniform_spot/run-.../metrics.jsonl \
+    --config-b  review/0502/configs/A_pair_uniform_spot.yaml \
+    --metric-key val_chain_normal_mse \
+    --step-min 40000 --step-max 60000 \
+    --threshold 0.10 \
+    --label-a A_main --label-b A_pair_uniform \
+    --output-md review/0502/runs/risk4_paired_diff.md
+```
+
+**LOCKED decision rule**（脚本自动应用，使用 mean ± 2·SE 区间与 0.10 阈值比较）：
+
+| 脚本判定 / exit code | 含义 | Paper 行动 |
+|---|---|---|
+| `no_confound` (exit 0) | `\|mean\| + 2·SE < 0.10`<br>(mean rel diff 95% CI 完全在 ±10% 内) | C ≈ A 结论 paper 可保留 *"under the current pair-heavy setup"* 措辞，并在附录引用本 spot check 报告作 robustness 证据 |
+| `confound` (exit 10) | `\|mean\| − 2·SE > 0.10`<br>(mean rel diff 95% CI 完全在 10% 外) | pair_weight[0]=2.5 是主驱动。Paper narrative **必须**重新框架为 *"pair-channel weighting is the primary lever; rollout step-weight shape's contribution is conditional on pair-channel configuration"* + 报告 magnitude=`mean` |
+| `borderline` (exit 11) | CI95 跨过 ±10% 阈值 | 对两 run 的 best.pt 各跑一次 `eval_first_hop_224_clip3.py --max-slices 0`（Layer 4 full-val），取该数字判读；如仍 borderline，paper supplementary 同时披露两个数字 |
+
+**Guards 自动检查**（脚本里硬执行，不要试图绕过）：
+
+1. metric-key 在 A/B 两文件至少 5 个共同 step（`exit 1`）
+2. autocorrelation-corrected N_eff ≥ 5（防止 mean 不稳定，`exit 2`）
+3. step-min < step-max（强制窗口显式指定，`exit 3`）
+4. mean ± 2·SE 同时跨过 0 和阈值时一律 borderline，不允许"勉强通过"
+5. A/B 两 yaml 必须在 seed / val_shuffle / val_window_mode / eval_interval / max_val_batches / batch_size 上完全一致（`exit 5`）—— 这是 paired diff 真实成立的硬条件
+
+**为什么 0.10 阈值合理**（详细推导见 [ROLLING_WINDOW_TRADEOFF.md §3.4 与本节 audit](ROLLING_WINDOW_TRADEOFF.md)）：
+
+- 单次 paired diff CV ~5%（理论估计）；窗口 50 个 paired 观测，自相关修正后 N_eff ~10-20 → mean 的 SE ≈ 1.5-2%
+- 0.10 阈值在 mean SE 上是 5σ 距离 → 统计功效充足
+- 0.15 阈值是 8σ → 功效过剩，会漏掉真实 8-12% confound
+- Risk 4 是**防御性检查**：false negative（漏报 confound）的代价是 reviewer 抓住 → desk reject；false positive 的代价仅是多写一段披露 → **应当倾向高敏感度**
 
 **成本**：60K @ 80 steps/min ≈ 12.5 GPU·hour ≈ 0.5 GPU·day。**单 seed 即可作 robustness check**（不要求 seed 复跑——这是 confound check，不是 main claim）。
+
+**Fallback**：若 paired_diff_judge.py 因任何 guard fail（如 N_eff < 5），不要回退到 best-vs-best；改为对 A_main / A_pair_uniform_spot 各跑一次 Layer 4 full-val（`eval_first_hop_224_clip3.py --max-slices 0`，每 run ~30 min 单 GPU）→ 直接比较两个 unbiased 数字。
 
 ### 6.5 Risk 5 (hop residual claim scope) — paper framing 校准
 
@@ -666,10 +699,40 @@ where paired_CV_A is computed from A_main alone:
 #### 6.6.4 与现有 protocol 的关系
 
 - 与 §6.2 paper-time discipline 兼容：Method D 选 ckpt（Step 1）+ full-val on top-2（Step 2）→ 输出 mean ± std，再代入这里的 rule
-- 与 §6.4 Risk 4 (pair confound) 协议**独立**：那个协议针对 A_main vs A_pair_uniform_spot，不是 A_main vs C_uniform。两者各用自己的阈值
+- 与 §6.4 Risk 4 (pair confound) 协议**独立但共用脚本**：那个协议针对 A_main vs A_pair_uniform_spot，不是 A_main vs C_uniform。两者各用自己的阈值（Risk 4 LOCKED 0.10；§6.6 是 `max(0.10, 3 × paired_CV_A)`）。脚本 [`paired_diff_judge.py`](scripts/paired_diff_judge.py) 也可作为 §6.6 的 **early-warning auxiliary anchor**（A_main vs C_uniform 训练中段 monitoring），见 §6.6.5
 - `EFFECT_SIZE_LOCKED.md` 也作为 paper supplementary 的 reproducibility 附件（reviewer 可验证 commit hash 时序）
 
-#### 6.6.5 反例：如果不做 blinded analysis 会怎样
+#### 6.6.5 Auxiliary anchor: paired diff monitoring during training（不替代主 protocol）
+
+`paired_diff_judge.py` 在 §6.6 主 protocol（Step 5 full-val on C_uniform）之外可以作为**早期信号**使用：当 A_main 跑到 30K / 60K / 90K 时，可以并行查看 A_main vs C_uniform 在 `[0, current_step]` 的 paired diff，判断是否需要在 A_main 跑完后立刻准备 200K 续训。
+
+**用法（不进 paper，仅决策辅助）**：
+
+```bash
+# 推荐窗口 [40000, 当前步] 或 [40000, 60000] 等已有数据的稳定段
+python review/0502/scripts/paired_diff_judge.py \
+    --metrics-a /data_2/.../A_main/run-.../metrics.jsonl \
+    --config-a  review/0502/configs/A_control.yaml \
+    --metrics-b /data_2/.../C_uniform/run-.../metrics.jsonl \
+    --config-b  review/0502/configs/C_uniform.yaml \
+    --metric-key val_chain_normal_mse \
+    --step-min 40000 --step-max <current_step> \
+    --threshold 0.10 \
+    --label-a A_main --label-b C_uniform
+```
+
+**关键区别**（与 §6.4 Risk 4 用法相比）：
+
+| 维度 | §6.4 Risk 4 用法 | §6.6.5 auxiliary anchor 用法 |
+|---|---|---|
+| 输入 B run | A_pair_uniform_spot | C_uniform |
+| 数字进 paper 吗 | ✅ 是（exit code 0/10/11 进 §6.4 决策） | ❌ 否（仅作早期 heads-up） |
+| 决策权威 | LOCKED 阈值 0.10 | 仅参考；最终判读用 §6.6 主 protocol（Step 6）|
+| 何时跑 | A_pair_uniform_spot 完成后一次 | A_main 跑到 30K/60K/90K 各一次（可选）|
+
+**绝对不允许**：用 paired diff monitoring 的早期数字替代 §6.6 主 protocol 的 full-val on C_uniform。脚本 exit code 在 auxiliary anchor 用法里只是"接下来 GPU 排队是否要预留 200K continuation"的提示，不是 paper 数字。
+
+#### 6.6.6 反例：如果不做 blinded analysis 会怎样
 
 | 实测 rel_diff | "看完再定 X" 路径 | Blinded analysis 路径 |
 |---|---|---|
@@ -678,7 +741,7 @@ where paired_CV_A is computed from A_main alone:
 | 13% | 倾向选 X=15% → ≈；reviewer 一眼识破 cherry-pick | paired_CV_A=4% → X=12% → 13% ∈ [12%, 24%] → grey zone → 触发 200K（**保护了诚实**） |
 | 25% | 选 X=10% → 显著（这次没作弊也无法证明没作弊） | paired_CV_A=4% → X=12% → 25% > 24% → 显著 ✓ **rule-based** |
 
-#### 6.6.6 LOCKED status
+#### 6.6.7 LOCKED status
 
 - **Pre-registration commit**：本文件改动的 commit hash（写入此处时未知，post-commit 应回填）
 - **Pre-registration timestamp**：commit 时刻（git history 永久记录）

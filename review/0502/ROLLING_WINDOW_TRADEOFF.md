@@ -460,11 +460,12 @@ else:
 - 改用 [Method D](scripts/select_best_ckpt_smoothed.py) 邻域平滑 — 零磁盘成本，bias 从 -61% 降到 -7%
 - V6 snapshot 实证：raw_best (1.82e-4) 比 Method D 选的 (2.60e-4) 低估 +43%；Method D #1 vs #3 gap = 5.69σ
 
-**讨论项 2（紧急，A_pair_uniform_spot 启动前）**：Risk 4 spot check 判读规则是否切换到 §3.4 paired diff？
+**讨论项 2 ✅ 已决策（paired diff judge 脚本 + 0.10 LOCKED 阈值）**：Risk 4 spot check 判读规则切换到 §3.4 paired diff
 
-- 利：噪声完全 cancel，决策门槛 ≤5% 真正可信
-- 弊：需要对 metrics.jsonl 写一个简单的 paired diff 后处理脚本（~30 行 python）
-- 决策窗口：**A_main + C_uniform 完成、A_pair_uniform_spot 启动之前**
+- **已 lock**：[POST_V6_NEXT_STEPS.md §6.4](POST_V6_NEXT_STEPS.md) 已替换 best-vs-best 规则
+- 脚本 [`paired_diff_judge.py`](scripts/paired_diff_judge.py)：reads 两 metrics.jsonl + 两 yaml；输出 mean ± SE ± CI95 + autocorr-corrected N_eff；exit code 0 (no_confound) / 10 (confound) / 11 (borderline) + guards 1-5 防 paired diff 在前提不满足时被错误使用
+- LOCKED 阈值 0.10 的 audit 见 §3.4 与 [POST_V6_NEXT_STEPS.md §6.4](POST_V6_NEXT_STEPS.md)：单次 paired CV ~5%（理论），50 obs × N_eff~10 → mean SE ≈ 1.5-2%，0.10 阈值在 mean 上是 5σ 距离 → 统计功效充足；Risk 4 是防御性检查，应倾向高敏感度（0.10 优于 0.15）
+- 同一脚本可作 §6.6.5 auxiliary anchor 用（A_main vs C_uniform 早期 monitoring，不进 paper）
 
 **讨论项 3 ✅ 已决策（blinded analysis pre-registration）**：是否预先 pre-commit "效应量 < X% 不写 paper" 的红线？
 
