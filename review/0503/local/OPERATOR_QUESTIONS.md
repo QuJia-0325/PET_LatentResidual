@@ -119,19 +119,55 @@ review/0502/scripts/run_c_uniform_full_val.sh \
 
 ---
 
-## 优先级总结（站在我的视角）
+## Q8 (新增 2026-05-03，🔴 极高紧迫)：`sigma_seed123` / `sigma_seed456` 是不是 A_main？
+
+**触发原因**：GPT-5.5 + Claude 双外审都把 §6.6.1 的 `paired_CV_A`（单臂 rolling-window CV）认定为 desk-reject 级 dimensional mismatch；正确的 noise scale 应该是 **two-seed paired-difference SD**，公式 `paired_SD_AA = sd(A_seed1 − A_seed2) / mean(A)`。
+
+如果 `sigma_seed123` + `sigma_seed456` 是同一个 V6 transport-first 配置 + 不同 seed，那么 REV1 的 Q1 修正**零额外 GPU·day 成本**——直接用现有数据。
+
+**问题**：
+
+1. 现在 GPU 上跑的 `first_hop_224_50k_sigma_seed123` 和 `first_hop_224_50k_sigma_seed456`，你心里是把它们归为：
+   - (a) `A_main` 的两个 seed（即"V6 transport-first × σ-norm = ON"，只换 seed）
+   - (b) 一个独立的 σ-norm sub-ablation（与 A_main / C_uniform 平行的第三对）
+   - (c) 已经 abandon 的旧实验
+2. 如果是 (a)：太好了，REV1 §6.6 直接用这两个的差作 paired SD。请确认两个 run 当前的 `global_step` 都已 ≥ 50000（或预期能到 50000）。
+3. 如果是 (b)：那 REV1 Q1 修正需要额外补一支 A_main 第二种子。预算 0.5 GPU·day。**这个补跑必须在 X 锁定前完成**，否则与 v0 protocol 一样事后修改。请告诉我能否安排。
+4. 如果是 (c)：解释一下为什么 abandon——这会影响 REV1 是否能依赖它们的部分历史数据。
+
+**操作意义**：(a) 是最优路径；(b) 我可以等；(c) 我们就只能 fall back 到 GPT-5.5 推荐的"block-bootstrap on A_main 单臂"，那是**次优但仍然比 v0 强**的方案。
+
+---
+
+## 优先级总结（站在我的视角，2026-05-03 23:00 更新）
 
 | Q | 紧迫度 | 阻塞什么 |
 |---|---|---|
+| **Q8 (新增)** | 🔴🔴 **极高** | **决定 REV1 §6.6 paired SD 是否零成本可行**——若 (a)，REV1 跟操作员答复一起就能落地；若 (b)/(c)，需先排 0.5 GPU·day 的 second-seed run |
 | Q1 (A3) | 🔴 高 | 决定 paired_diff_judge.py 是不是死代码 |
 | Q2 (A2) | 🔴 高 | 决定 §6.6.2 是否需要补 fallback policy |
 | Q4 (D1) | 🟡 中 | 决定 lock 脚本是否需要加 schema 适配 |
-| Q5 (C2) | 🟡 中 | 决定 paper 是否有 ceiling anchor |
+| Q5 (C2) | 🟡 中 | 决定 paper 是否有 ceiling anchor（外审 C6：缺这数则必须删除所有 "near-ceiling" 措辞） |
 | Q3 (A1) | 🟢 低 | 是否补反向闸门 wrapper |
 | Q6 (B2) | 🟢 低 | 仓库整洁度 |
 | Q7 (B3) | 🟢 低 | reviewer-defense 余量 |
 
-**最优 reply 顺序**：先回 Q1+Q2+Q4（都是 1–2 句话能定的），其它可以拖到 A_main 跑完再答。
+**最优 reply 顺序**：先回 **Q8 + Q2 + Q1**（Q8 决定 REV1 能否快速落地；Q2 决定 lock 脚本是否要改窗口；Q1 决定 paired_diff_judge 命运）。其它可以拖。
+
+---
+
+## 关联：外部审查结论（2026-05-03）
+
+GPT-5.5 xhigh：🛑 **DESK REJECT**（[review/0503/operator/PEER_REVIEW_GPT55.md](../operator/PEER_REVIEW_GPT55.md)）
+Claude Opus 4.7 extra-high：⚠️ **MAJOR REVISIONS**（[review/0503/operator/PEER_REVIEW_CLAUDE.md](../operator/PEER_REVIEW_CLAUDE.md)）
+
+两位 reviewer 强一致地指出：
+
+1. v0 §6.6.1 的 `paired_CV_A` 是 **dimensionally wrong** → desk-reject blocker → **Q8 必须有答案**
+2. v0 §6.6.3 trichotomy 没有 `rel_diff < 0` 分支 → HARK-fatal → REV1 已规划修正
+3. v0 lock 脚本 Guard 3 white-list 了 `metrics.jsonl` → 实时 peek 不可检测 → REV1 已规划修正
+
+完整 REV1 计划见 [REV1_PLAN.md](REV1_PLAN.md)。**REV1 必须在 A_main 跨过 step 60000 前合并**，否则等同事后修改 protocol = 学术失信。
 
 ---
 
