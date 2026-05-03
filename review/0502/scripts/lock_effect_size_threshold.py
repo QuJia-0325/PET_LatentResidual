@@ -275,6 +275,25 @@ class CanonicalRemoteError(Exception):
     """
 
 
+def _safe_repr_url(url: str) -> str:
+    """Return a printable repr of a URL with control characters and ANSI
+    escape sequences neutralised.
+
+    B10 hardening (Lane B peer review): a hostile or accidentally-corrupt
+    git remote URL could contain ``\\x1b[...`` escape sequences or NUL /
+    other C0 / DEL bytes that, when written to a terminal via
+    ``sys.stderr``, alter rendering or the active tty mode. Wrapping
+    every printed URL through this helper produces a single-line,
+    single-quoted form (Python ``repr``) where any non-printable byte is
+    rendered as ``\\xHH``. The helper is purely cosmetic / defensive; it
+    is NOT part of the matching contract — matching always goes through
+    ``_normalize_remote_url``.
+    """
+    if url is None:
+        return "<None>"
+    return repr(str(url))
+
+
 def _normalize_remote_url(url: str) -> str:
     """Normalize a git remote URL to a lowercased ``host/path`` form with any
     trailing ``.git`` stripped. The boundary anchor matters: per Q-A (b),
@@ -290,12 +309,19 @@ def _normalize_remote_url(url: str) -> str:
 
     Notes:
       - Whitespace at the boundaries is ignored.
+      - URL fragments (``#...``) and query strings (``?...``) are stripped
+        before comparison so that ``host/path.git#frag`` does not silently
+        compare unequal to ``host/path``. (B2a, Lane B peer review.)
       - The function is a pure helper so it can be unit-tested without a
         real repo. Anything beyond the listed forms (e.g. file paths,
         weird custom protocols) returns the raw lowercased input minus a
         trailing ``.git`` — callers must not expect that to be a security
         boundary; the actual matching is a strict equality check after
         normalization.
+
+      ``file://`` and unusual scheme/port forms (e.g. ``ssh://host:22/``)
+      are NOT first-class supported; pre-registration only ever runs over
+      the canonical https / ssh forms above. (B12 documentation, Lane B.)
     """
     s = url.strip()
     # ssh:// or ssh://git@
@@ -312,6 +338,14 @@ def _normalize_remote_url(url: str) -> str:
     # scp-style ssh prefix: strip leading "git@" if present (without scheme).
     if s.lower().startswith("git@"):
         s = s[len("git@"):]
+
+    # B2a (Lane B peer review): strip URL fragment and query before scp
+    # conversion so a stray `#frag` or `?q=v` cannot mask a real mismatch.
+    # We strip fragment first (`#`), then query (`?`).
+    if "#" in s:
+        s = s.split("#", 1)[0]
+    if "?" in s:
+        s = s.split("?", 1)[0]
 
     # scp-style host:path → host/path. We do this AFTER scheme/user
     # stripping so we do not mistake the `:` in `https://` for an scp
@@ -342,14 +376,33 @@ def _parse_git_remote_v(stdout: str) -> dict[str, str]:
 
     We retain only the (fetch) URL per remote (per-remote fetch and push
     URLs may differ; canonical match is on fetch).
+
+    B4 hardening (Lane B peer review): the URL field is split via
+    ``rsplit(None, 2)`` from the right so URLs containing literal
+    whitespace (rare but possible via misconfigured ``git remote add``)
+    are preserved as a single token. The ``(fetch)``/``(push)`` marker is
+    matched case-insensitively to be defensive against future git output
+    quirks.
     """
     out: dict[str, str] = {}
     for line in stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 3:
+        line = line.rstrip("\r\n")
+        if not line.strip():
             continue
-        name, url, kind = parts[0], parts[1], parts[2]
-        if kind == "(fetch)":
+        # rsplit gives us [name+url, url, kind]. Wait — that's wrong:
+        # we need [name, url, kind]. Format is name<tab>url<space>(fetch),
+        # so a left-anchored split on the first whitespace gives
+        # ``name`` then the rest as ``url (fetch)``. We then rsplit
+        # the rest from the right with maxsplit=1 to peel off ``(fetch)``.
+        head_split = line.split(None, 1)
+        if len(head_split) < 2:
+            continue
+        name, rest = head_split[0], head_split[1]
+        url_kind = rest.rsplit(None, 1)
+        if len(url_kind) < 2:
+            continue
+        url, kind = url_kind[0], url_kind[1]
+        if kind.lower() == "(fetch)":
             out[name] = url
     return out
 
@@ -377,9 +430,14 @@ def _load_anchor(repo_root: Path) -> str:
     B3a hardening: opens with ``encoding='utf-8-sig'`` so a stray UTF-8 BOM
     (e.g. from a Windows editor) does not silently break the match.
 
-    Returns the anchor text (stripped, single line). Raises
-    `CanonicalRemoteError` on missing / empty file. Multi-line files emit a
-    stderr warning and the first non-empty line is used.
+    B3b hardening (Lane B peer review): a multi-line anchor file is now a
+    HARD ERROR rather than a "first non-empty line wins" fallback. Comments
+    or stray blank lines that previously slipped through silently — and
+    raised a confusing "no remote matches" error downstream — now surface
+    immediately with a clear message identifying the offending file.
+
+    Returns the anchor text (the unique non-empty line, stripped). Raises
+    `CanonicalRemoteError` on missing / empty / multi-line.
     """
     anchor_path = repo_root / CANONICAL_REMOTE_FILENAME
     if not anchor_path.exists():
@@ -390,23 +448,29 @@ def _load_anchor(repo_root: Path) -> str:
             f"{anchor_path}\n"
             f"Or pass `--remote <name>` to bypass the resolver."
         )
-    # B3a (Lane B HEAVY-FLAG): use utf-8-sig so a leading BOM is stripped.
-    anchor = anchor_path.read_text(encoding="utf-8-sig").strip()
-    if not anchor:
+    # B3a (Lane B BLOCKER): use utf-8-sig so a leading BOM is stripped.
+    raw = anchor_path.read_text(encoding="utf-8-sig")
+    # Normalise CR/LF line endings before splitting.
+    text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
         raise CanonicalRemoteError(
             f"anchor file {anchor_path} is empty. Write a single line "
             f"containing the canonical URL fragment, "
             f"e.g. `gitee.com:jqu9/PET_LatentResidual`."
         )
-    if "\n" in anchor:
-        # First non-empty line wins; warn on stderr so accidental multi-line
-        # files are noticed.
-        sys.stderr.write(
-            f"WARNING: {anchor_path} contains multiple lines; using only "
-            f"the first non-empty line.\n"
+    nonempty_lines = [ln for ln in text.split("\n") if ln.strip()]
+    # B3b (Lane B peer review): no silent multi-line fallback.
+    if len(nonempty_lines) != 1:
+        preview = "\n".join(f"    {ln!r}" for ln in nonempty_lines[:3])
+        more = (f"\n    ... and {len(nonempty_lines) - 3} more line(s)"
+                if len(nonempty_lines) > 3 else "")
+        raise CanonicalRemoteError(
+            f"anchor file {anchor_path} must contain exactly one "
+            f"non-empty line; found {len(nonempty_lines)}:\n"
+            f"{preview}{more}\n"
+            f"Remove comments / extra lines and retry."
         )
-        anchor = next((ln for ln in anchor.splitlines() if ln.strip()), "")
-    return anchor
+    return nonempty_lines[0].strip()
 
 
 def resolve_canonical_remote(
@@ -451,7 +515,10 @@ def resolve_canonical_remote(
 
     matches = _match_remote_by_anchor(anchor, remotes)
     if len(matches) == 0:
-        listing = "\n".join(f"    {n}\t{u}" for n, u in sorted(remotes.items()))
+        listing = "\n".join(
+            f"    {n}\t{_safe_repr_url(u)}"
+            for n, u in sorted(remotes.items())
+        )
         raise CanonicalRemoteError(
             f"no remote matches canonical anchor `{anchor}`. Configured "
             f"fetch remotes:\n{listing}\n"
@@ -459,7 +526,9 @@ def resolve_canonical_remote(
             f"`--remote <name>` explicitly."
         )
     if len(matches) >= 2:
-        listing = "\n".join(f"    {n}\t{u}" for n, u in matches)
+        listing = "\n".join(
+            f"    {n}\t{_safe_repr_url(u)}" for n, u in matches
+        )
         raise CanonicalRemoteError(
             f"{len(matches)} remotes match canonical anchor `{anchor}`:\n"
             f"{listing}\n"
@@ -504,24 +573,33 @@ def detect_c_uniform_artifacts(c_dir: Path | None) -> list[Path]:
     return suspect
 
 
-def compute_paired_cv(
-    metrics_path: Path,
+def compute_paired_stats_from_rows(
+    rows: list[dict],
     step_min: int,
     step_max: int,
-) -> tuple[float, float, float, int, list[float], str]:
-    """Returns (paired_CV, mean, std, N, raw_values, metrics_sha256).
+) -> tuple[float, float, float, int, list[float]]:
+    """Compute paired CV statistics directly from already-loaded metric rows.
 
-    The metrics SHA256 is returned from the SAME byte read used to populate
-    `raw_values`, eliminating the Cl-Q6 race window between parse-time and
-    hash-time.
+    Returns ``(paired_CV, mean, std, N, raw_values)``. The hash is NOT
+    returned because the caller already has it from the same single read
+    (see `compute_paired_cv` below for the convenience wrapper).
+
+    A2 architectural fix (Lane A peer review, May 4 2026): the lock
+    workflow used to re-open `metrics.jsonl` THREE times — once inside
+    `compute_paired_cv`, once in the Guard 5 data-side recheck, once
+    while building the markdown observation table. The middle read in
+    particular re-introduced a small race window that the Cl-Q6 SHA fix
+    had explicitly closed. By passing pre-loaded `rows` through this
+    helper (and reusing them in `main()`), all three reads collapse to
+    a single ``load_metrics_with_hash`` invocation tied to the SHA that
+    is embedded in EFFECT_SIZE_LOCKED.md.
+
+    A5 hardening (Lane A peer review): in-window rows whose ``step`` is
+    parseable but whose `LOCKED_METRIC_KEY` is missing or non-numeric
+    are tallied and surfaced via a `[warn]` line on stderr — never
+    silently discarded. Out-of-window rows are correctly ignored.
     """
-    rows, sha = load_metrics_with_hash(metrics_path)
     series: list[float] = []
-    # Lane A A5 hardening: surface in-window rows whose `step` is parseable
-    # but whose metric value is missing or non-numeric (a likely indicator
-    # of a trainer partial-write or a schema regression). Out-of-window
-    # rows are intentionally NOT counted here — they are correctly ignored
-    # as out-of-scope.
     skipped_no_metric = 0
     skipped_bad_value = 0
     for r in rows:
@@ -551,11 +629,35 @@ def compute_paired_cv(
 
     n = len(series)
     if n < 5:
-        return 0.0, 0.0, 0.0, n, series, sha
+        return 0.0, 0.0, 0.0, n, series
     mean = sum(series) / n
     var = sum((v - mean) ** 2 for v in series) / (n - 1)
     std = math.sqrt(var)
     cv = std / mean if mean > 0 else 0.0
+    return cv, mean, std, n, series
+
+
+def compute_paired_cv(
+    metrics_path: Path,
+    step_min: int,
+    step_max: int,
+) -> tuple[float, float, float, int, list[float], str]:
+    """Returns (paired_CV, mean, std, N, raw_values, metrics_sha256).
+
+    Backward-compatible convenience wrapper around
+    ``compute_paired_stats_from_rows``. Used by tests and any caller that
+    only needs the one-shot ``path -> stats`` flow. The lock script's
+    ``main()`` itself now uses the row-based path so the metrics file is
+    read exactly once per lock.
+
+    The metrics SHA256 is returned from the SAME byte read used to populate
+    `raw_values`, eliminating the Cl-Q6 race window between parse-time and
+    hash-time.
+    """
+    rows, sha = load_metrics_with_hash(metrics_path)
+    cv, mean, std, n, series = compute_paired_stats_from_rows(
+        rows, step_min, step_max
+    )
     return cv, mean, std, n, series, sha
 
 
@@ -753,10 +855,35 @@ def main() -> int:
         )
         return 4
 
-    # ---- Compute paired_CV_A (also returns SHA256 of the exact byte stream
-    # parsed for the series, eliminating the Cl-Q6 race window) ----
-    paired_cv, mean, std, n, series, metrics_hash = compute_paired_cv(
-        metrics_a, args.step_min, args.step_max
+    # ---- Single read of metrics_a (A2 architectural fix, Lane A peer
+    # review). Earlier revisions read this file three times — inside
+    # `compute_paired_cv`, in the Guard 5 data-side recheck, and in the
+    # markdown observation table — re-introducing a small race window
+    # that the SHA-from-same-bytes fix had explicitly closed. We now
+    # read once and pass `rows` (and the same `metrics_hash`) through
+    # all three downstream consumers.
+    rows, metrics_hash = load_metrics_with_hash(metrics_a)
+
+    # ---- Guard 5 (data-side per Op-flag-5): val_select_score must appear
+    # in actual metrics rows. Runs BEFORE compute so a schema mismatch
+    # surfaces with its own dedicated error rather than being swallowed
+    # by Guard 4's generic "N<5" message.
+    has_select = any(LOCKED_METRIC_KEY in r for r in rows)
+    if not has_select:
+        sys.stderr.write(
+            f"ERROR (guard 5 data-side): metrics file {metrics_a} contains no "
+            f"row with key '{LOCKED_METRIC_KEY}'. Per Op-flag-5 the data-side "
+            f"selection key is computed by the trainer (Method-D selector); "
+            f"its absence means either the run uses a different selector or "
+            f"the metrics file is from a stale schema. Aborting.\n"
+        )
+        return 4
+
+    # ---- Compute paired_CV_A from already-loaded rows. The SHA captured
+    # alongside the byte read above flows directly into the lock MD —
+    # parse and hash come from the same in-memory bytes.
+    paired_cv, mean, std, n, series = compute_paired_stats_from_rows(
+        rows, args.step_min, args.step_max
     )
 
     # ---- Guard 4: minimum N ----
@@ -769,29 +896,11 @@ def main() -> int:
         )
         return 1
 
-    # ---- Guard 5 (data-side per Op-flag-5): val_select_score must appear
-    # ----                                       in actual metrics rows ----
-    # If `compute_paired_cv` returned N≥5, val_select_score is present by
-    # construction (it filters rows on LOCKED_METRIC_KEY). This is an
-    # explicit re-check + clearer error so a config-vs-data mismatch is not
-    # silently swallowed by Guard 4's "N<5" message.
-    rows_for_check, _ = load_metrics_with_hash(metrics_a)
-    has_select = any(LOCKED_METRIC_KEY in r for r in rows_for_check)
-    if not has_select:
-        sys.stderr.write(
-            f"ERROR (guard 5 data-side): metrics file {metrics_a} contains no "
-            f"row with key '{LOCKED_METRIC_KEY}'. Per Op-flag-5 the data-side "
-            f"selection key is computed by the trainer (Method-D selector); "
-            f"its absence means either the run uses a different selector or "
-            f"the metrics file is from a stale schema. Aborting.\n"
-        )
-        return 4
-
     # ---- Apply LOCKED formula ----
     x_value = max(LOCKED_FLOOR, LOCKED_SLOPE * paired_cv)
 
     # ---- Compute artifacts ----
-    # metrics_hash already obtained from compute_paired_cv (race-free).
+    # metrics_hash already obtained from the single read above (race-free).
     try:
         repo_head = git(["rev-parse", "HEAD"], cwd=repo_root)
     except RuntimeError:
@@ -808,11 +917,11 @@ def main() -> int:
         deviation_note=args.deviation_note,
     )
 
-    # Append raw observations (first 5 + last 5)
+    # Append raw observations (first 5 + last 5). Reuses the same `rows`
+    # loaded above — no third file read.
     md_lines = md.rstrip("\n").split("\n")
     md_lines.append("| Index | step | val_select_score |")
     md_lines.append("|---|---|---|")
-    rows, _ = load_metrics_with_hash(metrics_a)
     in_window: list[tuple[int, float]] = []
     for r in rows:
         step = get_row_step(r)
@@ -922,14 +1031,14 @@ def main() -> int:
             if _normalize_remote_url(check_url) != _normalize_remote_url(anchor_text):
                 sys.stderr.write(
                     f"ERROR: --remote {resolved_remote!r} URL "
-                    f"({check_url}) does not match canonical anchor "
-                    f"({anchor_text!r}). Pass --force-unsafe-remote to "
-                    f"override (NOT recommended for pre-registration).\n"
+                    f"({_safe_repr_url(check_url)}) does not match canonical "
+                    f"anchor ({anchor_text!r}). Pass --force-unsafe-remote "
+                    f"to override (NOT recommended for pre-registration).\n"
                 )
                 return 6
             resolved_url = check_url
         print(f"[info] using explicit --remote {resolved_remote!r} \u2192 "
-              f"{resolved_url}")
+              f"{_safe_repr_url(resolved_url)}")
     else:
         try:
             resolved_remote, resolved_url = resolve_canonical_remote(repo_root)
@@ -937,7 +1046,7 @@ def main() -> int:
             sys.stderr.write(f"ERROR (canonical-remote resolver): {exc}\n")
             return 6
         print(f"[info] resolved canonical remote: {resolved_remote} \u2192 "
-              f"{resolved_url}")
+              f"{_safe_repr_url(resolved_url)}")
 
     # B5 hardening (Lane B BLOCKER): immediately before push, re-read the
     # remote URL and compare to what we resolved. Catches a TOCTOU race
@@ -957,9 +1066,10 @@ def main() -> int:
         if _normalize_remote_url(push_time_url) != _normalize_remote_url(resolved_url):
             sys.stderr.write(
                 f"ERROR (TOCTOU): remote {resolved_remote!r} URL changed "
-                f"between resolution ({resolved_url}) and push "
-                f"({push_time_url}). Refusing to push to non-canonical "
-                f"target. You committed locally; investigate and retry.\n"
+                f"between resolution ({_safe_repr_url(resolved_url)}) and "
+                f"push ({_safe_repr_url(push_time_url)}). Refusing to push "
+                f"to non-canonical target. You committed locally; "
+                f"investigate and retry.\n"
             )
             return 6
 

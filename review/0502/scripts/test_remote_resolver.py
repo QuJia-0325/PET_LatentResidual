@@ -23,7 +23,11 @@ Coverage map (Phase-1 review Q-A + §11.1 Q10 acceptance):
   R8  resolver raises with a helpful message on ≥2-match. (Q-A (d))
   R9  resolver raises if `.review_canonical_remote` is missing.
   R10 resolver raises if `.review_canonical_remote` is empty.
-  R11 multi-line anchor → first non-empty line wins (with stderr warn).
+  R11 multi-line anchor → HARD ERROR (B3b hardening; was "first non-empty
+      wins" fallback before). Comments and stray content lines are rejected
+      explicitly so downstream errors are not misleading.
+  R11b blank-padded single-line anchor still resolves under the strict
+      single-line rule (whitespace-only lines do not count).
   R12 happy-path on the actual repo: anchor file matches at least one
       configured remote (skipped if not in a git repo).
   R13 anchor file with leading UTF-8 BOM (B3a Lane B BLOCKER hardening):
@@ -147,6 +151,28 @@ class TestNormalizeRemoteUrl(unittest.TestCase):
             "gitee.com/jqu9/pet_latentresidual",
         )
 
+    def test_R15_url_fragment_stripped(self):
+        """B2a hardening (Lane B peer review): URL fragments (``#...``)
+        are stripped before comparison. This keeps a stray
+        ``host/path.git#frag`` from comparing unequal to ``host/path``
+        purely because of an editor-added anchor."""
+        self.assertEqual(
+            L._normalize_remote_url("https://gitee.com/jqu9/PET_LatentResidual.git#frag"),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+        self.assertEqual(
+            L._normalize_remote_url("git@gitee.com:jqu9/PET_LatentResidual.git#section/sub"),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+
+    def test_R16_url_query_stripped(self):
+        """B2a hardening: query strings (``?...``) are likewise stripped
+        before path comparison."""
+        self.assertEqual(
+            L._normalize_remote_url("https://gitee.com/jqu9/PET_LatentResidual.git?token=abcd"),
+            "gitee.com/jqu9/pet_latentresidual",
+        )
+
 
 # ---------- parser ----------------------------------------------------------
 
@@ -182,6 +208,79 @@ class TestParseGitRemoteV(unittest.TestCase):
         )
         out = L._parse_git_remote_v(stdout)
         self.assertEqual(out, {"gitee": "git@gitee.com:jqu9/PET_LatentResidual.git"})
+
+    def test_R5b_case_insensitive_fetch_marker(self):
+        """B4 hardening (Lane B peer review): the parser must accept the
+        fetch marker case-insensitively. Git always emits lowercase
+        ``(fetch)``; this is defensive against future output changes."""
+        stdout = (
+            "gitee\tgit@gitee.com:jqu9/repo.git (FETCH)\n"
+            "gitee\tgit@gitee.com:jqu9/repo.git (Push)\n"
+        )
+        out = L._parse_git_remote_v(stdout)
+        self.assertEqual(out, {"gitee": "git@gitee.com:jqu9/repo.git"})
+
+    def test_R5c_url_with_internal_whitespace_kept_intact(self):
+        """B4 hardening: rsplit-from-the-right keeps URLs with spaces in
+        them as a single token. Such URLs should not occur in practice,
+        but the parser must not silently truncate them."""
+        # ``url with space.git`` is the URL field; everything between
+        # the first whitespace (after ``name``) and the last whitespace
+        # (before ``(fetch)``) is the URL.
+        stdout = "weird\tfile:///path with space/repo.git (fetch)\n"
+        out = L._parse_git_remote_v(stdout)
+        self.assertEqual(out, {"weird": "file:///path with space/repo.git"})
+
+    def test_R5d_crlf_lines_tolerated(self):
+        """B4 hardening: CRLF line endings (Windows / mixed checkouts) do
+        not leak into the parsed URL or marker."""
+        stdout = (
+            "gitee\tgit@gitee.com:jqu9/repo.git (fetch)\r\n"
+            "gitee\tgit@gitee.com:jqu9/repo.git (push)\r\n"
+        )
+        out = L._parse_git_remote_v(stdout)
+        self.assertEqual(out, {"gitee": "git@gitee.com:jqu9/repo.git"})
+
+
+# ---------- safe URL repr (B10) --------------------------------------------
+
+class TestSafeReprUrl(unittest.TestCase):
+    """B10 hardening (Lane B peer review): printed URLs are wrapped through
+    `_safe_repr_url` so embedded ANSI escape sequences and control characters
+    do not corrupt the user's terminal when they are surfaced via stderr.
+    """
+
+    def test_plain_url_quoted(self):
+        # Result is a single-quoted Python repr; the URL is preserved.
+        out = L._safe_repr_url("git@gitee.com:jqu9/repo.git")
+        self.assertIn("git@gitee.com:jqu9/repo.git", out)
+        # Must be a quoted form, not the raw string.
+        self.assertTrue(out.startswith("'") or out.startswith("\""))
+
+    def test_ansi_escape_neutralised(self):
+        hostile = "https://gitee.com/\x1b[1;31mDELETE\x1b[0m/repo.git"
+        out = L._safe_repr_url(hostile)
+        # repr() escapes \x1b as \\x1b — the literal ESC byte must NOT be
+        # present in the output.
+        self.assertNotIn("\x1b", out)
+        self.assertIn("\\x1b", out)
+
+    def test_nul_byte_neutralised(self):
+        hostile = "https://gitee.com/\x00/repo.git"
+        out = L._safe_repr_url(hostile)
+        self.assertNotIn("\x00", out)
+        self.assertIn("\\x00", out)
+
+    def test_newline_neutralised(self):
+        # A newline in a URL field would otherwise let an attacker forge
+        # extra log lines via the resolver's error message.
+        hostile = "https://gitee.com/jqu9/repo.git\n[info] hijacked"
+        out = L._safe_repr_url(hostile)
+        # The repr escapes the newline as \n, so the physical newline is
+        # gone and the attacker's "[info] hijacked" line cannot start at
+        # column 0 of a fresh stderr line.
+        self.assertNotIn("\n[info] hijacked", out)
+        self.assertIn("\\n", out)
 
 
 # ---------- resolver: pure-fn paths -----------------------------------------
@@ -321,7 +420,12 @@ class TestResolveCanonicalRemote(unittest.TestCase):
         finally:
             td.cleanup()
 
-    def test_R11_multiline_first_nonempty_wins(self):
+    def test_R11_multiline_anchor_raises(self):
+        """B3b hardening (Lane B peer review): a multi-line anchor file is
+        a hard error. The previous "first non-empty line wins" fallback
+        produced confusing downstream errors (e.g. a comment line yielding
+        a 0-match resolver error); the new behavior surfaces the offending
+        file with its line count immediately."""
         td = self._make_repo_with_anchor(
             "# this is a header comment\n"
             "\n"
@@ -330,26 +434,23 @@ class TestResolveCanonicalRemote(unittest.TestCase):
         )
         try:
             remotes = {"gitee": "git@gitee.com:jqu9/PET_LatentResidual.git"}
-            stderr = io.StringIO()
-            with redirect_stderr(stderr):
-                # First non-empty line is "# this is a header comment" — that
-                # MUST be treated as the anchor (we don't have comment
-                # syntax). So we expect a 0-match raise here, since the
-                # comment line doesn't match any remote.
-                with self.assertRaises(L.CanonicalRemoteError):
-                    L.resolve_canonical_remote(
-                        Path(td.name),
-                        remotes_provider=lambda: remotes,
-                    )
-            # The warning is emitted unconditionally for multi-line anchor.
-            self.assertIn("multiple lines", stderr.getvalue())
+            with self.assertRaises(L.CanonicalRemoteError) as ctx:
+                L.resolve_canonical_remote(
+                    Path(td.name),
+                    remotes_provider=lambda: remotes,
+                )
+            msg = str(ctx.exception)
+            self.assertIn("exactly one", msg)
+            # Found 3 non-empty lines in the fixture (header, anchor, junk).
+            self.assertIn("found 3", msg)
         finally:
             td.cleanup()
 
-    def test_R11b_no_match_when_first_line_is_anchor(self):
-        # Same test but the first line IS the canonical anchor. Verifies the
-        # fallback "first non-empty line wins" picks the right one when
-        # extra blank lines surround it.
+    def test_R11b_blank_padded_single_line_anchor_resolves(self):
+        """Counterpart to R11: a file with a single content line surrounded
+        by blank/whitespace-only lines IS still a valid single-line anchor
+        under the strict B3b rule. Whitespace-only lines do not count
+        toward the non-empty-line tally."""
         td = self._make_repo_with_anchor(
             "\n"
             "gitee.com:jqu9/PET_LatentResidual\n"
@@ -357,12 +458,10 @@ class TestResolveCanonicalRemote(unittest.TestCase):
         )
         try:
             remotes = {"gitee": "git@gitee.com:jqu9/PET_LatentResidual.git"}
-            stderr = io.StringIO()
-            with redirect_stderr(stderr):
-                name, url = L.resolve_canonical_remote(
-                    Path(td.name),
-                    remotes_provider=lambda: remotes,
-                )
+            name, url = L.resolve_canonical_remote(
+                Path(td.name),
+                remotes_provider=lambda: remotes,
+            )
             self.assertEqual(name, "gitee")
         finally:
             td.cleanup()

@@ -59,6 +59,13 @@ def get_row_step(row: Mapping[str, Any]) -> Optional[int]:
 
     Returns:
         int step value, or None if the row has no usable step key.
+
+    A3 caveat (Lane A peer review, May 4 2026): non-integral float values
+    are silently truncated by ``int(v)`` (e.g. ``step=4.5`` → ``4``,
+    ``step=-1.9`` → ``-1`` per Python's truncate-toward-zero rule). The
+    trainer never emits non-integral steps in production; if a row has
+    one this should be treated as a SCHEMA error by the caller. Do not
+    depend on the truncation behavior for any control flow.
     """
     for key in _STEP_KEYS_PREFERRED_FIRST:
         if key not in row:

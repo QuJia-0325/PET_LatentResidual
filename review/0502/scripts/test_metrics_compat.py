@@ -291,6 +291,101 @@ class TestLockComputePairedCV(unittest.TestCase):
                          stderr.getvalue(),
                          "B-fixture is clean; warning is a false positive")
 
+    def test_T15_compute_paired_stats_from_rows_matches_path_form(self):
+        """A2 architectural fix (Lane A peer review): the path-form
+        wrapper and the row-form helper must produce the same statistics
+        when fed equivalent inputs. This guards the refactor: if a future
+        change drifts the two paths apart, lock-script integration vs
+        unit-test calls would silently disagree.
+        """
+        import lock_effect_size_threshold as lock
+
+        rows, sha = lock.load_metrics_with_hash(B_FIXTURE)
+        cv_p, mean_p, std_p, n_p, series_p, sha_p = lock.compute_paired_cv(
+            B_FIXTURE, B_PREFIX_STEP_MIN, B_PREFIX_STEP_MAX
+        )
+        cv_r, mean_r, std_r, n_r, series_r = (
+            lock.compute_paired_stats_from_rows(
+                rows, B_PREFIX_STEP_MIN, B_PREFIX_STEP_MAX
+            )
+        )
+        self.assertEqual(n_p, n_r, "row-form N differs from path-form N")
+        self.assertEqual(series_p, series_r,
+                         "row-form series differs from path-form series")
+        self.assertAlmostEqual(cv_p, cv_r, places=12)
+        self.assertAlmostEqual(mean_p, mean_r, places=12)
+        self.assertAlmostEqual(std_p, std_r, places=12)
+        # Path form additionally returns the SHA of the same byte read.
+        self.assertEqual(sha_p, sha)
+
+    def test_T16_main_reads_metrics_file_exactly_once(self):
+        """A2 architectural fix: the lock-script main() previously read
+        metrics_a THREE times (compute_paired_cv + Guard 5 recheck +
+        observation table). The refactor collapses these into one read
+        tied to the SHA in EFFECT_SIZE_LOCKED.md. We verify by patching
+        ``load_metrics_with_hash`` with a counter and running main() to
+        the no-commit success path on a synthetic fixture.
+        """
+        import io
+        import contextlib
+        import tempfile
+        import unittest.mock
+        import lock_effect_size_threshold as lock
+
+        # Synthesise a minimal valid lock-input set.
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            metrics = tdp / "metrics.jsonl"
+            metrics.write_text("\n".join(
+                json.dumps({
+                    "step": s, "event": "val",
+                    "val_select_score": 0.50,
+                    "val_chain_normal_mse": 0.001,
+                })
+                # Step window must match LOCKED_RECOMMENDED_WINDOW = (40000, 60000)
+                # so we don't trip the deviation-note guard. 51 rows → ≥5.
+                for s in range(40000, 60001, 400)
+            ) + "\n")
+            cfg = tdp / "config.yaml"
+            cfg.write_text("training:\n  best_metric: val_multi_objective\n")
+            output = tdp / "EFFECT_SIZE_LOCKED.md"
+
+            counter = {"calls": 0}
+            real_load = lock.load_metrics_with_hash
+
+            def counting_load(p):
+                counter["calls"] += 1
+                return real_load(p)
+
+            with unittest.mock.patch.object(
+                lock, "load_metrics_with_hash", side_effect=counting_load
+            ):
+                # Build a fake argv and invoke main() under --no-commit so
+                # we don't touch git.
+                argv = [
+                    "lock_effect_size_threshold.py",
+                    "--metrics-a", str(metrics),
+                    "--config-a", str(cfg),
+                    "--output", str(output),
+                    "--no-commit",
+                    "--allow-dirty",
+                ]
+                with unittest.mock.patch.object(sys, "argv", argv):
+                    # find_repo_root walks up looking for `.git`; create a
+                    # fake one in our tmpdir so it stops there.
+                    (tdp / ".git").mkdir()
+                    # Suppress all stdout/stderr noise from main().
+                    with contextlib.redirect_stdout(io.StringIO()), \
+                         contextlib.redirect_stderr(io.StringIO()):
+                        rc = lock.main()
+
+            self.assertEqual(rc, 0, "main() did not reach --no-commit success")
+            self.assertEqual(
+                counter["calls"], 1,
+                f"metrics_a was loaded {counter['calls']} times; expected 1 "
+                f"(A2 architectural single-read invariant broken)"
+            )
+
 
 class TestPairedDiffIndex(unittest.TestCase):
     """T12: paired_diff_judge.index_by_step on B-fixture prefix.
