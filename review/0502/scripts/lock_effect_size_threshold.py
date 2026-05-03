@@ -83,11 +83,25 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Local helper: schema-tolerant step extraction. See `_metrics_compat.py` for
+# the rationale (trainer writes `step`; legacy fixtures may use `global_step`).
+from _metrics_compat import get_row_step
+
 # ---- LOCKED parameters per §6.6.1 — DO NOT EXPOSE AS CLI ARGS ----
 LOCKED_FLOOR = 0.10
 LOCKED_SLOPE = 3.0
 LOCKED_METRIC_KEY = "val_select_score"
 LOCKED_RECOMMENDED_WINDOW = (40000, 60000)
+
+# ---- Pre-registration protocol version (S12 from REV1_TOOLING_PLAN §10.2) ----
+# This constant is checked by `run_ablation.sh` `require_lock_pass()` (C5b)
+# before C_uniform launches; only `"R1b_locked"` permits the launch. The
+# value transitions across the commit chain:
+#     C1   sets   "v0_pending_R1a"      (this file: pre-R1a tooling baseline)
+#     R1a  sets   "R1a_pending_data"    (skeleton committed; A_main / A_seed=43 not yet at 120K)
+#     R1b  sets   "R1b_locked"          (numeric paired_SD_AA + X embedded; C may launch)
+# Any other value at C-launch time → hard-gate refuses.
+LOCKED_PROTOCOL_VERSION = "v0_pending_R1a"
 LOCKED_FORMULA_CITATION = (
     "X = max(0.10, 3 × paired_CV_A)  per POST_V6_NEXT_STEPS.md §6.6.1"
 )
@@ -161,6 +175,30 @@ def load_metrics(path: Path) -> list[dict]:
     return rows
 
 
+def load_metrics_with_hash(path: Path) -> tuple[list[dict], str]:
+    """Read file as bytes ONCE, hash those bytes, then parse from them.
+
+    Fixes the Cl-Q6 SHA256-race bug (Round-1 review): previously
+    `compute_paired_cv()` called `load_metrics()` (file open at T0) and
+    `file_sha256()` (separate file open at T1); if the trainer appended
+    rows in [T0, T1] the hash would cover bytes never seen by the parser.
+    This helper guarantees the returned rows and hash refer to the exact
+    same byte stream.
+    """
+    raw = path.read_bytes()
+    sha = hashlib.sha256(raw).hexdigest()
+    rows: list[dict] = []
+    for line in raw.splitlines():
+        s = line.decode("utf-8", errors="replace").strip()
+        if not s:
+            continue
+        try:
+            rows.append(json.loads(s))
+        except json.JSONDecodeError:
+            continue
+    return rows, sha
+
+
 def file_sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -224,17 +262,22 @@ def compute_paired_cv(
     metrics_path: Path,
     step_min: int,
     step_max: int,
-) -> tuple[float, float, float, int, list[float]]:
-    """Returns (paired_CV, mean, std, N, raw_values)."""
-    rows = load_metrics(metrics_path)
+) -> tuple[float, float, float, int, list[float], str]:
+    """Returns (paired_CV, mean, std, N, raw_values, metrics_sha256).
+
+    The metrics SHA256 is returned from the SAME byte read used to populate
+    `raw_values`, eliminating the Cl-Q6 race window between parse-time and
+    hash-time.
+    """
+    rows, sha = load_metrics_with_hash(metrics_path)
     series: list[float] = []
     for r in rows:
-        if "global_step" not in r:
+        step = get_row_step(r)
+        if step is None:
             continue
         if LOCKED_METRIC_KEY not in r:
             continue
         try:
-            step = int(r["global_step"])
             val = float(r[LOCKED_METRIC_KEY])
         except (TypeError, ValueError):
             continue
@@ -243,12 +286,12 @@ def compute_paired_cv(
 
     n = len(series)
     if n < 5:
-        return 0.0, 0.0, 0.0, n, series
+        return 0.0, 0.0, 0.0, n, series, sha
     mean = sum(series) / n
     var = sum((v - mean) ** 2 for v in series) / (n - 1)
     std = math.sqrt(var)
     cv = std / mean if mean > 0 else 0.0
-    return cv, mean, std, n, series
+    return cv, mean, std, n, series, sha
 
 
 def render_lock_md(
@@ -285,6 +328,7 @@ def render_lock_md(
     lines.append(f"- **A_main metrics SHA256**: `{metrics_hash}`")
     lines.append(f"- **A_main config path**: `{args.config_a}`")
     lines.append(f"- **Repo HEAD at lock time**: `{train_git_commit}`")
+    lines.append(f"- **LOCKED_PROTOCOL_VERSION**: `{LOCKED_PROTOCOL_VERSION}`")
     lines.append("")
     lines.append("## Computation")
     lines.append("")
@@ -424,20 +468,29 @@ def main() -> int:
         )
         return 7
 
-    # ---- Guard 5: config sanity check ----
+    # ---- Guard 5 (config side per Op-flag-5): config-side best_metric ----
+    # Operator round-2.5 reply (`OPERATOR_REPLY_pre_C1_20260503.md` Op-flag-5)
+    # clarified that production configs declare `best_metric: val_multi_objective`
+    # (config-side) while the metrics row's selection-aware key is
+    # `val_select_score` (data-side computed). Both must be checked. The data-
+    # side check is performed inside `compute_paired_cv()` via the LOCKED_METRIC_KEY
+    # filter (rows missing `val_select_score` are skipped → if 0 rows survive,
+    # Guard 4 catches it as N<5).
     cfg_a = load_yaml(config_a)
     cfg_metric_key = cfg_a.get("training", {}).get("best_metric")
     if cfg_metric_key not in (None, "val_multi_objective", "val_select_score"):
         sys.stderr.write(
-            f"ERROR (guard 5): A_main config best_metric='{cfg_metric_key}' is "
-            f"unexpected. §6.6 was designed assuming val_multi_objective→"
-            f"val_select_score key (see POST_V6_NEXT_STEPS.md §0). Aborting "
-            f"to avoid locking against the wrong run.\n"
+            f"ERROR (guard 5 config-side): A_main config best_metric="
+            f"'{cfg_metric_key}' is unexpected. §6.6 was designed assuming "
+            f"val_multi_objective → val_select_score key (see "
+            f"POST_V6_NEXT_STEPS.md §0 + OPERATOR_REPLY_pre_C1_20260503.md "
+            f"Op-flag-5). Aborting to avoid locking against the wrong run.\n"
         )
         return 4
 
-    # ---- Compute paired_CV_A ----
-    paired_cv, mean, std, n, series = compute_paired_cv(
+    # ---- Compute paired_CV_A (also returns SHA256 of the exact byte stream
+    # parsed for the series, eliminating the Cl-Q6 race window) ----
+    paired_cv, mean, std, n, series, metrics_hash = compute_paired_cv(
         metrics_a, args.step_min, args.step_max
     )
 
@@ -451,16 +504,33 @@ def main() -> int:
         )
         return 1
 
+    # ---- Guard 5 (data-side per Op-flag-5): val_select_score must appear
+    # ----                                       in actual metrics rows ----
+    # If `compute_paired_cv` returned N≥5, val_select_score is present by
+    # construction (it filters rows on LOCKED_METRIC_KEY). This is an
+    # explicit re-check + clearer error so a config-vs-data mismatch is not
+    # silently swallowed by Guard 4's "N<5" message.
+    rows_for_check, _ = load_metrics_with_hash(metrics_a)
+    has_select = any(LOCKED_METRIC_KEY in r for r in rows_for_check)
+    if not has_select:
+        sys.stderr.write(
+            f"ERROR (guard 5 data-side): metrics file {metrics_a} contains no "
+            f"row with key '{LOCKED_METRIC_KEY}'. Per Op-flag-5 the data-side "
+            f"selection key is computed by the trainer (Method-D selector); "
+            f"its absence means either the run uses a different selector or "
+            f"the metrics file is from a stale schema. Aborting.\n"
+        )
+        return 4
+
     # ---- Apply LOCKED formula ----
     x_value = max(LOCKED_FLOOR, LOCKED_SLOPE * paired_cv)
 
     # ---- Compute artifacts ----
-    metrics_hash = file_sha256(metrics_a)
+    # metrics_hash already obtained from compute_paired_cv (race-free).
     try:
         repo_head = git(["rev-parse", "HEAD"], cwd=repo_root)
     except RuntimeError:
         repo_head = "<unknown — git rev-parse failed>"
-
     md = render_lock_md(
         args=args,
         paired_cv=paired_cv,
@@ -477,13 +547,13 @@ def main() -> int:
     md_lines = md.rstrip("\n").split("\n")
     md_lines.append("| Index | step | val_select_score |")
     md_lines.append("|---|---|---|")
-    rows = load_metrics(metrics_a)
+    rows, _ = load_metrics_with_hash(metrics_a)
     in_window: list[tuple[int, float]] = []
     for r in rows:
-        if "global_step" not in r or LOCKED_METRIC_KEY not in r:
+        step = get_row_step(r)
+        if step is None or LOCKED_METRIC_KEY not in r:
             continue
         try:
-            step = int(r["global_step"])
             val = float(r[LOCKED_METRIC_KEY])
         except (TypeError, ValueError):
             continue

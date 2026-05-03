@@ -58,6 +58,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Local helper: schema-tolerant step extraction. See `_metrics_compat.py`
+# for the rationale (trainer writes `step`; legacy fixtures may use
+# `global_step`).
+from _metrics_compat import get_row_step
+
 # Eval-config keys that MUST match between the two runs (guard 5).
 PAIRED_REQUIRED_KEYS = (
     ("seed", lambda cfg: cfg.get("seed")),
@@ -135,15 +140,17 @@ def load_metrics(path: Path) -> list[dict]:
 
 
 def index_by_step(rows: list[dict], metric_key: str) -> dict[int, float]:
-    """Return {global_step: metric_value} for rows that have BOTH keys."""
+    """Return {step: metric_value} for rows that have BOTH a usable step key
+    (`step` or `global_step` per `_metrics_compat.get_row_step`) AND the
+    requested metric key."""
     out: dict[int, float] = {}
     for r in rows:
-        if "global_step" not in r:
+        step = get_row_step(r)
+        if step is None:
             continue
         if metric_key not in r:
             continue
         try:
-            step = int(r["global_step"])
             val = float(r[metric_key])
         except (TypeError, ValueError):
             continue

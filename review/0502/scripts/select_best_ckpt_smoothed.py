@@ -36,6 +36,11 @@ import math
 import statistics
 from pathlib import Path
 
+# Local helper: schema-tolerant step extraction. See `_metrics_compat.py`
+# for the rationale (trainer writes `step`; legacy fixtures may use
+# `global_step`; ckpt internals also use `global_step`).
+from _metrics_compat import get_row_step
+
 DEFAULT_METRIC_KEYS = ("val_select_score", "val_chain_normal_mse")
 
 
@@ -145,8 +150,15 @@ def smooth_at_step(val_rows: list[dict],
     if not have_metric:
         return None
 
-    # Pick the (2K+1) eval rows whose global_step is closest to `step`
-    nearby = sorted(have_metric, key=lambda r: abs(r.get("global_step", 0) - step))
+    # Pick the (2K+1) eval rows whose step is closest to `step` (helper
+    # tolerates either `step` or `global_step` schema; rows without either
+    # are deprioritized by sort to step=-inf so they come last and are
+    # truncated by [:2K+1]).
+    def _row_step_for_sort(r: dict) -> int:
+        s = get_row_step(r)
+        # Rows lacking any step key get a sentinel that sorts last.
+        return s if s is not None else -10**12
+    nearby = sorted(have_metric, key=lambda r: abs(_row_step_for_sort(r) - step))
     nearby = nearby[: 2 * k_side + 1]
     scores = [float(r[metric_key]) for r in nearby]
     if not scores:
@@ -156,7 +168,7 @@ def smooth_at_step(val_rows: list[dict],
     std = statistics.stdev(scores) if len(scores) > 1 else float("nan")
 
     # Raw single-window value at the step closest to `step`
-    raw_row = min(have_metric, key=lambda r: abs(r.get("global_step", 0) - step))
+    raw_row = min(have_metric, key=lambda r: abs(_row_step_for_sort(r) - step))
     raw = float(raw_row[metric_key])
     return smoothed, std, len(scores), raw
 
