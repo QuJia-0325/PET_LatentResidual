@@ -402,8 +402,14 @@ HEAD (e95f86a, operator reply)
   │       Diffs A_seed=42 vs A_seed=43 yaml, asserts only allowed deltas
   │       Writes SHA256 of diff for lock doc embedding
   │
-  └── C5d (NEW): fix(lock_effect_size): Guard 6 ceiling-string ban         [S11]
-        Refuse lock docs containing ceiling / headroom / 52.6341 strings
+  ├── C5d (NEW): fix(lock_effect_size): Guard 6 ceiling-string ban         [S11]
+  │     Refuse lock docs containing ceiling / headroom / 52.6341 strings
+  │
+  └── C5e (NEW — round 2.5 per operator flag 4):                          [Op-flag-4]
+        chore(run_ablation): refresh help text for current ckpt naming
+        Replace stale `ckpt_*.pt` references with `step_*.pt` / `best.pt` /
+        `last.pt`. Documentation-only; no behavior change. Optional but
+        cheap (~5 minutes).
 
   ↓ [B] User approves §10.3 commit chain + decides window per Q5
         (recommended: 90K based on rollout schedule deterministic argument)
@@ -490,16 +496,99 @@ In response to the 6 sub-questions raised after §10.5 was first drafted, the us
 | **Q1 commit chain** | **Approved as §10.3 (with serial-launch + plain-commit overrides below).** | §10.3 above (annotated) |
 | **Q2 A_seed=43 yaml form** | **Option (i): physical yaml lives in R1a commit.** R1a generates `review/0502/configs/A_seed43.yaml` by copying A_control.yaml and overriding only `seed`, `run_name`, `output_dir`. `verify_paired_seed_configs.py` (C5c) is rerun at launch time on the actual on-disk yaml to confirm no drift between R1a-time and launch-time. SHA256 of the yaml-diff is stashed to be embedded in R1b. | R1a §6.6.1 (yaml committed) + C5c re-verifies at [E] |
 | **Q3 PEER_REVIEW files** | Already on disk at `review/0503/operator/PEER_REVIEW_GPT55.md` and `PEER_REVIEW_CLAUDE.md`; R1a §6.6.8 cites them by relative path, no new files needed. | R1a §6.6.8 changelog citation |
-| **Q4 GPG / OTS** | **Downgrade to plain commit + push to gitee canonical as time anchor.** Reasoning: gitee push timestamp is itself a credible weak time anchor (third-party-hosted, not author-controlled). R1a / R1b plain `git commit -s` (sign-off only) + `git push gitee foc_lite_hop0` immediately after commit. Lock script's environment-capture (C4) records git commit SHA + push timestamp from `git log gitee/foc_lite_hop0`. | §10.3 chain annotated above; R1a/R1b commit recipes drop GPG-sign + OTS-stamp lines |
+| **Q4 GPG / OTS** | **Downgrade to plain commit + push to canonical remote as time anchor.** Reasoning: gitee push timestamp is itself a credible weak time anchor (third-party-hosted, not author-controlled). R1a / R1b plain `git commit -s` (sign-off only) + `git push <canonical-remote> foc_lite_hop0` immediately after commit, where `<canonical-remote>` is resolved via `.review_canonical_remote` (on operator host = `origin`, on local Mac = `gitee`). Lock script's environment-capture (C4) records git commit SHA + push timestamp from `git log <canonical>/foc_lite_hop0`. | §10.3 chain annotated above; R1a/R1b commit recipes drop GPG-sign + OTS-stamp lines |
 | **Q5 launch order** | **Serial: A_main (= A_seed=42) first → A_seed=43 second.** Single-GPU constraint on operator host. Adds ~1.5–2 days to critical path vs parallel option. R2 (REV1.1/REV1.2 hardening) still lands parallel with A_main since R2 is agent-only work (no GPU contention). | §10.3 chain annotated above |
 | **Q6 Method-D parameter inventory** | **Approved my recommendation to inventory now.** Inventory of `select_best_ckpt_smoothed.py` parameters: `--neighborhood K` (default `10`, 21-row total smoothing); `--metric-key` (auto-chain: `val_select_score` first, fallback `val_chain_normal_mse`); `--include-best-pt` (default off); `--include-last-pt` (default off); `--metrics` (path); `--ckpt-dir` (path). **R1a locks**: `K=10`, `metric-key=val_select_score` (composite Method-D key per Phase 6.6 selector design), `include-best-pt=False`, `include-last-pt=False`. Note: Method-D selector key is `val_select_score` (correct here) while paired_SD_AA / headline rel_diff are on `val_chain_normal_mse` per F12 — these are **deliberately different metrics for different purposes** (selection vs effect-size). | R1a §6.6.1 + new sub-bullet `Method-D Parameter Lock` |
-| **Q7 run_ablation.sh hard-gate strictness** | **Approved 3-check version: file exists + on canonical remote (`gitee/foc_lite_hop0`) + `LOCKED_PROTOCOL_VERSION == "R1b_locked"`.** Pre-registration's "未公开就不算 locked" principle outweighs operator inconvenience. Operator workflow: commit + immediate push, then launch C. | C5b in §10.3 above; bash implementation in C5b commit |
+| **Q7 run_ablation.sh hard-gate strictness** | **Approved 3-check version: file exists + on canonical remote (`<canonical>/foc_lite_hop0`, resolved per `.review_canonical_remote`) + `LOCKED_PROTOCOL_VERSION == "R1b_locked"`.** Pre-registration's "未公开就不算 locked" principle outweighs operator inconvenience. Operator workflow: commit + immediate push, then launch C. | C5b in §10.3 above; bash implementation in C5b commit |
 
 **Operational consequences for the agent (me) starting C1**:
 
 1. C1 lands `LOCKED_PROTOCOL_VERSION = "v0_pending_R1a"` constant.
 2. Between C5d and R1a, write `MULTI_AGENT_REVIEW_RECORD.md` from the verbatim agent1–4 transcripts (round 1 + round 2) plus my adopt/defer/reject column. **This is the only new markdown file the user has explicitly requested in this absorption pass.**
 3. R1a draft includes A_seed43.yaml + A_pair_uniform_spot_aligned.yaml (max_steps=120000), Method-D parameter block locked to the values in Q6, window `[90000, 120000]`, paired_SD_AA on `val_chain_normal_mse` (F12), §6.6.5 ceiling-as-anchor-only clause, §6.6.8 changelog citing 4 external sources.
-4. R1a + R1b are plain commits, no GPG/OTS. Both pushed to `gitee/foc_lite_hop0` immediately on commit.
-5. C5b's `require_lock_pass()` queries `git merge-base --is-ancestor <lock_commit> gitee/foc_lite_hop0` for the canonical-remote check.
+4. R1a + R1b are plain commits, no GPG/OTS. Both pushed to `<canonical-remote>/foc_lite_hop0` immediately on commit (where `<canonical-remote>` is resolved per `.review_canonical_remote` on each host).
+5. C5b's `require_lock_pass()` queries `git merge-base --is-ancestor <lock_commit> <canonical>/foc_lite_hop0` for the canonical-remote check, with `<canonical>` resolved at runtime.
 6. Cost table in `REV1_PLAN.md §10.3` updated to reflect serial A_main → A_seed=43 (~1.5–2 day critical-path increase).
+
+---
+
+## 11. Operator round-2.5 absorption (drafted 2026-05-03 night)
+
+After §10 was first pushed (commit `23a11d4`), operator answered Q9–Q15 and added 5 unsolicited flags (commit `2d3ae5f` on canonical remote). Files added under `review/0503/operator/`:
+
+- `OPERATOR_REPLY_pre_C1_20260503.md` (148 lines)
+- `current_experiment_architecture_status_20260503.md` (275 lines, full GPU/run/architecture audit)
+- `B_sanity_metrics_val50_schema_reference.jsonl` (46 val rows — see §11.2 below)
+
+This section freezes operator's answers + flags into the plan. Together with §10.6, all open questions are now resolved before C1 starts.
+
+### 11.1 Operator's 7 answers (frozen)
+
+| Q | Operator answer | Plan effect |
+|---|---|---|
+| **Q9 sanity B state + path** | (a). B is at step 18800/20000 on GPU1 (PID 803742), `metrics.jsonl` at `/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0502_runs/B/run/first_hop_224_sigma_norm_B/metrics.jsonl`. **46 val rows**, last val step=18400 (`val_select_score=0.0018183143`, `val_chain_normal_mse=0.0005981120`). Sentinel `review/0502/runs/.sanity_pass` does NOT exist yet. The 46-row trace is copied to `review/0503/operator/B_sanity_metrics_val50_schema_reference.jsonl` (filename says "val50" but contains 46; will refresh on B completion). | C1 golden-trace test gets a **two-fixture** setup: **5-row** A tail (`A_sanity_metrics_tail5_schema_reference.jsonl`) for minimal smoke + **46-row** B trace (`B_sanity_metrics_val50_schema_reference.jsonl`) for stronger regression coverage. Filename mismatch tolerated; helper text notes "actual row count read at runtime, not asserted to 50". |
+| **Q10 canonical-remote interpretation** | (i) URL fragment. `.review_canonical_remote` content **must be** `gitee.com:jqu9/PET_LatentResidual` (not a remote nickname). Resolver scans `git remote -v`, returns the local remote name whose URL contains this fragment. **On operator host the canonical remote is named `origin`, not `gitee`**. Any literal `gitee/foc_lite_hop0` or `git push gitee` in plan/code is operator-host-incompatible. | C2 implementation: `.review_canonical_remote` literally contains the URL fragment `gitee.com:jqu9/PET_LatentResidual`; resolver returns whichever local remote matches. Plan §10.6 Q4/Q7 + operational consequences #4/#5 already reworded above to use `<canonical-remote>`/`<canonical>` placeholders. C5b's `require_lock_pass()` resolves `<canonical>` via the same helper. |
+| **Q11 A_pair rerun scope** | (a-with-cleanup). Only semantic change: `training.max_steps: 60000 → 120000`. Keep `pair_loss_weights: [1,1,1,1]` and the spot-specific `pair_dataset_mode` etc. intact. `save_interval: 10000` is acceptable (changes ckpt density only). Clean up stale 60K/200K comments. New file: `review/0502/configs/A_pair_uniform_spot_aligned.yaml`. | R1a generates `A_pair_uniform_spot_aligned.yaml` as 1-field semantic copy + comment cleanup of the source. Diff vs source committed inside R1a so it's reviewable. |
+| **Q12 A_main launch command** | **Use `run_ablation.sh A`, not direct `train_first_hop.py`.** `train_first_hop.py` only supports `--config` and `--resume` flags (no `--output-dir`). Canonical recipe: `cd /home/qujiaxiang/project/PET_LatentResidual && PYTHON=/home/qujiaxiang/.conda/envs/rae/bin/python GPU=<free_gpu> bash review/0502/scripts/run_ablation.sh A`. Outputs land at `review/0502/runs/A_main/{config.resolved.yaml, train.log}` and `/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0502_runs/A_main/run/first_hop_224_sigma_norm_A_main/{metrics.jsonl, best.pt, last.pt}`. | R1a §6.6.1 reproducibility recipe embeds the operator's exact command verbatim. R1a section explicitly NOTES that `train_first_hop.py` does not accept `--output-dir`; the launcher composes the resolved output dir. |
+| **Q13 A_seed=43 output_dir** | (i) physical yaml in R1a, but follow project-standard layout (not date-stamped free-form). Config: `review/0502/configs/A_seed43.yaml`. Allowed deltas vs `A_control.yaml`: `seed: 43`, `run_name: first_hop_224_sigma_norm_A_seed43`, `output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0502_runs/A_seed43/run`. Final run dir: `<output_dir>/first_hop_224_sigma_norm_A_seed43/`. | R1a generates `A_seed43.yaml` with exactly these 3 fields different. C5c (`verify_paired_seed_configs.py`) asserts only these allowed deltas. SHA256 of the diff stashed for R1b. |
+| **Q14 GPU availability** | All 4 GPUs occupied at sample time. GPU0 unrelated 100%. GPU1 B sanity (until B completes). GPU2 unrelated + A_sanity_light. GPU3 V6.1 47%. **A_main launch precondition: B sentinel + C1–C5e + R1a all landed + at least one A6000 freed up.** No clock-time commitment; operationally "after B sentinel + R1a, on the first free GPU". | `REV1_PLAN.md §10.3` cost table needs annotation: "wall-clock estimate begins from first-free-GPU + R1a, not from now". |
+| **Q15 Deadline** | None known to operator host. **No hard deadline.** Treat as such unless PI/user provides a date. | A_pair option (a) stands. No critical-path compression needed. |
+
+### 11.2 Operator's 5 unsolicited flags
+
+| Flag | Operator's wording | My response |
+|---|---|---|
+| **Op-flag-1** Remote-name portability | Any hard-coded `gitee/foc_lite_hop0` or `git push gitee ...` is incompatible with operator host (canonical = `origin` there). Use the resolver from Q10. | **Already fixed in §10.6 Q4/Q7 + operational consequences #4/#5** (replaced `gitee/foc_lite_hop0` literals with `<canonical>/foc_lite_hop0` portable wording). C2 implementation already targeted URL-fragment resolver; no design change needed. |
+| **Op-flag-2** C1/T1 unpatched | `lock_effect_size_threshold.py`, `paired_diff_judge.py`, `select_best_ckpt_smoothed.py` still read `global_step`. Real metrics row uses `step`. | **Confirmed — C1 is exactly this fix.** Implementation pending operator approval to start. |
+| **Op-flag-3** C3/T3 unpatched | Trainer writes `step_NNNNNN.pt` (zero-padded 6 digits, e.g., `step_020000.pt`) + `best.pt` + `last.pt`. `select_best_ckpt_smoothed.py` searches `ckpt_step_*.pt` + `ckpt_last.pt`. | **Confirmed — C3 is exactly this fix.** My Mac-side grep verified `train_first_hop.py:2420` writes `f"step_{step:06d}.pt"`. C3 will glob both the legacy `ckpt_step_*.pt` AND the current `step_*.pt`, plus probe `last.pt` / `best.pt` (no `ckpt_` prefix). |
+| **Op-flag-4** `run_ablation.sh` help stale | Help text says products are `ckpt_*.pt`; actual products are `step_*.pt` + `best.pt` + `last.pt`. | **New tiny commit C5e added** to §10.3 chain above. ~5 minutes of grep+sed. Not gating; can be batched after C5d. |
+| **Op-flag-5** Guard 5 wording | Config-side `best_metric: val_multi_objective`; metrics-side computed key is `val_select_score`. Guard 5 must verify both, not require config `best_metric == val_select_score`. | **Already correct in §9.1 v0.1 fix table** (Tier 3 C12 row). Operator is reaffirming. C1 / lock script's Guard 5 will assert `best_metric == "val_multi_objective"` (config-side) AND `"val_select_score" in metrics_row` (data-side). Both must hold simultaneously. |
+
+### 11.3 Updated commit chain (replaces §10.3 commit-chain box)
+
+The §10.3 chain is unchanged in topology except for **C5e added between C5d and [B] approve gate**, and **launch ordering inside [C]–[E] now matches operator's serial constraint** (already reflected in §10.3). The single source of truth remains §10.3 above with C5e inserted.
+
+For pre-launch readability:
+
+```
+HEAD (2d3ae5f, this push will be 2d3ae5f..<new_hash>)
+  → C1 (T1+S12, schema compat)
+  → C2 (URL-fragment canonical-remote resolver per Q10)
+  → C3 (step_NNNNNN.pt + last.pt + best.pt per Q9/Op-flag-3)
+  → C4 (env capture)
+  → C5 (post-lock C wrapper)
+  → C5b (run_ablation.sh require_lock_pass per F11)
+  → C5c (verify_paired_seed_configs.py per S13)
+  → C5d (Guard 6 ceiling-ban per S11)
+  → C5e (run_ablation.sh help refresh per Op-flag-4) — NEW
+  → MULTI_AGENT_REVIEW_RECORD.md (between C5e and R1a)
+  → R1a (skeleton: window=90K, A_seed43.yaml, A_pair_uniform_spot_aligned.yaml, Method-D K=10 lock, §6.6.8 changelog)
+  → operator: B sentinel writes → A_main via run_ablation.sh A → step 120K
+  → R2 (REV1.1/REV1.2 hardening, parallel agent-side with A_main training)
+  → operator: A_seed=43 via run_ablation.sh A_seed43 (or equivalent) → step 120K
+  → R1b (numeric: lock script consumes both metrics.jsonl + verify_paired_seed_configs SHA256)
+  → operator: C_uniform via run_ablation.sh C (refused unless require_lock_pass passes)
+  → decision per R1a §6.6.3 trichotomy
+```
+
+### 11.4 What's resolved + what's now blocking
+
+**Resolved by §11**:
+
+- §10.4 #1 (approve §10.3 chain) — approved by user
+- §10.4 #2 (window decision) — locked to 90K
+- §10.4 #3 (A_pair F9 decision) — locked to (a) with `max_steps=120000` + comment cleanup
+- §10.4 #4 (MULTI_AGENT_REVIEW_RECORD.md decision) — yes; landing in this same checkpoint commit
+- §10.6 Q9–Q15 — all 7 answered
+- Op-flag-1 — fixed in §10.6 portable wording
+- Op-flag-4 — added as C5e
+
+**Still blocking C1 implementation**: nothing. C1 can start as soon as this checkpoint commit lands. C1–C5e are all design-frozen.
+
+**Still blocking R1a**: nothing. R1a content is fully spec'd by §11.1 Q9/Q11/Q12/Q13 + §10.6 Q6 (Method-D lock) + §11.1 Q9 (two-fixture C1 test).
+
+**Still blocking A_main launch (operator-side)**: B sentinel must write before A_main starts. C1–C5e + R1a must merge before A_main starts. At least one A6000 must free up. None of these are blocking the agent's design work.
+
+### 11.5 Self-correction noted on push
+
+Earlier draft of §10.6 said "λ_roll = 0 in Phase III" (claiming schedule contributes zero non-stationarity because the value is zero). This was reworded after I re-read `A_control.yaml:22-26` to **"λ_roll holds constant at 4.0 in Phase III"** — schedule is stationary in [90K,120K] but at the constant `4.0`, not at `0`. The 90K window recommendation is unchanged because schedule stationarity (zero derivative) is what matters, not the absolute value. Already pushed in commit `23a11d4`; this paragraph is the audit-trail note.

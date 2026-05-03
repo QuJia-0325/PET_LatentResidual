@@ -388,9 +388,43 @@ User confirmed all open questions raised after the round-2 absorption. The full 
 | **A_pair_uniform_spot → option (a)**: rerun with `max_steps=120000` | §1 Tier 2 C5 + §3 REV1.5: yaml lives in R1a commit; rerun queues opportunistically (no critical-path block); paper Risk 4 robustness preserved. |
 | **MULTI_AGENT_REVIEW_RECORD.md = yes, before R1a** | New file written between C5d and R1a; cited in R1a §6.6.8 changelog as primary source for round-1 + round-2 review history. |
 | **A_seed=43 yaml → option (i)**: physical yaml in R1a commit | §3 REV1.3: R1a generates `A_seed43.yaml` from `A_control.yaml` overriding only `seed`/`run_name`/`output_dir`; verify_paired_seed_configs.py (C5c) runs at launch [E] to confirm no drift; SHA256 stashed for R1b embedding. |
-| **GPG / OTS → plain commit + gitee push as time anchor** | R1a / R1b are plain `git commit -s` followed by immediate `git push gitee foc_lite_hop0`. Lock-script env-capture (C4) records git SHA + gitee push timestamp from `git log gitee/foc_lite_hop0`. §7 lineage narrative still defensible: gitee push is third-party-hosted weak time anchor. |
+| **GPG / OTS → plain commit + canonical-remote push as time anchor** | R1a / R1b are plain `git commit -s` followed by immediate `git push <canonical-remote> foc_lite_hop0` (where `<canonical-remote>` is resolved per `.review_canonical_remote`; on operator host = `origin`, on local Mac = `gitee`). Lock-script env-capture (C4) records git SHA + canonical-remote push timestamp from `git log <canonical>/foc_lite_hop0`. §7 lineage narrative still defensible: third-party-hosted gitee URL is the canonical anchor; on either host, the resolved `<canonical>` points to the same remote URL. |
 | **Launch order → serial (A_main → A_seed=43)** | §4 sequencing rewritten: sanity B → A_main 120K → A_seed=43 120K → R1b → C_uniform. R2 still parallel with A_main (agent-only). §10.3 cost table updated above. |
 | **Method-D parameter inventory → lock at K=10, metric-key=val_select_score, both --include-* flags off** | R1a §6.6.1 includes a sub-block "Method-D parameter lock". Note the deliberate metric split: Method-D selector uses `val_select_score`, but paired_SD_AA / headline rel_diff use `val_chain_normal_mse` per F12. Both are simultaneously locked in R1a. |
-| **C5b 3-check hard gate kept strict** | C lock-gate refuses unless: (1) `EFFECT_SIZE_LOCKED.md` exists, (2) its commit is reachable from `gitee/foc_lite_hop0`, (3) `LOCKED_PROTOCOL_VERSION == "R1b_locked"`. Pre-registration's "un-published ≠ locked" principle preserved. |
+| **C5b 3-check hard gate kept strict** | C lock-gate refuses unless: (1) `EFFECT_SIZE_LOCKED.md` exists, (2) its commit is reachable from `<canonical>/foc_lite_hop0` (resolved per `.review_canonical_remote`), (3) `LOCKED_PROTOCOL_VERSION == "R1b_locked"`. Pre-registration's "un-published ≠ locked" principle preserved. |
 
 **Implication for §8 menu (overlay update)**: option (A) "Approve as written" now means the v0.3 plan with serial launches + plain-commit + option-(a) A_pair + 90K window + Method-D K=10 lock. Wall-clock ~7–8 days, ~5–7 GPU·days total (incl. aligned A_pair_spot rerun).
+
+---
+
+## 11. Operator round-2.5 absorption (drafted 2026-05-03 night)
+
+After §10 was first pushed (commit `23a11d4`), operator answered Q9–Q15 + added 5 unsolicited flags (commit `2d3ae5f`). Full operator-side absorption table lives in **`REV1_TOOLING_PLAN.md §11`** (single source of truth). Protocol-side mirror below.
+
+### 11.1 Protocol-side decisions touched by operator reply
+
+| Q / flag | Protocol effect on this plan |
+|---|---|
+| **Q9 sanity B state** | C1 fixture testing now uses both A_tail5 (5 rows) AND B_full46 (46 rows). §3 REV1.3 / R1a §6.6.1 unchanged but R1a's golden-trace test reference is upgraded. |
+| **Q10 canonical-remote = URL fragment** | §10.6 Q4 / Q7 / consequences #4 #5 already reworded to use `<canonical>` placeholders. C5b `require_lock_pass()` resolves at runtime. No change to protocol logic. |
+| **Q11 A_pair scope = `max_steps: 60000 → 120000` only + comment cleanup** | §3 REV1.5 is unchanged. New file `A_pair_uniform_spot_aligned.yaml` lives in R1a commit (semantic 1-field copy); paper Risk 4 robustness section cites this aligned config. |
+| **Q12 A_main launch = `run_ablation.sh A`** | R1a §6.6.1 reproducibility recipe embeds operator's exact launcher command verbatim: `PYTHON=/home/qujiaxiang/.conda/envs/rae/bin/python GPU=<N> bash review/0502/scripts/run_ablation.sh A`. Note that `train_first_hop.py` only accepts `--config` and `--resume` (no `--output-dir`); the launcher composes the resolved output dir. |
+| **Q13 A_seed=43 yaml deltas locked** | §3 REV1.3: R1a yaml differs from `A_control.yaml` only in `seed: 43`, `run_name: first_hop_224_sigma_norm_A_seed43`, `output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0502_runs/A_seed43/run`. C5c (`verify_paired_seed_configs.py`) asserts exactly these allowed deltas; SHA256 of the diff stashed for R1b embedding. |
+| **Q14 GPU all occupied** | Cost table in §10.3 above re-anchored: wall-clock ~7–8 days **starts from "first-free-GPU + R1a landed", not from now**. No change to total GPU·days. Sanity B finishing is the first prerequisite. |
+| **Q15 No deadline** | Option (a) for A_pair stands. No critical-path compression. |
+| **Op-flag-1 portable remote** | §10.6 Q4 / Q7 already reworded. |
+| **Op-flag-2 / Op-flag-3** | C1 / C3 implementation pending; design unchanged. |
+| **Op-flag-4 stale `run_ablation.sh` help** | New tiny commit C5e (~5 minutes) added to §10.3 chain (`REV1_TOOLING_PLAN §10.3`). Documentation-only; no protocol change. |
+| **Op-flag-5 Guard 5 dual-key** | §1 Tier 3 C12 already split into config-side (`best_metric == "val_multi_objective"`) + data-side (`"val_select_score" in metrics_row`). Operator is reaffirming. No change. |
+
+### 11.2 Cost-table re-anchoring (§10.3 critical-path note)
+
+The §10.3 cost table's "wall-clock ~7–8 days" is unchanged, but its **start anchor** is now explicit: the clock starts when **(B sentinel writes) AND (C1–C5e + MULTI_AGENT_REVIEW_RECORD + R1a are pushed) AND (≥1 A6000 frees up)** all hold. Per Q14, all 4 GPUs are currently occupied and no clock-time commitment is given by the operator. The critical path internal to the wall-clock estimate (sanity B → A_main → A_seed=43 → R1b → C_uniform serially, with R2 parallel agent-only) is unchanged.
+
+### 11.3 Status summary
+
+- **All open questions resolved.** §10.4 #1–#4 (approve / window / A_pair / MULTI_AGENT_REVIEW_RECORD) all locked. §11.1 Q9–Q15 + Op-flag-1..5 all addressed.
+- **Nothing blocking the design work.** C1–C5e + R1a content is now fully spec'd.
+- **Protocol-side artifacts to be produced before C1 starts**: this same checkpoint commit. Then C1.
+
+See `REV1_TOOLING_PLAN.md §11` for the tooling-side absorption details (operator answers verbatim + per-flag responses + commit-chain delta).
