@@ -1,8 +1,8 @@
 # MULTI_AGENT_REVIEW_RECORD — Sigma-normalize ablation pre-registration
 
 **Drafted**: 2026-05-03 night, between C5e and R1a (per §10.6 decision)
-**Purpose**: Primary-source audit trail for the multi-round review process that produced `REV1_PLAN.md` v0.3 + `REV1_TOOLING_PLAN.md` v0.3 + the C1–C5e + R1a/R1b commit chain. Cited from R1a §6.6.8 changelog so the protocol commit's pre-registration history is independently auditable.
-**Scope**: Reviews of v0 (`POST_V6_NEXT_STEPS.md` §6.4 + §6.6 + the two scripts) → v0.1 → v0.2 → v0.3 (operator-absorbed). Round 1 = external GPT-5.5 + Claude paste-back; Round 2 = internal multi-agent re-review of v0.1 / v0.2; Operator round-2.5 = `OPERATOR_REPLY_pre_C1_20260503.md` + `current_experiment_architecture_status_20260503.md`.
+**Purpose**: **Secondary digest** of the multi-round review process that produced `REV1_PLAN.md` v0.3 + `REV1_TOOLING_PLAN.md` v0.3 + the C1–C5e + R1a/R1b commit chain. Round 1 + round 2.5 verbatim sources are on-disk and cross-linked from the path-index table below; round 2 internal subagent findings are paraphrased only (transcripts not persisted). Cited from R1a §6.6.8 changelog as the round-by-round revision history.
+**Scope**: Reviews of v0 (`POST_V6_NEXT_STEPS.md` §6.4 + §6.6 + the two scripts) → v0.1 → v0.2 → v0.3 (operator-absorbed) → Phase-1 checkpoint (this record + plan revisions). Round 1 = external GPT-5.5 + Claude paste-back; Round 2 = internal multi-agent re-review of v0.1 / v0.2; Operator round-2.5 = `OPERATOR_REPLY_pre_C1_20260503.md` + `current_experiment_architecture_status_20260503.md`. Phase-1 light audit = `PEER_REVIEW_phase1_subagent.md`.
 
 This file references but does not duplicate the verbatim review content already on disk. For full text:
 
@@ -59,6 +59,12 @@ Headline findings (full text in `PEER_REVIEW_CLAUDE.md`):
 ## 2. Round 2 — Internal multi-agent re-review of v0.1 / v0.2
 
 After v0.1 was drafted absorbing round-1 findings, four subagents (Explore-class) re-reviewed v0.1 and v0.2 in two passes. The structured F-coded + S-coded findings live in `REV1_TOOLING_PLAN.md §10.1` and `§10.2`. Cross-references below; full bullet lists in those sections.
+
+### 2.0 Round-2 subagent provenance + auditability gap
+
+**Provenance**: `agent1`–`agent4` were Explore-class subagents invoked from the main agent's chat session on 2026-05-03; each received the same v0.1 / v0.2 plan files plus repository read-only context; sessions ran independently (no shared context between them). The exact underlying model and the per-session prompts are not preserved on disk.
+
+**Auditability gap (acknowledged per Phase-1 review Q-D, `PEER_REVIEW_phase1_subagent.md`)**: Round-2 subagent transcripts were **not persisted**. §2.1 / §2.2 below are *paraphrased* digests of the F1–F12 + S1–S17 findings as I (the main agent) recorded them when absorbing each finding into §10 of `REV1_TOOLING_PLAN.md`. A skeptical pre-registration reviewer cannot independently verify that four sessions converged on F-prefix items vs one session sampled four times; the F vs S distinction in this record reflects my labeling at absorption time, not transcript-level evidence. R1a §6.6.8 cites this record as a **secondary digest**, not a primary source, for round 2. Round 1 (`PEER_REVIEW_GPT55.md` + `PEER_REVIEW_CLAUDE.md`) and round 2.5 (`OPERATOR_REPLY_pre_C1_20260503.md`) primary sources remain on disk and are cited verbatim in R1a §6.6.8.
 
 ### 2.1 Round-2 convergent findings (all 4 agents agreed) — F-prefix
 

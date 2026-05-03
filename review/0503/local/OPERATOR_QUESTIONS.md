@@ -56,7 +56,7 @@ review/0502/scripts/run_c_uniform_full_val.sh \
 行为：
 
 1. 检查 `review/0502/EFFECT_SIZE_LOCKED.md` 是否存在 → 否则 exit 1 拒跑。
-2. 检查这个 lock 文件的 git commit 是否在远端 `gitee/foc_lite_hop0` 上 → 否则 exit 2（防止本地未 push 的 lock）。
+2. 检查这个 lock 文件的 git commit 是否在远端 `<canonical>/foc_lite_hop0` 上 → 否则 exit 2（防止本地未 push 的 lock）。`<canonical>` 由 `.review_canonical_remote` 运行时解析，详见 `REV1_TOOLING_PLAN.md §11.1 Q10`；在 operator host = `origin`，在 local Mac = `gitee`。
 3. 透传所有参数到 `eval_first_hop_224_clip3.py --max-slices 0`。
 
 成本：~1 小时。**如果你确认远端只会通过 launch 脚本 / shell 触发 full-val，那这个 wrapper 就有价值；如果你已经习惯交互式跑 eval 命令，可能强制 wrapper 反而碍事。** 请告诉我哪种情况。
