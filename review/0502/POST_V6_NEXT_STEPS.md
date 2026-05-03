@@ -607,6 +607,85 @@ GPU=<free> bash review/0502/scripts/run_ablation.sh pair_uniform
 
 ---
 
+### 6.6 σ-normalize ablation 的 effect-size 阈值（blinded analysis pre-registration, LOCKED）
+
+**问题背景**：σ-normalize ablation 完成后，A_main 与 C_uniform 的 `chain_normal_mse` 相对差 `rel_diff = (C - A) / A` 是核心 paper 数字。但单一阈值（"X% 以下视为 indistinguishable"）必须在**看到 C 结果之前**锁死，否则等同 p-hacking → reviewer desk-reject 风险。
+
+**为什么不直接锁 X = 10%**：单点估计来自 V6 snapshot（rolling-window CV ≈ 25.5% / paired CV ≈ 5%），但 A_main 是新一轮 200K 训练，实际噪声可能不同。如果实测 paired CV = 8%，X=10% 就太严；反过来若 = 2%，X=10% 又太宽松。**用户直觉正确**：阈值应数据驱动。
+
+**为什么不能"看完再定"**：看到 `rel_diff = 8.4%` 之后再选 X=10% 还是 X=8% — 即使本人完全诚实，也无法向 reviewer 证明阈值未被结果污染。这是 ML reproducibility crisis 的标志性反模式。
+
+**解决方案：blinded analysis（盲分析）**——pre-commit 一个**公式**，公式只用 A_main 自己的数据计算（A 是 control，先跑完）；C 的数据**直到 X 锁定后**才允许查看。
+
+#### 6.6.1 LOCKED formula（修改此处任何参数 = scientific fraud）
+
+```text
+X = max(0.10,  3 × paired_CV_A)
+
+where paired_CV_A is computed from A_main alone:
+  - Read A_main metrics.jsonl
+  - Filter rows with step ∈ [40000, 60000]   # post-warmup, pre-Phase-III
+  - Series: val_select_score (the same key Method D consumes)
+  - paired_CV_A = std(series) / mean(series)
+```
+
+**参数 rationale**（now LOCKED, no negotiation post-A_main）：
+
+- **floor 0.10 (10%)**：保护极小 paired_CV_A 的 pathological 情况。如果 paired_CV_A = 1%，formula 会给 X=3%，但 V6 snapshot 上 full-val protocol 的真实分辨率 ~1.5% → 3% 几乎在地板上，paper 不可信
+- **slope 3×**：在高斯噪声下 ±3σ 覆盖 99.7% 概率，是物理学/医学 RCT 标准 effect-size 系数
+- **window [40000, 60000]**：post-warmup（warmup 通常 ≤ 20K）但 pre-Phase-III（≥ 50K 时 alpha/λ_roll 开始 ramp，会引入 schedule-driven 非平稳）。在 V6 snapshot 上这段也是相对平稳
+- **single key (val_select_score)**：与 Method D 一致；不加 chain_normal_mse 的额外阈值是为了避免 multiple-comparison 漏洞
+
+#### 6.6.2 严格执行顺序（顺序错 = pre-registration 失效）
+
+```text
+[已发生]   Step 0:  本 commit 写入此 §6.6，git push 到 gitee → pre-registration 时间戳锁定
+[在跑]     Step 1:  A_main 与 C_uniform 各自跑到完成（两者并行无干扰）
+           Step 2:  A_main 完成后，运行 Method D 选 A_main top-2 ckpts（不动 C）
+           Step 3:  从 A_main metrics.jsonl 算 paired_CV_A，代入公式得 X
+           Step 4:  把 X 写入新文件 review/0502/EFFECT_SIZE_LOCKED.md（含 paired_CV_A
+                    实测值、X 计算式、A_main 的 commit hash），git commit + push
+                    ↑↑↑ 这一步的 commit hash 就是"X 在 C 数据未读取前已锁定"的硬证据
+           Step 5:  ONLY NOW：跑 Method D + full-val 在 C_uniform → 得到 C 数字
+           Step 6:  计算 rel_diff = (C_full_val - A_full_val) / A_full_val
+           Step 7:  应用下表（rule 也是 LOCKED）
+```
+
+**Step 4 是不可省略的盲分析 commit**——没有它，整个 pre-registration 失效。即使 A_main 跑完后才发现公式有 bug，也**必须**在 Step 4 commit 里说明 deviation，不能事后修改本 §6.6。
+
+#### 6.6.3 LOCKED decision rule
+
+| `rel_diff` | 区间含义 | Paper conclusion / 后续动作 |
+|---|---|---|
+| `rel_diff < X` | C ≈ A | "Step-weight shape contributes little beyond scale compensation under the current pair-heavy V6 setup; σ-normalize is the primary lever." → σ-norm 写为核心 contribution |
+| `X ≤ rel_diff ≤ 2X` | Grey zone | 触发 200K continuation：从 A_main + C_uniform 的 best.pt 继续训到 200K，再用同一 X 重判。如 200K 后仍在 grey zone：paper 报两个数字、不下结论 |
+| `rel_diff > 2X` | C ≠ A 且方向明确 | "After σ-normalization, V6 middle-heavy weighting still helps → genuine hop-shape effect." → reframe paper 为 "we validate V6 with rigor"，σ-norm 写为 controlled-comparison methodology |
+
+**注意**：表里的 X 与 2X 都使用 Step 3 算出的具体数字，例如若 paired_CV_A = 0.04 → X = 0.12 → 2X = 0.24。
+
+#### 6.6.4 与现有 protocol 的关系
+
+- 与 §6.2 paper-time discipline 兼容：Method D 选 ckpt（Step 1）+ full-val on top-2（Step 2）→ 输出 mean ± std，再代入这里的 rule
+- 与 §6.4 Risk 4 (pair confound) 协议**独立**：那个协议针对 A_main vs A_pair_uniform_spot，不是 A_main vs C_uniform。两者各用自己的阈值
+- `EFFECT_SIZE_LOCKED.md` 也作为 paper supplementary 的 reproducibility 附件（reviewer 可验证 commit hash 时序）
+
+#### 6.6.5 反例：如果不做 blinded analysis 会怎样
+
+| 实测 rel_diff | "看完再定 X" 路径 | Blinded analysis 路径 |
+|---|---|---|
+| 4% | 选 X=10% 宣告 ≈ ✓（看似无害） | paired_CV_A=2% → X=10% (floor) → 4% < 10% → ≈ ✓ 同结论但**过程可证明** |
+| 8% | 倾向选 X=10% → ≈；但 reviewer 会问"为什么不是 X=5%" → 难答 | paired_CV_A=4% → X=12% → 8% < 12% → ≈ ✓ |
+| 13% | 倾向选 X=15% → ≈；reviewer 一眼识破 cherry-pick | paired_CV_A=4% → X=12% → 13% ∈ [12%, 24%] → grey zone → 触发 200K（**保护了诚实**） |
+| 25% | 选 X=10% → 显著（这次没作弊也无法证明没作弊） | paired_CV_A=4% → X=12% → 25% > 24% → 显著 ✓ **rule-based** |
+
+#### 6.6.6 LOCKED status
+
+- **Pre-registration commit**：本文件改动的 commit hash（写入此处时未知，post-commit 应回填）
+- **Pre-registration timestamp**：commit 时刻（git history 永久记录）
+- **修改本 §6.6 的合法路径**：只有 1 种 — 在 `EFFECT_SIZE_LOCKED.md` 里以 deviation note 形式说明，并附 deviation 的 reviewer-defensible rationale。**绝对不允许**事后修改本 §6.6 的 formula、floor、slope、window、key、rule
+
+---
+
 ## 7. 决策清单（v3.1 修正 — 强化 sanity gate）
 
 按时间顺序：
@@ -624,7 +703,14 @@ GPU=<free> bash review/0502/scripts/run_ablation.sh pair_uniform
     - 对 A_main / C_uniform / D_closed_form / V6_resumed 的 best.pt + last.pt 各跑一次 `eval_first_hop_224_clip3.py --max-slices 0`
     - 数字进 paper 表；training metrics.jsonl 里的 64-batch rolling 数字**仅**用于 sanity / monitoring
     - 这一步是 §6.2 强制纪律，**不可跳过**
-9. 📝 **主 ablation + V6.1 final + spot check + full-val eval 全部完成后开始写 paper σ-norm 节**
+8.7. 🔒 **Blinded effect-size threshold lock-in（A_main 完成后，C_uniform full-val 之前必须执行）**：
+    - A_main 完成 → Method D 选 A_main top-2 ckpts
+    - 从 A_main metrics.jsonl 取 step ∈ [40000, 60000] 的 `val_select_score`，算 `paired_CV_A`
+    - 代入 §6.6 LOCKED 公式：`X = max(0.10, 3 × paired_CV_A)`
+    - 写入新文件 `review/0502/EFFECT_SIZE_LOCKED.md`（含 paired_CV_A、X、A_main commit hash），**git commit + push**
+    - **此 commit 是 pre-registration 完成的硬证据；这一步不做，§6.6 失效**
+    - **顺序硬约束**：本步必须在 §8.6 对 C_uniform 的 full-val eval **之前**完成
+9. 📝 **主 ablation + V6.1 final + spot check + full-val eval 全部完成后开始写 paper σ-norm 节**（应用 §6.6 LOCKED decision rule）
 
 > **与 v2 的关键差异**：v2 说可以在 sanity Tier 1-3 PASS 后同时跑 GPU 0=A_main 与 GPU 1=C_uniform，v3 **只允许 A_main 与 sanity 并行**，C 必须等全部 tier (含 mini full Tier 4) 都 PASS。原因：C = `B_sanity.yaml 上 step_weights normalizer ON` 的生产设置，若 normalizer code path 有 bug，120K 跑出来的 C 数据是污染的，问题只能在最后发现 → +≥2 GPU·days 入坑。
 

@@ -466,11 +466,13 @@ else:
 - 弊：需要对 metrics.jsonl 写一个简单的 paired diff 后处理脚本（~30 行 python）
 - 决策窗口：**A_main + C_uniform 完成、A_pair_uniform_spot 启动之前**
 
-**讨论项 3（中期）**：是否预先 pre-commit "效应量 < X% 不写 paper" 的红线？
+**讨论项 3 ✅ 已决策（blinded analysis pre-registration）**：是否预先 pre-commit "效应量 < X% 不写 paper" 的红线？
 
-- 利：避免 Type II error → 假阴性 reframe
-- 弊：可能让当前 ablation 跑完后没法直接成 paper（需要补 multi-seed 或扩 200K）
-- 决策窗口：**A_main 完成后做 effect size 初估时**
+- **已 lock**：见 [POST_V6_NEXT_STEPS.md §6.6](POST_V6_NEXT_STEPS.md) — 不锁单一 X，锁的是 **公式** `X = max(0.10, 3 × paired_CV_A)`
+- 公式只用 A_main 自身数据（A 是 control，先跑完）；C_uniform 数据**直到 X 锁定后**才允许查看
+- 严格执行顺序写在 §6.6.2，关键 commit 是 `EFFECT_SIZE_LOCKED.md`（A_main 完成后才填）
+- LOCKED decision rule（§6.6.3）：`< X` ≈ / `[X, 2X]` grey zone 触发 200K continuation / `> 2X` significant
+- **保留了用户"数据驱动"直觉的同时满足 pre-registration 要求** → reviewer-defensible
 
 ---
 
