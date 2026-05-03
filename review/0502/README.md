@@ -25,6 +25,7 @@
 | [scripts/summarize_run.sh](scripts/summarize_run.sh) | 从 metrics.jsonl 提取 best ckpt 摘要 + raw 每 hop step_loss（纯 python，无 jq 依赖）|
 | [scripts/select_best_ckpt_smoothed.py](scripts/select_best_ckpt_smoothed.py) | Method D 实现：在邻域平滑后的 val_select_score 上选 best ckpt，减轻 rolling-window 极值偏差（-61% → -7%）；仅读 metrics.jsonl + ckpt header，零训练改动 |
 | [scripts/paired_diff_judge.py](scripts/paired_diff_judge.py) | Risk 4 paired-diff 判读：读两 metrics.jsonl + 两 yaml；输出 mean ± SE ± CI95 + autocorr-corrected N_eff；exit 0/10/11 = no_confound/confound/borderline；5 个 guards 防 paired diff 在前提不满足时被错误使用；LOCKED 阈值 0.10 |
+| [scripts/lock_effect_size_threshold.py](scripts/lock_effect_size_threshold.py) | §6.6 blinded analysis 自动化：A_main 跑完后一键算 paired_CV_A → 应用 LOCKED 公式 `X = max(0.10, 3 × paired_CV_A)` → 写 `EFFECT_SIZE_LOCKED.md`（含 metrics SHA256 + git commit hash）→ 自动 commit + push。Guards 1-5 + 7 防止脏 tree / 重复锁定 / 顺序违例 / 窗口偏离。LOCKED 参数（floor 0.10, slope 3, metric val_select_score）拒绝 CLI 覆盖 |
 
 ## 快速开始
 

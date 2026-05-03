@@ -677,12 +677,40 @@ where paired_CV_A is computed from A_main alone:
            Step 2:  A_main 完成后，运行 Method D 选 A_main top-2 ckpts（不动 C）
            Step 3:  从 A_main metrics.jsonl 算 paired_CV_A，代入公式得 X
            Step 4:  把 X 写入新文件 review/0502/EFFECT_SIZE_LOCKED.md（含 paired_CV_A
-                    实测值、X 计算式、A_main 的 commit hash），git commit + push
+                    实测值、X 计算式、A_main metrics.jsonl SHA256、训练 commit hash），
+                    git commit + push
                     ↑↑↑ 这一步的 commit hash 就是"X 在 C 数据未读取前已锁定"的硬证据
            Step 5:  ONLY NOW：跑 Method D + full-val 在 C_uniform → 得到 C 数字
            Step 6:  计算 rel_diff = (C_full_val - A_full_val) / A_full_val
            Step 7:  应用下表（rule 也是 LOCKED）
 ```
+
+**Step 3-4 自动化（强烈推荐）**：使用 [`lock_effect_size_threshold.py`](scripts/lock_effect_size_threshold.py) 一键完成 Step 3-4，避免手算公式错 / 顺序错位 / 漏 push 三种 pre-registration 破坏路径。
+
+```bash
+# 推荐用法（默认 LOCKED window=[40000, 60000]，自动 commit + push）
+python review/0502/scripts/lock_effect_size_threshold.py \
+    --metrics-a /data_2/qujiaxiang/outputs/PET_LatentResidual/A_main/run-.../metrics.jsonl \
+    --config-a  review/0502/configs/A_control.yaml \
+    --output    review/0502/EFFECT_SIZE_LOCKED.md \
+    --c-uniform-output-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/C_uniform/
+
+# 如果想先看 X 是多少再决定是否 commit，加 --no-commit
+```
+
+脚本强制实施的硬约束（exit code 体现）：
+
+| Exit | Guard | 含义 |
+|---|---|---|
+| 1 | Guard 4 | `[step_min, step_max]` 窗口内 val_select_score 观测数 < 5 → A_main 还没跑到 step_max，等等 |
+| 2 | Guard 1 | 工作树脏（未提交改动）→ lock-in commit 必须 atomic |
+| 3 | Guard 2 | `EFFECT_SIZE_LOCKED.md` 已存在 → 重跑脚本 = 事后修改 = 学术不端 |
+| 4 | Guard 5 / window deviation | A_main config best_metric 不对 / 修改窗口但没附 `--deviation-note` |
+| 5 | n/a | PyYAML 未安装 |
+| 7 | Guard 3 | `--c-uniform-output-dir` 检测到 full_val/eval 输出 → C 已被偷看 → 顺序违例 |
+| 8 | n/a | git commit/push 失败 |
+
+脚本拒绝接受 `--floor`/`--slope`/`--metric-key` 参数（这 4 个 LOCKED）；只允许通过 `--deviation-note` 改窗口，且窗口偏离会在 EFFECT_SIZE_LOCKED.md 里以 ⚠️ 显示。
 
 **Step 4 是不可省略的盲分析 commit**——没有它，整个 pre-registration 失效。即使 A_main 跑完后才发现公式有 bug，也**必须**在 Step 4 commit 里说明 deviation，不能事后修改本 §6.6。
 
@@ -768,11 +796,10 @@ python review/0502/scripts/paired_diff_judge.py \
     - 这一步是 §6.2 强制纪律，**不可跳过**
 8.7. 🔒 **Blinded effect-size threshold lock-in（A_main 完成后，C_uniform full-val 之前必须执行）**：
     - A_main 完成 → Method D 选 A_main top-2 ckpts
-    - 从 A_main metrics.jsonl 取 step ∈ [40000, 60000] 的 `val_select_score`，算 `paired_CV_A`
-    - 代入 §6.6 LOCKED 公式：`X = max(0.10, 3 × paired_CV_A)`
-    - 写入新文件 `review/0502/EFFECT_SIZE_LOCKED.md`（含 paired_CV_A、X、A_main commit hash），**git commit + push**
+    - **推荐**：直接运行 [`lock_effect_size_threshold.py`](scripts/lock_effect_size_threshold.py)（自动读 metrics.jsonl、算 paired_CV_A、代公式、写 markdown、commit + push、顺序硬检查）。详见 §6.6.2 调用范例
+    - 手算 fallback：从 A_main metrics.jsonl 取 step ∈ [40000, 60000] 的 `val_select_score`，算 `paired_CV_A` → 代入 LOCKED 公式 `X = max(0.10, 3 × paired_CV_A)` → 写入新文件 `review/0502/EFFECT_SIZE_LOCKED.md`（含 paired_CV_A、X、A_main metrics SHA256、commit hash）→ **git commit + push**
     - **此 commit 是 pre-registration 完成的硬证据；这一步不做，§6.6 失效**
-    - **顺序硬约束**：本步必须在 §8.6 对 C_uniform 的 full-val eval **之前**完成
+    - **顺序硬约束**：本步必须在 §8.6 对 C_uniform 的 full-val eval **之前**完成。脚本以 exit 7 拒绝在 C 已被 eval 的情况下运行
 9. 📝 **主 ablation + V6.1 final + spot check + full-val eval 全部完成后开始写 paper σ-norm 节**（应用 §6.6 LOCKED decision rule）
 
 > **与 v2 的关键差异**：v2 说可以在 sanity Tier 1-3 PASS 后同时跑 GPU 0=A_main 与 GPU 1=C_uniform，v3 **只允许 A_main 与 sanity 并行**，C 必须等全部 tier (含 mini full Tier 4) 都 PASS。原因：C = `B_sanity.yaml 上 step_weights normalizer ON` 的生产设置，若 normalizer code path 有 bug，120K 跑出来的 C 数据是污染的，问题只能在最后发现 → +≥2 GPU·days 入坑。
