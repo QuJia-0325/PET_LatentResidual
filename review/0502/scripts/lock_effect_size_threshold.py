@@ -44,8 +44,11 @@ Exit codes:
     1   Guard 4 failed (insufficient observations).
     2   Guard 1 failed (dirty working tree).
     3   Guard 2 failed (lock file already exists).
-    4   Guard 5 failed (config / run-dir mismatch).
+    4   Guard 5 failed (config / run-dir mismatch — config-side OR data-side).
     5   PyYAML missing.
+    6   Canonical-remote resolution failed (missing `.review_canonical_remote`,
+        no remote matches the URL fragment, OR ≥2 remotes match — see C2 in
+        REV1_TOOLING_PLAN.md §11.1 Q10 / Phase-1 review Q-A).
     7   Guard 3 failed (C_uniform results detected — sequence violation).
     8   Git operation failed.
 
@@ -139,10 +142,17 @@ def parse_args() -> argparse.Namespace:
                    help="Don't auto-commit. Useful for previewing the X value "
                         "before locking in. Files are still written to --output.")
     p.add_argument("--no-push", action="store_true",
-                   help="Commit but don't push. Default is to push to gitee "
-                        "remote so pre-registration timestamp is publicly verifiable.")
-    p.add_argument("--remote", default="gitee",
-                   help="Git remote to push to. Default 'gitee'.")
+                   help="Commit but don't push. Default is to push to the "
+                        "canonical remote (resolved per `.review_canonical_remote` "
+                        "— see C2 in REV1_TOOLING_PLAN.md) so the pre-registration "
+                        "timestamp is publicly verifiable.")
+    p.add_argument("--remote", default=None,
+                   help="Git remote to push to. If omitted, resolved at runtime "
+                        "by reading `.review_canonical_remote` at repo root and "
+                        "matching it against `git remote -v`. On the operator's "
+                        "host the canonical remote is named `origin`; on the "
+                        "author's Mac it is named `gitee`. Pass an explicit name "
+                        "to bypass the resolver (e.g. when ambiguous).")
     p.add_argument("--allow-dirty", action="store_true",
                    help="DANGEROUS: bypass guard 1 (clean working tree). Only "
                         "for development testing; never use in production.")
@@ -220,6 +230,215 @@ def git(args: list[str], cwd: Path | None = None) -> str:
         )
         raise RuntimeError(f"git command failed: git {' '.join(args)}")
     return res.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Canonical-remote resolver (C2 per Phase-1 review Q-A / §11.1 Q10)
+# ---------------------------------------------------------------------------
+#
+# `.review_canonical_remote` at repo root contains a single line URL fragment
+# (e.g. `gitee.com:jqu9/PET_LatentResidual`). The resolver scans `git remote -v`
+# and returns the local remote name whose URL points at that same repository,
+# regardless of the local nickname (`gitee` on the author's Mac, `origin` on
+# the operator's host) and regardless of ssh-vs-https URL form.
+#
+# Q-A (Phase-1 review) tightened the matching semantics to:
+#   (a) Normalize each candidate URL to a single canonical lowercased
+#       `host/path` form by collapsing ssh `host:path` ↔ https `host/path`.
+#   (b) Strip a trailing `.git` so the comparison is anchored at the repo
+#       boundary (otherwise `gitee.com/jqu9/PET_LatentResidual_fork.git`
+#       could spuriously match an `endswith()`-style check).
+#   (c) On 0 matches → exit 6 with a hint pointing at the missing remote.
+#   (d) On ≥2 matches → exit 6 listing all matches and require explicit
+#       `--remote` override.
+#   (e) On exactly 1 match → return (remote_name, original_url).
+
+CANONICAL_REMOTE_FILENAME = ".review_canonical_remote"
+
+
+class CanonicalRemoteError(Exception):
+    """Raised when the canonical remote cannot be uniquely resolved.
+
+    Carries human-readable text suitable for printing to stderr; the caller
+    converts this into exit code 6.
+    """
+
+
+def _normalize_remote_url(url: str) -> str:
+    """Normalize a git remote URL to a lowercased ``host/path`` form with any
+    trailing ``.git`` stripped. The boundary anchor matters: per Q-A (b),
+    `pet_latentresidual_fork` and `pet_latentresidual` must compare unequal.
+
+    Supported input forms:
+      - ``git@host:path``           (scp-style ssh)
+      - ``ssh://git@host/path``     (URL-style ssh)
+      - ``ssh://host/path``         (URL-style ssh, no user)
+      - ``https://host/path``       (https)
+      - ``http://host/path``        (plain http — accepted for completeness)
+      - bare ``host/path``          (left as-is then lowercased)
+
+    Notes:
+      - Whitespace at the boundaries is ignored.
+      - The function is a pure helper so it can be unit-tested without a
+        real repo. Anything beyond the listed forms (e.g. file paths,
+        weird custom protocols) returns the raw lowercased input minus a
+        trailing ``.git`` — callers must not expect that to be a security
+        boundary; the actual matching is a strict equality check after
+        normalization.
+    """
+    s = url.strip()
+    # ssh:// or ssh://git@
+    sl = s.lower()
+    if sl.startswith("ssh://"):
+        s = s[len("ssh://"):]
+        if s.lower().startswith("git@"):
+            s = s[len("git@"):]
+    # https:// or http://
+    elif sl.startswith("https://"):
+        s = s[len("https://"):]
+    elif sl.startswith("http://"):
+        s = s[len("http://"):]
+    # scp-style ssh prefix: strip leading "git@" if present (without scheme).
+    if s.lower().startswith("git@"):
+        s = s[len("git@"):]
+
+    # scp-style host:path → host/path. We do this AFTER scheme/user
+    # stripping so we do not mistake the `:` in `https://` for an scp
+    # separator. Only convert if the segment BEFORE the first `:` has no
+    # `/`, i.e. it looks like a bare hostname (the `host` half of
+    # `host:path`). This also handles the anchor-file form
+    # `gitee.com:jqu9/PET_LatentResidual` which is identical in shape to
+    # the scp-ssh path component minus the `git@` and the `.git`.
+    if ":" in s and "/" not in s.split(":", 1)[0]:
+        s = s.replace(":", "/", 1)
+
+    # Strip trailing slash first so `host/path.git/` and `host/path.git`
+    # both fall through to the `.git`-stripping branch below.
+    s = s.rstrip("/")
+    # Strip trailing .git boundary
+    if s.lower().endswith(".git"):
+        s = s[: -len(".git")]
+    return s.lower()
+
+
+def _parse_git_remote_v(stdout: str) -> dict[str, str]:
+    """Parse `git remote -v` stdout into {remote_name: fetch_url}.
+
+    Each line of `git remote -v` looks like::
+
+        gitee   git@gitee.com:jqu9/PET_LatentResidual.git (fetch)
+        gitee   git@gitee.com:jqu9/PET_LatentResidual.git (push)
+
+    We retain only the (fetch) URL per remote (per-remote fetch and push
+    URLs may differ; canonical match is on fetch).
+    """
+    out: dict[str, str] = {}
+    for line in stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        name, url, kind = parts[0], parts[1], parts[2]
+        if kind == "(fetch)":
+            out[name] = url
+    return out
+
+
+def _match_remote_by_anchor(
+    anchor: str,
+    remotes: dict[str, str],
+) -> list[tuple[str, str]]:
+    """Return the list of (remote_name, original_url) pairs whose normalized
+    URL exactly matches the normalized anchor. Length-0 = no match,
+    length-1 = unique resolution, length-≥2 = ambiguous.
+    """
+    target = _normalize_remote_url(anchor)
+    matches: list[tuple[str, str]] = []
+    for name, url in remotes.items():
+        if _normalize_remote_url(url) == target:
+            matches.append((name, url))
+    return matches
+
+
+def resolve_canonical_remote(
+    repo_root: Path,
+    remotes_provider: "callable[[], dict[str, str]] | None" = None,
+) -> tuple[str, str]:
+    """Resolve the canonical remote name + URL.
+
+    Args:
+      repo_root: the git repo's working tree root.
+      remotes_provider: optional injected callable returning ``{name: url}``;
+        used by tests to bypass the real ``git remote -v`` invocation. If
+        omitted, the function shells out to ``git remote -v`` in
+        ``repo_root``.
+
+    Raises:
+      CanonicalRemoteError: anchor file missing OR empty OR no remotes
+        match OR ≥2 remotes match. The exception message is suitable for
+        printing directly; the caller should map it to exit code 6.
+
+    Returns:
+      (remote_name, original_fetch_url) on unique match.
+    """
+    anchor_path = repo_root / CANONICAL_REMOTE_FILENAME
+    if not anchor_path.exists():
+        raise CanonicalRemoteError(
+            f"missing anchor file `{CANONICAL_REMOTE_FILENAME}` at {repo_root}. "
+            f"Create it with the canonical URL fragment, e.g.\n"
+            f"    echo 'gitee.com:jqu9/PET_LatentResidual' > "
+            f"{anchor_path}\n"
+            f"Or pass `--remote <name>` to bypass the resolver."
+        )
+    anchor = anchor_path.read_text().strip()
+    if not anchor:
+        raise CanonicalRemoteError(
+            f"anchor file {anchor_path} is empty. Write a single line "
+            f"containing the canonical URL fragment, "
+            f"e.g. `gitee.com:jqu9/PET_LatentResidual`."
+        )
+    if "\n" in anchor:
+        # First non-empty line wins; warn on stderr so accidental multi-line
+        # files are noticed.
+        sys.stderr.write(
+            f"WARNING: {anchor_path} contains multiple lines; using only "
+            f"the first non-empty line.\n"
+        )
+        anchor = next((ln for ln in anchor.splitlines() if ln.strip()), "")
+
+    if remotes_provider is not None:
+        remotes = remotes_provider()
+    else:
+        try:
+            stdout = git(["remote", "-v"], cwd=repo_root)
+        except RuntimeError as exc:
+            raise CanonicalRemoteError(
+                f"`git remote -v` failed in {repo_root}: {exc}"
+            ) from exc
+        remotes = _parse_git_remote_v(stdout)
+
+    if not remotes:
+        raise CanonicalRemoteError(
+            f"no fetch remotes configured in {repo_root}. "
+            f"Add one with `git remote add <name> <url>` and retry."
+        )
+
+    matches = _match_remote_by_anchor(anchor, remotes)
+    if len(matches) == 0:
+        listing = "\n".join(f"    {n}\t{u}" for n, u in sorted(remotes.items()))
+        raise CanonicalRemoteError(
+            f"no remote matches canonical anchor `{anchor}`. Configured "
+            f"fetch remotes:\n{listing}\n"
+            f"Add a remote pointing at `{anchor}.git` and retry, or pass "
+            f"`--remote <name>` explicitly."
+        )
+    if len(matches) >= 2:
+        listing = "\n".join(f"    {n}\t{u}" for n, u in matches)
+        raise CanonicalRemoteError(
+            f"{len(matches)} remotes match canonical anchor `{anchor}`:\n"
+            f"{listing}\n"
+            f"Refusing to guess. Pass `--remote <name>` to disambiguate."
+        )
+    return matches[0]
 
 
 def find_repo_root(path: Path) -> Path:
@@ -623,22 +842,38 @@ def main() -> int:
         print("To finalize the public pre-registration, push to remote.")
         return 0
 
+    # ---- Resolve canonical remote (C2 per Phase-1 review Q-A / Q10) ----
+    # If user passed --remote explicitly, that overrides the resolver. This
+    # is the documented escape hatch for the ≥2-match ambiguity case.
+    if args.remote is not None:
+        resolved_remote = args.remote
+        print(f"[info] using explicit --remote {resolved_remote!r} "
+              f"(canonical-remote resolver bypassed)")
+    else:
+        try:
+            resolved_remote, resolved_url = resolve_canonical_remote(repo_root)
+        except CanonicalRemoteError as exc:
+            sys.stderr.write(f"ERROR (canonical-remote resolver): {exc}\n")
+            return 6
+        print(f"[info] resolved canonical remote: {resolved_remote} \u2192 "
+              f"{resolved_url}")
+
     try:
         # Detect current branch
         branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
         proc = subprocess.run(
-            ["git", "push", args.remote, branch],
+            ["git", "push", resolved_remote, branch],
             cwd=repo_root,
             capture_output=True,
             text=True,
         )
         if proc.returncode != 0:
             sys.stderr.write(
-                f"git push {args.remote} {branch} failed:\n{proc.stderr}\n"
+                f"git push {resolved_remote} {branch} failed:\n{proc.stderr}\n"
                 f"You committed locally; push manually to finalize.\n"
             )
             return 8
-        print(f"Pushed: {args.remote}/{branch}")
+        print(f"Pushed: {resolved_remote}/{branch}")
     except RuntimeError:
         return 8
 
