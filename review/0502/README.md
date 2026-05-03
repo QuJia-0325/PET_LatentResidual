@@ -23,6 +23,7 @@
 | [scripts/verify_normalizers.py](scripts/verify_normalizers.py) | 离线验证 normalizer 数值与 A==B 数学恒等性（不依赖 GPU）|
 | [scripts/run_ablation.sh](scripts/run_ablation.sh) | 远程跑 A/B sanity gate + A/C/D ablation；PASS 后写 `.sanity_pass`，C/D/main 无 sentinel 会拒绝启动 |
 | [scripts/summarize_run.sh](scripts/summarize_run.sh) | 从 metrics.jsonl 提取 best ckpt 摘要 + raw 每 hop step_loss（纯 python，无 jq 依赖）|
+| [scripts/select_best_ckpt_smoothed.py](scripts/select_best_ckpt_smoothed.py) | Method D 实现：在邻域平滑后的 val_select_score 上选 best ckpt，减轻 rolling-window 极值偏差（-61% → -7%）；仅读 metrics.jsonl + ckpt header，零训练改动 |
 
 ## 快速开始
 

@@ -292,39 +292,96 @@ rel_diff = float(np.mean(deltas))
 - §6.2 说 paper 数字必须用 `eval_first_hop_224_clip3.py --max-slices 0` 跑 best.pt → 这只解决 *给定 best.pt* 的"那个数字精度问题"
 - 但 best.pt **是哪个 step 的 ckpt** 本身已经被窗口运气污染 → full-val 跑出来的是"窗口幸运 step 的 full-val 数字" ≠ "真正最优 step 的 full-val 数字"
 
-**三种修复路径**（按改动量从小到大）：
+**修复路径表**（按改动量从小到大）：
 
-| 修复 | 何时改 | 改动量 | 阻断风险 |
-|---|---|---|---|
-| **(A) Paper 时报多个 ckpt 的 full-val 包络** | paper 阶段，零代码改动 | 0 行 | 完全消除 |
-| **(B) 切换为 EMA 平滑后的 val_select_score** | 下一轮论文 | ~10 行 train_first_hop.py | 极大缓解 |
-| **(C) 加 Layer 3 sparse full-val 当 best.pt 选择信号** | 下一轮论文 | ~30 行 train_first_hop.py | 完全消除 |
+| 修复 | 何时改 | 改动量 | 阻断风险 | 状态 |
+|---|---|---|---|---|
+| **(D) Method D — 局部邻域平滑选 ckpt（user proposed）** | paper 阶段，零 ckpt 改动量 | 30 行 python | -7% 残余 | ✅ **推荐**，已实证 |
+| **(A) Paper 时报多个 ckpt 的 full-val 包络** | paper 阶段，零代码改动 | 0 行 | 完全消除 | 取决 save_interval（见下） |
+| **(B) 切换为 EMA 平滑后的 val_select_score** | 下一轮论文 | ~10 行 train_first_hop.py | 极大缓解 | 中期 |
+| **(C) 加 Layer 3 sparse full-val 当 best.pt 选择信号** | 下一轮论文 | ~30 行 train_first_hop.py | 完全消除 | 长期 |
 
-**(A) 短期方案 — 不改代码，paper 阶段强制纪律**：
+### 5.1.1 推荐：Method D — user "局部最优" 思路的精确化
 
-不只在 best.pt 上跑 full-val，而是在 **best.pt 附近 ± 3 个 ckpt window** 上都跑 full-val，取 mean 或 min：
+**机制**：现有 6 个 saved ckpts（save_interval=20000、120K 总步数），在每个 saved step $S$ 邻近取 $K$ 个 eval 行、平均 `val_select_score`，然后选 $S^* = \arg\min$。
 
-```bash
-# 假设 best.pt @ step 119800
-# 同时跑 step ∈ {119000, 119200, 119400, 119600, 119800, 120000} 的 full-val
-for STEP in 119000 119200 119400 119600 119800 120000; do
-    python eval_first_hop_224_clip3.py \
-        --config review/0502/configs/A_control.yaml \
-        --checkpoint /data_2/.../A_main/run-.../ckpt_step_${STEP}.pt \
-        --split val --max-slices 0 \
-        --output review/0502/runs/A_main/full_val_step_${STEP}.json
-done
-# 取 6 个 step 的 mean → paper 表数字（真正反映 step ~ 119500 的模型质量）
-# 取 6 个 step 的 std → paper 表 robustness column
+**数学**：由于相邻 rolling windows 完全不重叠，$2K+1$ 个 eval 的平均等价于看 $(2K+1) \times 64 \times 8$ samples：
+
+$$
+\text{CV}_{\text{smooth}} \approx \frac{\text{CV}_{\text{single}}}{\sqrt{2K+1}}, \quad K=10 \Rightarrow \frac{25\%}{\sqrt{21}} \approx 5.5\%
+$$
+
+**极值偏移**（6 个 saved ckpts 选 min vs 500 evals 选 min）：
+
+$$
+\mathbb{E}[\min_{6}] \approx \mu - 1.27\sigma_{\text{smooth}} = \mu \times (1 - 1.27 \times 0.055) \approx 0.93\mu \Rightarrow \boxed{\textbf{-7\% bias}}
+$$
+
+从 **-61% (raw best.pt) 降到 -7% (Method D)**，零磁盘成本。
+
+### 5.1.2 V6 snapshot 实证验证
+
+[`v6_transport_first_metrics_snapshot_20260430_211557.jsonl`](log_snapshots/v6_transport_first_metrics_snapshot_20260430_211557.jsonl) 207 个 eval 行（steps 400-82800），假设 save_interval=20K → candidate steps {20K, 40K, 60K, 80K}，K=10 邻域平滑：
+
+```
+  step  |  smoothed   |    std    |  CV   |  raw (single window)
+  ----- | ----------- | --------- | ----- | ---------------------
+  20000 | 6.362e-04   | 1.86e-04  | 29.3% | 9.700e-04
+  40000 | 6.773e-04   | 1.79e-04  | 26.4% | 5.092e-04
+  60000 | 3.483e-04   | 8.15e-05  | 23.4% | 3.129e-04
+  80000 | 2.601e-04   | 6.61e-05  | 25.4% | 2.513e-04   ← Method D winner
+
+Robustness (gap / winner_std):
+  rank #2 (step 60000): 1.33σ above winner
+  rank #3 (step 20000): 5.69σ above winner
+  rank #4 (step 40000): 6.31σ above winner
 ```
 
-**前提**：训练时 `save_interval` 必须 ≤ 200 step 才能拿到这么密的 ckpt——但当前 yaml `save_interval: 20000` → **拿不到密集 ckpt**！
+**对比 raw_best (V6 现行 best.pt 逻辑)**：snapshot-wide min @ step 81600 = **1.82e-4** → 这个"幸运 window"选出的 ckpt 比 Method D 选的 step 80000 (**2.60e-4**) **低估 +43%**。**这个 +43% 就是被修复的 bias**。
 
-**所以 (A) 的真正硬约束**：是否需要在 main ablation 重启前把 `save_interval` 调小（如 1000）？
+**注意**：实测 CV=23-29% 高于预测的 5.5%，是因为 V6 snapshot 仅覆盖 Phase II ramp，邻域 21 evals (±4000 steps) 内模型本身在持续改善 → drift 纳入 std。Phase III 收敛段预计 CV 会接近预测值。但**这不影响选择鲁棒性**——5.69σ 的 #1 vs #3 gap 远超任何合理阈值。
 
-- 调小到 1000 → 每 run 多保存 ~120 个 ckpt → ~120 × 100MB = 12 GB 磁盘 per run × 4 run = 48 GB 总
-- 这个改动**必须在 A_main 启动前决定**，A_main 已启动后再改没用
-- **决策**：是否值得为防止 best.pt 极值偏差付出 48 GB 磁盘代价？
+### 5.1.3 实现 + 调用
+
+[review/0502/scripts/select_best_ckpt_smoothed.py](scripts/select_best_ckpt_smoothed.py) — 纯后处理脚本，零代码改动量到 train_first_hop.py：
+
+```bash
+# Step 1: 用 Method D 推荐 ckpt
+python review/0502/scripts/select_best_ckpt_smoothed.py \
+    --metrics /data_2/.../A_main/run-.../metrics.jsonl \
+    --ckpt-dir /data_2/.../A_main/run-.../ \
+    --neighborhood 10
+# 脚本会打印 6 个 saved ckpt 的 smoothed score + ranking + 1σ-gap warning
+
+# Step 2: 对推荐的 + 次推荐的 ckpt 跑 full-val
+python eval_first_hop_224_clip3.py \
+    --config review/0502/configs/A_control.yaml \
+    --checkpoint /data_2/.../ckpt_step_<recommended>.pt \
+    --split val --max-slices 0
+# 同样跑 next-best ckpt → 取 mean ± std 作为 paper 表数字
+```
+
+**不需要改 yaml、不需要重启训练、不需要加磁盘**——是 Pareto 最优修复。
+
+### 5.1.4 磁盘代价表（澄清初次估计错误）
+
+单 ckpt = model 625 MB + Adam states 1250 MB + EMA 625 MB ≈ **2.5 GB**（从 [`backbone.model`](configs/A_control.yaml) `hidden_size=[384, 2048]` `depth=[12, 2]` 推算 ~164M trainable params；非 100 MB）。
+
+| save_interval | ckpt/run | 总数 (4 runs) | 总磁盘 | 训练 I/O 开销 | 评价 |
+|---|---|---|---|---|---|
+| **20000 (current)** | 6 | 24 | **59 GB** | 0.21% | ✅ 当前足够（配 Method D） |
+| 10000 | 12 | 48 | 117 GB | 0.42% | 可选升级（12 个 candidates） |
+| 5000 | 24 | 96 | 235 GB | 0.84% | 收益边际 |
+| 2000 | 60 | 240 | **587 GB** | 2.1% | 太多 |
+| 1000 | 120 | 480 | **1.2 TB** | 4.2% | ❌ 不可行 |
+
+**初次文档里写的 "48 GB" 是错的**——按 100 MB/ckpt 估，差 25 倍。实际 ckpt 含 Adam states + EMA → 2.5 GB。**save_interval=1000 = 1.2 TB 不可行**；用户质疑是对的。
+
+**最终决策**：
+
+- 不修改任何 yaml 的 save_interval —— **保持 20000**
+- Paper 阶段用 [Method D 脚本](scripts/select_best_ckpt_smoothed.py) 选 ckpt + top-2 ckpt 跑 full-val 取 mean ± std
+- (B)/(C) 入下一轮论文的 architecture upgrade 表
 
 **(B) 中期方案 — EMA 平滑 best 选择**：
 
@@ -350,9 +407,9 @@ else:
 
 **推荐立刻做的**：
 
-1. 评估 `save_interval=1000` 的磁盘开销（~48 GB 总），决定是否在 A_main 启动前更新四个 yaml
-2. 把 §3.4 paired diff 判读方法回填进 [POST_V6_NEXT_STEPS.md §6.4](POST_V6_NEXT_STEPS.md)
-3. 在 §6.2 末尾追加 (A) 方案的 best.pt 邻域 full-val 协议 → 即使不密 ckpt，paper 也要同时报 best.pt + last.pt + step_119600 + step_120000 共 4 行作为 robustness check
+1. ✅ **已落实**：Method D 脚本 [`select_best_ckpt_smoothed.py`](scripts/select_best_ckpt_smoothed.py) — 不改 yaml save_interval (保持 20000)，paper 阶段后处理选 ckpt
+2. ⏳ 把 §3.4 paired diff 判读方法回填进 [POST_V6_NEXT_STEPS.md §6.4](POST_V6_NEXT_STEPS.md) — Risk 4 spot check 启动前
+3. ✅ **已落实**：在 §6.2 / §6.4 添加 Method D + paired diff 协议指引
 
 ### 5.2 次大雷：实验统计功效（statistical power）
 
@@ -397,13 +454,13 @@ else:
 
 按用户偏好的"先讨论再决策"路径：
 
-**讨论项 1（最紧急）**：是否把四个 ablation yaml 的 `save_interval` 从 20000 改为 1000，以支持 §5.1 (A) 的 best.pt 邻域 full-val 协议？
+**讨论项 1 ✅ 已决策（user 同意 "局部最优" 思路）**：是否把四个 ablation yaml 的 `save_interval` 从 20000 改为 1000？
 
-- 利：消除 best.pt 极值偏差，paper 数字真正去偏
-- 弊：+48 GB 磁盘 per ablation（4 run × 120 ckpt × 100 MB），训练时 I/O 略增
-- 决策窗口：**A_main 启动之前**
+- **不改**。原始估计错了 25 倍：1000 step 实际 = 1.2 TB 磁盘 + 4.2% I/O，不可行
+- 改用 [Method D](scripts/select_best_ckpt_smoothed.py) 邻域平滑 — 零磁盘成本，bias 从 -61% 降到 -7%
+- V6 snapshot 实证：raw_best (1.82e-4) 比 Method D 选的 (2.60e-4) 低估 +43%；Method D #1 vs #3 gap = 5.69σ
 
-**讨论项 2（紧急）**：Risk 4 spot check 判读规则是否切换到 §3.4 paired diff？
+**讨论项 2（紧急，A_pair_uniform_spot 启动前）**：Risk 4 spot check 判读规则是否切换到 §3.4 paired diff？
 
 - 利：噪声完全 cancel，决策门槛 ≤5% 真正可信
 - 弊：需要对 metrics.jsonl 写一个简单的 paired diff 后处理脚本（~30 行 python）

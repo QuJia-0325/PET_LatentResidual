@@ -507,7 +507,25 @@ T+5d    开始写 paper σ-norm 节
 **Paper 时强制纪律**：
 
 ```bash
-# 不要从 metrics.jsonl 的 best.pt step 取数字。改用 full-val eval：
+# Step 1: Method D 选 ckpt（邻域平滑，避开 best.pt 极值偏移）
+python review/0502/scripts/select_best_ckpt_smoothed.py \
+    --metrics /data_2/.../A_main/run-.../metrics.jsonl \
+    --ckpt-dir /data_2/.../A_main/run-.../ \
+    --neighborhood 10
+# 输出推荐 ckpt step (e.g. step 119800) + 次推荐
+
+# Step 2: 对推荐 + 次推荐的 ckpt 跑 full-val
+for STEP in <recommended> <runner-up>; do
+    python eval_first_hop_224_clip3.py \
+        --config review/0502/configs/A_control.yaml \
+        --checkpoint /data_2/.../ckpt_step_${STEP}.pt \
+        --split val \
+        --max-slices 0
+done
+# Paper 表数字 = mean ± std 于这两个 step 的 full-val
+```
+
+不要从 metrics.jsonl 的 best.pt step 取数字。改用 full-val eval：
 python eval_first_hop_224_clip3.py \
     --config review/0502/configs/A_control.yaml \
     --checkpoint /data_2/.../A_main/run/.../best.pt \
