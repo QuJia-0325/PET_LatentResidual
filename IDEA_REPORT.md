@@ -63,6 +63,45 @@
 2. Phase-2: CCT-224 + ΔB-aware adaptive reweighting
 3. Phase-3: uncertainty-gated hop0 (only if needed)
 
+> ⚠️ **2026-05-03 update**：上述 Phase-1 / Phase-2 / Phase-3 **全部 deferred**。详见下一节 "Status Update"。
+
+## Status Update (2026-05-03)
+
+**主线已切换**：从 4 月份的 CCT / ΔB-aware / uncertainty-gating 三段式路线，切换为 **V6 transport-first + σ-normalize ablation**。原因：
+
+- 4 月线（CCT-224 等）属于"加机制"路线（在现有 loss 上叠新项），novelty 风险已在 Three-party adversarial review 中标记为"易被视为 consistency regularization 变体"。
+- 5 月初的 V6 / foc_lite 实验给出了不同方向的证据：**step-weight × σ-normalize 的耦合**才是当前链路稳定性的主因。把这条线写成 paper 比 CCT 更难被审稿人攻击为 "incremental"。
+- 因此当前所有 GPU 资源 + 所有 protocol 锁定都集中在 σ-norm ablation。
+
+**当前协议源**（canonical）：
+
+- [review/0502/POST_V6_NEXT_STEPS.md](review/0502/POST_V6_NEXT_STEPS.md)
+  - §6.4 Risk 4 paired-diff threshold = 0.10（LOCKED）
+  - §6.6 blinded effect-size pre-registration `X = max(0.10, 3·paired_CV_A)`（LOCKED）
+- [review/0502/scripts/](review/0502/scripts) — 协议级脚本（Method D / paired_diff_judge / lock_effect_size_threshold）
+
+**4 月 ideas 的处理**：
+
+| Idea | 4 月 status | 5 月 status | 处理 |
+|---|---|---|---|
+| Idea 1: CCT-224 | RECOMMENDED Phase-1 | DEFERRED | σ-norm ablation 落地 + paper 写作完成后回到 backlog；如果 σ-norm 走 trichotomy 第一档（C ≈ A），CCT 可重新激活作为下一篇 paper 的种子 |
+| Idea 2: ΔB-aware Adaptive Reweighting | RECOMMENDED Phase-2 | DEFERRED | 同上；优先级取决于 σ-norm 结果落在哪个分支 |
+| Idea 3: Uncertainty-Gated Hop0 Forcing | BACKUP | DEFERRED | 同上；目前不规划重启 |
+
+**新 ideas 的 backlog 入口**：σ-norm ablation 的 trichotomy 分支决定下一轮 idea 优先级——
+
+- 若 `rel_diff < X`（C ≈ A）→ "step-weight 是被动跟随，σ-norm 才是主动力" → 下轮 paper 思路是**深挖 σ-norm 在不同链路深度的可推广性**（不再优先 CCT）
+- 若 `X ≤ rel_diff ≤ 2X`（grey zone）→ 200K continuation；本仓库这一篇可能写为 "we tried but evidence is inconclusive"，CCT 可作为下一篇的主菜
+- 若 `rel_diff > 2X`（V6 narrative 验证）→ 当前 paper 即结论性；CCT 作为 future work 出现在 Discussion 节
+
+**Governance unchanged**：
+
+- Canonical implementation constraints: `docs/main.md`
+- Idea backlog and ranking: this file (`IDEA_REPORT.md`)
+- No architecture/code modification before explicit user approval.
+- Gate 评审硬要求：每个 idea 必须同步更新 **Novelty score + Three-party adversarial review + Gate decision**。
+- **Protocol 评审硬要求（新增 2026-05-03）**：§6.4 / §6.6 LOCKED 参数禁止改动；改 protocol = 改 git history = pre-registration 失效。如需 deviation，使用 `--deviation-note` 在 EFFECT_SIZE_LOCKED.md 公开。
+
 ## Governance
 - Canonical implementation constraints: `docs/main.md`
 - Idea backlog and ranking: this file (`IDEA_REPORT.md`)

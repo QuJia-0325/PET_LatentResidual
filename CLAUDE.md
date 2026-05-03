@@ -112,23 +112,46 @@ L_total = L_pair + lambda_roll * L_rollout + lambda_img * L_img_hop0 (+ optional
   --out-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/alignment_224_audit
 ```
 
-### 2) 训练（50k formal chainstable）
+### 2) 训练（current production：V6 transport-first / foc_lite / σ-norm ablation）
 
 ```bash
+# A_main：V6 transport-first（σ-norm ablation 主对照）
 /home/qujiaxiang/.conda/envs/rae/bin/python train_first_hop.py \
-  --config /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_50k_formal_v3_chainstable.yaml
+  --config /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_v6_transport_first.yaml
+
+# C_uniform：σ-normalizer ON, uniform step weight（盲分析对照）— 仅在 X 锁定后才允许跑 full-val
+/home/qujiaxiang/.conda/envs/rae/bin/python train_first_hop.py \
+  --config /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_50k_foc_lite.yaml
+
+# V6.1：rollout floor 加固
+/home/qujiaxiang/.conda/envs/rae/bin/python train_first_hop.py \
+  --config /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_v6_1_rollout_floor.yaml
 ```
 
 ### 3) clip3 评估（JSON/CSV 可复核）
 
 ```bash
 /home/qujiaxiang/.conda/envs/rae/bin/python eval_first_hop_224_clip3.py \
-  --config /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_50k_formal_v3_chainstable.yaml \
-  --checkpoint /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_formal_v3_chainstable/best.pt \
+  --config /home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_v6_transport_first.yaml \
+  --checkpoint /data_2/qujiaxiang/outputs/PET_LatentResidual/<run_dir>/best.pt \
   --split val \
   --max-slices 0 \
-  --out-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_50k_eval_clip3_best_full
+  --out-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/<run_dir>_eval_clip3_best_full
 ```
+
+> **C_uniform full-val 顺序硬约束**：在 `review/0502/EFFECT_SIZE_LOCKED.md` 已 commit + push 之前，**禁止**对 `C_uniform` 跑 `--max-slices 0` full-val。详见 §8.7。
+
+### 4) §6.6 effect-size lock-in（A_main 完成后，C_uniform full-val 之前必须执行）
+
+```bash
+python review/0502/scripts/lock_effect_size_threshold.py \
+    --metrics-a /data_2/qujiaxiang/outputs/PET_LatentResidual/A_main/run-.../metrics.jsonl \
+    --config-a  review/0502/configs/A_control.yaml \
+    --output    review/0502/EFFECT_SIZE_LOCKED.md \
+    --c-uniform-output-dir /data_2/qujiaxiang/outputs/PET_LatentResidual/C_uniform/
+```
+
+详见 [review/0502/POST_V6_NEXT_STEPS.md](review/0502/POST_V6_NEXT_STEPS.md) §6.6.2 + §8.7。
 
 ## Core Files
 
@@ -201,7 +224,9 @@ L_total = L_pair + lambda_roll * L_rollout + lambda_img * L_img_hop0 (+ optional
 2. hop0 机制不是失活，但对第一跳提升幅度小于 tail 段提升。
 3. chainstable 的目标函数/评估选择偏 tail，导致“前段小幅、后段显著”的现象。
 
-## Next Engineering Plan (Pending Approval)
+## Next Engineering Plan (Pending Approval) — SUPERSEDED 2026-05-03
+
+> ⚠️ **此节自 2026-05-03 起 superseded**。当前主线已切换为 V6 transport-first + σ-normalize ablation；详见下一节 "Current Status (as of 2026-05-03)"。本节保留以保历史可回溯。
 
 1. 做同预算因果消融（50k）：`hop0_off` vs `hop0_on`。
 2. 若目标是优先修第一跳：
@@ -209,6 +234,37 @@ L_total = L_pair + lambda_roll * L_rollout + lambda_img * L_img_hop0 (+ optional
    - 调整 rollout step weights 为前重后轻；
    - 维持 clip3 统一评估与 JSON/CSV 固化输出。
 3. 保持不改主状态（latent-only），不引入 dual-state transport。
+
+## Current Status (as of 2026-05-03)
+
+**主线已切换**：`50k_formal_v3_chainstable` → `50k_foc_lite` / `v6_transport_first` / `v6_1_rollout_floor` 系列。Best-metric 已统一为 `val_select_score`（multi-objective），rolling window evaluation `max_val_batches=64, eval_interval=400, val_window_mode=rolling`。
+
+**协议源**（canonical, 不要在 CLAUDE.md 里复述细节）：
+
+- [review/0502/POST_V6_NEXT_STEPS.md](review/0502/POST_V6_NEXT_STEPS.md) — V6 → ablation transition master plan
+  - §6.4 LOCKED：Risk 4 paired-diff threshold = 0.10；判读由 `review/0502/scripts/paired_diff_judge.py` 自动化
+  - §6.6 LOCKED：blinded effect-size pre-registration `X = max(0.10, 3 × paired_CV_A)`，window `[40000, 60000]`，metric `val_select_score`；锁定由 `review/0502/scripts/lock_effect_size_threshold.py` 自动化（exit codes 1/2/3/4/7）
+  - §8.6 / §8.7：执行顺序硬约束（X 必须在 C_uniform full-val 之前锁定）
+
+**当前 ablation 三支（待 operator 确认，见 [review/0503/local/OPERATOR_QUESTIONS.md](review/0503/local/OPERATOR_QUESTIONS.md) Q1）**：
+
+- `A_main`：V6 transport-first，step-weight middle-heavy（paper 主张的 "σ-norm 是核心" 的对照实验 baseline）
+- `C_uniform`：B_sanity 上加 σ-normalizer ON，step-weight uniform（盲分析对照）
+- `V6.1`：rollout floor 加固版（独立产线，非 σ-norm ablation 的一部分）
+
+**强约束（do not violate）**：
+
+1. 在 `EFFECT_SIZE_LOCKED.md` 写入并 push 到 `gitee/foc_lite_hop0` 之前，**禁止**对 C_uniform 跑 full-val（顺序违例 = pre-registration 失效 = desk-reject 风险）
+2. §6.4 / §6.6 的 LOCKED 参数（floor=0.10, slope=3, threshold=0.10, window=[40000,60000]）**禁止改动**；只能通过 `--deviation-note` 在 lock 文件里公开窗口偏离
+3. CCT-224 / ΔB-aware reweighting / uncertainty-gated hop0（见 `IDEA_REPORT.md`）当前**全部 deferred**；σ-norm ablation 落地后再回到 idea backlog
+4. 当前在跑的实验保留 `save_interval=20000` 以避免 disrupt；下一批新实验再切换为协议规范版本
+
+**最近 milestone commit**（gitee/foc_lite_hop0）：
+
+- `8f65584` / `9811d02`：Method D ckpt selection + ROLLING_WINDOW_TRADEOFF 决策
+- `867b5c0`：§6.6 blinded pre-registration 锁定
+- `e9ae9e5`：§6.4 paired_diff_judge.py + threshold 0.10 锁定
+- `7100839`：lock_effect_size_threshold.py（自动化 §6.6.2 Step 3-4） + README 公开版润色
 
 ## Notes
 
