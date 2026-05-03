@@ -26,6 +26,9 @@ Coverage map (Phase-1 review Q-A + §11.1 Q10 acceptance):
   R11 multi-line anchor → first non-empty line wins (with stderr warn).
   R12 happy-path on the actual repo: anchor file matches at least one
       configured remote (skipped if not in a git repo).
+  R13 anchor file with leading UTF-8 BOM (B3a Lane B BLOCKER hardening):
+      `_load_anchor` strips the BOM via encoding='utf-8-sig'.
+  R14 end-to-end resolve succeeds even with a BOM-prefixed anchor file.
 
 The resolver accepts an injectable `remotes_provider` callable so we can
 unit-test the matching logic without spawning git subprocesses or mutating
@@ -373,6 +376,38 @@ class TestResolveCanonicalRemote(unittest.TestCase):
                     remotes_provider=lambda: {},
                 )
             self.assertIn("no fetch remotes", str(ctx.exception))
+        finally:
+            td.cleanup()
+
+    def test_R13_load_anchor_strips_utf8_bom(self):
+        """B3a (Lane B BLOCKER): anchor file with leading UTF-8 BOM
+        (0xEF 0xBB 0xBF, e.g. saved by a Windows editor) must NOT silently
+        break canonical-remote matching. `_load_anchor` opens with
+        encoding='utf-8-sig' so the BOM is consumed."""
+        td = TemporaryDirectory()
+        try:
+            anchor_file = Path(td.name) / L.CANONICAL_REMOTE_FILENAME
+            anchor_file.write_bytes(b"\xef\xbb\xbf" + ANCHOR_VALUE.encode("utf-8") + b"\n")
+            text = L._load_anchor(Path(td.name))
+            self.assertEqual(text, ANCHOR_VALUE,
+                             "BOM should be stripped; got {!r}".format(text))
+            # Sanity: the BOM bytes are NOT in the returned string.
+            self.assertNotIn("\ufeff", text)
+        finally:
+            td.cleanup()
+
+    def test_R14_resolve_works_with_bom_anchor(self):
+        """End-to-end: resolver succeeds even when anchor file has BOM."""
+        td = TemporaryDirectory()
+        try:
+            anchor_file = Path(td.name) / L.CANONICAL_REMOTE_FILENAME
+            anchor_file.write_bytes(b"\xef\xbb\xbf" + ANCHOR_VALUE.encode("utf-8") + b"\n")
+            remotes = {"gitee": "git@gitee.com:jqu9/PET_LatentResidual.git"}
+            name, url = L.resolve_canonical_remote(
+                Path(td.name),
+                remotes_provider=lambda: remotes,
+            )
+            self.assertEqual(name, "gitee")
         finally:
             td.cleanup()
 

@@ -152,7 +152,18 @@ def parse_args() -> argparse.Namespace:
                         "matching it against `git remote -v`. On the operator's "
                         "host the canonical remote is named `origin`; on the "
                         "author's Mac it is named `gitee`. Pass an explicit name "
-                        "to bypass the resolver (e.g. when ambiguous).")
+                        "to bypass the resolver (e.g. when ambiguous). The "
+                        "supplied name is still verified to point at the "
+                        "canonical anchor URL unless --force-unsafe-remote is "
+                        "also set.")
+    p.add_argument("--force-unsafe-remote", action="store_true",
+                   help="DANGEROUS: skip the canonical-anchor verification of "
+                        "the URL behind --remote, AND skip the pre-push TOCTOU "
+                        "re-verification. Default behavior (B5/B6 hardening) "
+                        "is to compare `git remote get-url <name>` against the "
+                        "anchor both right after argparse and immediately "
+                        "before push. Only set this flag when intentionally "
+                        "testing against a fork.")
     p.add_argument("--allow-dirty", action="store_true",
                    help="DANGEROUS: bypass guard 1 (clean working tree). Only "
                         "for development testing; never use in production.")
@@ -359,6 +370,45 @@ def _match_remote_by_anchor(
     return matches
 
 
+def _load_anchor(repo_root: Path) -> str:
+    """Read and validate `.review_canonical_remote`. Shared by
+    `resolve_canonical_remote()` and the `--remote` validation path.
+
+    B3a hardening: opens with ``encoding='utf-8-sig'`` so a stray UTF-8 BOM
+    (e.g. from a Windows editor) does not silently break the match.
+
+    Returns the anchor text (stripped, single line). Raises
+    `CanonicalRemoteError` on missing / empty file. Multi-line files emit a
+    stderr warning and the first non-empty line is used.
+    """
+    anchor_path = repo_root / CANONICAL_REMOTE_FILENAME
+    if not anchor_path.exists():
+        raise CanonicalRemoteError(
+            f"missing anchor file `{CANONICAL_REMOTE_FILENAME}` at {repo_root}. "
+            f"Create it with the canonical URL fragment, e.g.\n"
+            f"    echo 'gitee.com:jqu9/PET_LatentResidual' > "
+            f"{anchor_path}\n"
+            f"Or pass `--remote <name>` to bypass the resolver."
+        )
+    # B3a (Lane B HEAVY-FLAG): use utf-8-sig so a leading BOM is stripped.
+    anchor = anchor_path.read_text(encoding="utf-8-sig").strip()
+    if not anchor:
+        raise CanonicalRemoteError(
+            f"anchor file {anchor_path} is empty. Write a single line "
+            f"containing the canonical URL fragment, "
+            f"e.g. `gitee.com:jqu9/PET_LatentResidual`."
+        )
+    if "\n" in anchor:
+        # First non-empty line wins; warn on stderr so accidental multi-line
+        # files are noticed.
+        sys.stderr.write(
+            f"WARNING: {anchor_path} contains multiple lines; using only "
+            f"the first non-empty line.\n"
+        )
+        anchor = next((ln for ln in anchor.splitlines() if ln.strip()), "")
+    return anchor
+
+
 def resolve_canonical_remote(
     repo_root: Path,
     remotes_provider: "callable[[], dict[str, str]] | None" = None,
@@ -380,30 +430,7 @@ def resolve_canonical_remote(
     Returns:
       (remote_name, original_fetch_url) on unique match.
     """
-    anchor_path = repo_root / CANONICAL_REMOTE_FILENAME
-    if not anchor_path.exists():
-        raise CanonicalRemoteError(
-            f"missing anchor file `{CANONICAL_REMOTE_FILENAME}` at {repo_root}. "
-            f"Create it with the canonical URL fragment, e.g.\n"
-            f"    echo 'gitee.com:jqu9/PET_LatentResidual' > "
-            f"{anchor_path}\n"
-            f"Or pass `--remote <name>` to bypass the resolver."
-        )
-    anchor = anchor_path.read_text().strip()
-    if not anchor:
-        raise CanonicalRemoteError(
-            f"anchor file {anchor_path} is empty. Write a single line "
-            f"containing the canonical URL fragment, "
-            f"e.g. `gitee.com:jqu9/PET_LatentResidual`."
-        )
-    if "\n" in anchor:
-        # First non-empty line wins; warn on stderr so accidental multi-line
-        # files are noticed.
-        sys.stderr.write(
-            f"WARNING: {anchor_path} contains multiple lines; using only "
-            f"the first non-empty line.\n"
-        )
-        anchor = next((ln for ln in anchor.splitlines() if ln.strip()), "")
+    anchor = _load_anchor(repo_root)
 
     if remotes_provider is not None:
         remotes = remotes_provider()
@@ -490,18 +517,37 @@ def compute_paired_cv(
     """
     rows, sha = load_metrics_with_hash(metrics_path)
     series: list[float] = []
+    # Lane A A5 hardening: surface in-window rows whose `step` is parseable
+    # but whose metric value is missing or non-numeric (a likely indicator
+    # of a trainer partial-write or a schema regression). Out-of-window
+    # rows are intentionally NOT counted here — they are correctly ignored
+    # as out-of-scope.
+    skipped_no_metric = 0
+    skipped_bad_value = 0
     for r in rows:
         step = get_row_step(r)
         if step is None:
             continue
+        in_window = step_min <= step <= step_max
         if LOCKED_METRIC_KEY not in r:
+            if in_window:
+                skipped_no_metric += 1
             continue
         try:
             val = float(r[LOCKED_METRIC_KEY])
         except (TypeError, ValueError):
+            if in_window:
+                skipped_bad_value += 1
             continue
-        if step_min <= step <= step_max and val > 0.0:
+        if in_window and val > 0.0:
             series.append(val)
+
+    if skipped_no_metric or skipped_bad_value:
+        sys.stderr.write(
+            f"[warn] compute_paired_cv: skipped {skipped_no_metric} in-window "
+            f"row(s) missing `{LOCKED_METRIC_KEY}` and {skipped_bad_value} "
+            f"row(s) with non-numeric value (potential trainer partial-write).\n"
+        )
 
     n = len(series)
     if n < 5:
@@ -818,6 +864,7 @@ def main() -> int:
         f"  metric:         {LOCKED_METRIC_KEY}\n"
         f"  N:              {n}\n"
         f"  metrics SHA256: {metrics_hash}\n"
+        f"  LOCKED_PROTOCOL_VERSION: {LOCKED_PROTOCOL_VERSION}\n"
     )
     try:
         git(["add", str(rel_output)], cwd=repo_root)
@@ -847,8 +894,42 @@ def main() -> int:
     # is the documented escape hatch for the ≥2-match ambiguity case.
     if args.remote is not None:
         resolved_remote = args.remote
-        print(f"[info] using explicit --remote {resolved_remote!r} "
-              f"(canonical-remote resolver bypassed)")
+        # B6 hardening (Lane B HEAVY-FLAG): still verify the supplied name's
+        # URL matches the canonical anchor unless --force-unsafe-remote.
+        # This catches typos like `--remote orign` that would otherwise push
+        # to a non-canonical (or non-existent) remote silently.
+        if args.force_unsafe_remote:
+            resolved_url = "(unverified, --force-unsafe-remote)"
+            print(f"[warn] --force-unsafe-remote: skipping canonical-anchor "
+                  f"verification for --remote {resolved_remote!r}")
+        else:
+            try:
+                check_url = git(["remote", "get-url", resolved_remote],
+                                cwd=repo_root)
+            except RuntimeError as exc:
+                sys.stderr.write(
+                    f"ERROR: cannot read URL for --remote "
+                    f"{resolved_remote!r}: {exc}\n"
+                )
+                return 6
+            try:
+                anchor_text = _load_anchor(repo_root)
+            except CanonicalRemoteError as exc:
+                sys.stderr.write(
+                    f"ERROR (--remote anchor verification): {exc}\n"
+                )
+                return 6
+            if _normalize_remote_url(check_url) != _normalize_remote_url(anchor_text):
+                sys.stderr.write(
+                    f"ERROR: --remote {resolved_remote!r} URL "
+                    f"({check_url}) does not match canonical anchor "
+                    f"({anchor_text!r}). Pass --force-unsafe-remote to "
+                    f"override (NOT recommended for pre-registration).\n"
+                )
+                return 6
+            resolved_url = check_url
+        print(f"[info] using explicit --remote {resolved_remote!r} \u2192 "
+              f"{resolved_url}")
     else:
         try:
             resolved_remote, resolved_url = resolve_canonical_remote(repo_root)
@@ -857,6 +938,30 @@ def main() -> int:
             return 6
         print(f"[info] resolved canonical remote: {resolved_remote} \u2192 "
               f"{resolved_url}")
+
+    # B5 hardening (Lane B BLOCKER): immediately before push, re-read the
+    # remote URL and compare to what we resolved. Catches a TOCTOU race
+    # where another process did `git remote set-url` between resolution
+    # (or argparse) and push, redirecting the pre-registration timestamp
+    # to a non-canonical repo. Skip if --force-unsafe-remote.
+    if not args.force_unsafe_remote:
+        try:
+            push_time_url = git(["remote", "get-url", resolved_remote],
+                                cwd=repo_root)
+        except RuntimeError as exc:
+            sys.stderr.write(
+                f"ERROR: cannot re-verify remote {resolved_remote!r} "
+                f"pre-push: {exc}\n"
+            )
+            return 6
+        if _normalize_remote_url(push_time_url) != _normalize_remote_url(resolved_url):
+            sys.stderr.write(
+                f"ERROR (TOCTOU): remote {resolved_remote!r} URL changed "
+                f"between resolution ({resolved_url}) and push "
+                f"({push_time_url}). Refusing to push to non-canonical "
+                f"target. You committed locally; investigate and retry.\n"
+            )
+            return 6
 
     try:
         # Detect current branch

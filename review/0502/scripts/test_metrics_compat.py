@@ -36,6 +36,9 @@ This test is self-contained and uses only stdlib. It exercises:
        window [400, 18000] yields N=45, mean>0, std>0, cv finite
   T12: paired_diff_judge.index_by_step on B-fixture yields exactly 46 entries
        (the function uses no window filter; fixture has 46 rows total)
+  T13: compute_paired_cv emits a stderr warning when in-window rows are
+       skipped due to missing/invalid metric value (A5 hardening, Lane A HIGH).
+  T14: negative-control — compute_paired_cv stays silent on clean B-fixture.
 
 Exit 0 = all pass. Non-zero = first failed test name + reason on stderr.
 """
@@ -213,6 +216,80 @@ class TestLockComputePairedCV(unittest.TestCase):
         # SHA must be a 64-char hex digest
         self.assertEqual(len(sha), 64)
         self.assertTrue(all(c in "0123456789abcdef" for c in sha))
+
+    def test_T13_compute_paired_cv_warns_on_skipped_rows(self):
+        """A5 hardening (Lane A HIGH): rows with parseable `step` in window
+        but missing `val_select_score` (or with a non-numeric value) must
+        emit a stderr warning so trainer partial-writes don't vanish
+        silently from the locked sample.
+        """
+        import io
+        import tempfile
+        import contextlib
+        import lock_effect_size_threshold as lock
+
+        # Build a synthetic metrics file: 5 valid rows + 2 in-window rows
+        # missing the metric key + 1 in-window row with non-numeric value +
+        # 1 out-of-window row missing the key (must NOT count toward warn).
+        good_rows = [
+            {"step": s, "event": "val", "val_select_score": 0.50}
+            for s in (400, 800, 1200, 1600, 2000)
+        ]
+        bad_no_key = [
+            {"step": 2400, "event": "val"},   # in-window, no val_select_score
+            {"step": 2800, "event": "val"},   # in-window, no val_select_score
+        ]
+        bad_value = [
+            {"step": 3200, "event": "val", "val_select_score": "not_a_number"},
+        ]
+        out_of_window = [
+            {"step": 99999, "event": "val"},  # outside [400, 18000]
+        ]
+        all_rows = good_rows + bad_no_key + bad_value + out_of_window
+
+        with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False
+        ) as f:
+            for r in all_rows:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = Path(f.name)
+        try:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                cv, mean, std, n, series, sha = lock.compute_paired_cv(
+                    tmp_path, 400, 18000
+                )
+            warning = stderr.getvalue()
+            # The 5 good rows survive, the 2-no-key + 1-bad-value get warned.
+            self.assertEqual(n, 5,
+                             f"expected 5 surviving rows, got {n}")
+            self.assertIn("compute_paired_cv", warning)
+            self.assertIn("skipped", warning)
+            # The two no-key in-window rows are reported.
+            self.assertIn("2 in-window row(s) missing", warning)
+            # The single bad-value row is reported separately.
+            self.assertIn("1 row(s) with non-numeric", warning)
+            # The out-of-window row must NOT be counted.
+            self.assertNotIn("3 in-window", warning)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def test_T14_compute_paired_cv_no_warning_on_clean_data(self):
+        """Negative-control for T13: when all in-window rows are clean,
+        compute_paired_cv emits NO warning to stderr."""
+        import io
+        import contextlib
+        import lock_effect_size_threshold as lock
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            cv, mean, std, n, series, sha = lock.compute_paired_cv(
+                B_FIXTURE, B_PREFIX_STEP_MIN, B_PREFIX_STEP_MAX
+            )
+        self.assertEqual(n, 45)
+        # No "[warn]" line should be emitted on clean B-fixture.
+        self.assertNotIn("[warn] compute_paired_cv",
+                         stderr.getvalue(),
+                         "B-fixture is clean; warning is a false positive")
 
 
 class TestPairedDiffIndex(unittest.TestCase):
