@@ -52,7 +52,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--metrics", required=True, type=Path,
                    help="Path to metrics.jsonl produced by training")
     p.add_argument("--ckpt-dir", required=True, type=Path,
-                   help="Directory containing ckpt_step_*.pt / best.pt / ckpt_last.pt")
+                   help="Directory containing trainer-saved ckpts: "
+                        "step_*.pt (or legacy ckpt_step_*.pt) / best.pt / "
+                        "last.pt (or legacy ckpt_last.pt)")
     p.add_argument("--neighborhood", type=int, default=10,
                    help="K: number of eval rows to include on each side of "
                         "each candidate step. Default 10 (i.e., 21 rows total). "
@@ -101,44 +103,84 @@ def detect_metric_key(val_rows: list[dict], override: str | None) -> str:
 
 def list_saved_steps(ckpt_dir: Path,
                      include_best: bool,
-                     include_last: bool) -> list[int]:
+                     include_last: bool) -> tuple[list[int], dict[int, Path]]:
+    """Return (sorted_unique_steps, step_to_path) discovered in ``ckpt_dir``.
+
+    C3 fix (Round-5 operator review, May 4 2026): the trainer
+    (``train_first_hop.py``) saves files as ``step_{step:06d}.pt`` and
+    ``last.pt`` / ``best.pt``. Earlier revisions of this script only
+    matched the legacy names ``ckpt_step_*.pt`` and ``ckpt_last.pt`` and
+    so failed end-to-end on real trainer outputs (``[error] No saved
+    ckpts found ... matching ckpt_step_*.pt``). We now glob BOTH naming
+    conventions and prefer whichever file actually exists for the
+    final recommendation.
+
+    The ckpt internals key is also schema-tolerant: trainer code writes
+    ``"step"``; legacy save_checkpoint paths and earlier eval scripts
+    looked at ``"global_step"``. We try ``step`` first, then
+    ``global_step``, mirroring ``_metrics_compat.get_row_step``.
+
+    Returns a parallel mapping ``step -> first matching .pt path`` so
+    the caller can print a real, existing file path in its final
+    recommendation rather than blindly constructing
+    ``ckpt_step_<step>.pt``.
+    """
     steps: set[int] = set()
+    step_to_path: dict[int, Path] = {}
 
-    for cf in ckpt_dir.glob("ckpt_step_*.pt"):
-        try:
-            steps.add(int(cf.stem.split("_")[-1]))
-        except ValueError:
-            continue
+    # Saved-grid ckpts. Both new (step_NNNNNN.pt) and legacy
+    # (ckpt_step_*.pt) shapes. Step is the integer suffix of the stem.
+    for pattern in ("step_*.pt", "ckpt_step_*.pt"):
+        for cf in ckpt_dir.glob(pattern):
+            try:
+                step = int(cf.stem.split("_")[-1])
+            except ValueError:
+                continue
+            steps.add(step)
+            # First-match-wins per step. New-form (step_*.pt) is listed
+            # first so it wins ties.
+            step_to_path.setdefault(step, cf)
 
-    def _try_load_step(name: str) -> int | None:
-        path = ckpt_dir / name
-        if not path.exists():
-            return None
-        try:
-            import torch  # heavy import; only needed when --include-best-pt / --include-last-pt
-        except ImportError:
-            print(f"[warn] torch not available; cannot extract step from {name}")
-            return None
-        try:
-            ckpt = torch.load(path, map_location="cpu", weights_only=False)
-        except Exception as exc:
-            print(f"[warn] failed to load {name}: {exc}")
-            return None
-        s = ckpt.get("global_step", None)
-        return int(s) if s is not None else None
+    def _try_load_step(candidates: list[str]) -> tuple[int, Path] | None:
+        for name in candidates:
+            path = ckpt_dir / name
+            if not path.exists():
+                continue
+            try:
+                import torch  # heavy import; only on --include-best-pt / --include-last-pt
+            except ImportError:
+                print(f"[warn] torch not available; cannot extract step from {name}")
+                return None
+            try:
+                ckpt = torch.load(path, map_location="cpu", weights_only=False)
+            except Exception as exc:
+                print(f"[warn] failed to load {name}: {exc}")
+                continue
+            # C3: trainer writes "step"; legacy save paths used "global_step".
+            s = ckpt.get("step", ckpt.get("global_step", None))
+            if s is None:
+                print(f"[warn] {name}: no `step` or `global_step` key in ckpt")
+                continue
+            return int(s), path
+        return None
 
     if include_best:
-        s = _try_load_step("best.pt")
-        if s is not None:
+        result = _try_load_step(["best.pt"])
+        if result is not None:
+            s, path = result
             steps.add(s)
+            step_to_path.setdefault(s, path)
             print(f"[info] best.pt at step {s}")
     if include_last:
-        s = _try_load_step("ckpt_last.pt")
-        if s is not None:
+        # New form first (last.pt), then legacy (ckpt_last.pt).
+        result = _try_load_step(["last.pt", "ckpt_last.pt"])
+        if result is not None:
+            s, path = result
             steps.add(s)
-            print(f"[info] ckpt_last.pt at step {s}")
+            step_to_path.setdefault(s, path)
+            print(f"[info] last.pt at step {s}")
 
-    return sorted(steps)
+    return sorted(steps), step_to_path
 
 
 def smooth_at_step(val_rows: list[dict],
@@ -189,15 +231,16 @@ def main() -> None:
     print(f"[info] neighborhood K={args.neighborhood} → averaging "
           f"{2*args.neighborhood + 1} eval rows per candidate")
 
-    saved_steps = list_saved_steps(
+    saved_steps, step_to_path = list_saved_steps(
         args.ckpt_dir,
         include_best=args.include_best_pt,
         include_last=args.include_last_pt,
     )
     if not saved_steps:
         raise SystemExit(
-            f"No saved ckpts found in {args.ckpt_dir} matching ckpt_step_*.pt; "
-            f"--include-best-pt / --include-last-pt also yielded none"
+            f"No saved ckpts found in {args.ckpt_dir} matching "
+            f"step_*.pt or ckpt_step_*.pt; --include-best-pt / "
+            f"--include-last-pt also yielded none"
         )
     print(f"[info] candidate ckpt steps: {saved_steps}")
     print()
@@ -259,12 +302,27 @@ def main() -> None:
                   f"Run full-val on BOTH and use mean ± std as paper number.")
     print()
     print(f"   Next step: load this ckpt and run full-val:")
-    ckpt_name = f"ckpt_step_{best['step']}.pt"
-    if not (args.ckpt_dir / ckpt_name).exists():
-        ckpt_name = f"<the .pt file at step {best['step']}>"
+    # C3: prefer the actually-existing file that list_saved_steps
+    # discovered; only fall back to a constructed name (with explicit
+    # placeholder) if no .pt for the chosen step is on disk.
+    discovered = step_to_path.get(best["step"])
+    if discovered is not None:
+        ckpt_path = discovered
+    else:
+        # No .pt on disk for the recommended step (extremely rare; could
+        # happen if --include-best-pt picked a step whose grid ckpt was
+        # pruned). Construct a candidate name using the new convention
+        # and warn explicitly.
+        candidate = args.ckpt_dir / f"step_{best['step']:06d}.pt"
+        if candidate.exists():
+            ckpt_path = candidate
+        else:
+            ckpt_path = args.ckpt_dir / f"<the .pt file at step {best['step']}>"
+            print(f"   [warn] no .pt file on disk for step {best['step']}; "
+                  f"placeholder shown below.")
     print(f"     python eval_first_hop_224_clip3.py \\")
     print(f"       --config <yaml> \\")
-    print(f"       --checkpoint {args.ckpt_dir / ckpt_name} \\")
+    print(f"       --checkpoint {ckpt_path} \\")
     print(f"       --split val --max-slices 0")
 
 

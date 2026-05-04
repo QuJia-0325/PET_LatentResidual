@@ -652,6 +652,19 @@ def compute_paired_stats_from_rows(
     parseable but whose `LOCKED_METRIC_KEY` is missing or non-numeric
     are tallied and surfaced via a `[warn]` line on stderr — never
     silently discarded. Out-of-window rows are correctly ignored.
+
+    F2 hardening (Round-5 operator review, May 4 2026): the warning
+    only fires on **val-like** in-window rows. The trainer emits two
+    kinds of in-window rows: (1) `event="val"` rows that DO carry
+    ``val_select_score`` and are the true measurement, and (2)
+    `event="train"` rows (and other non-val schema rows) that NEVER
+    carry val metrics. Counting (2) as "skipped" produces a confusing
+    33-row warning on perfectly healthy metrics files (operator
+    observed this on `A_sanity` tail-window). A row is val-like if
+    its ``event`` field equals "val" (case-insensitive). Rows with
+    no ``event`` field default to val-like for legacy fixtures
+    (e.g. `B_sanity_metrics_val50_schema_reference.jsonl` has no
+    explicit event marker but every row IS a val measurement).
     """
     series: list[float] = []
     skipped_no_metric = 0
@@ -661,8 +674,21 @@ def compute_paired_stats_from_rows(
         if step is None:
             continue
         in_window = step_min <= step <= step_max
+        # F2: a row is val-like iff event == "val" or event is absent
+        # (legacy fixtures are val-only, so absence defaults to val-like).
+        # event == "train" or any other explicit non-val tag means the
+        # row is NOT a val measurement and the absence of val_select_score
+        # is expected, not suspicious.
+        event = r.get("event")
+        if event is None:
+            is_val_like = True
+        elif isinstance(event, str):
+            is_val_like = event.lower() == "val"
+        else:
+            # Defensive: non-string event field is treated as non-val.
+            is_val_like = False
         if LOCKED_METRIC_KEY not in r:
-            if in_window:
+            if in_window and is_val_like:
                 skipped_no_metric += 1
             continue
         try:
@@ -1110,6 +1136,16 @@ def main() -> int:
     # where another process did `git remote set-url` between resolution
     # (or argparse) and push, redirecting the pre-registration timestamp
     # to a non-canonical repo. Skip if --force-unsafe-remote.
+    #
+    # F3 hardening (Round-5 operator review, May 4 2026): also verify
+    # the PUSH URL, not only the fetch URL. `git remote -v` and
+    # `git remote get-url <remote>` both return the FETCH URL by
+    # default. If `remote.<name>.pushURL` is configured separately
+    # (e.g. operator points fetch at a read-only mirror but pushes
+    # to a write target), `git push <remote> <branch>` will go to
+    # the pushURL — bypassing our fetch-URL canonical check entirely.
+    # Verify both shapes and require both to canonicalize to the
+    # resolved URL.
     if not args.force_unsafe_remote:
         try:
             push_time_url = git(["remote", "get-url", resolved_remote],
@@ -1127,6 +1163,35 @@ def main() -> int:
                 f"push ({_safe_repr_url(push_time_url)}). Refusing to push "
                 f"to non-canonical target. You committed locally; "
                 f"investigate and retry.\n"
+            )
+            return 6
+
+        # F3: verify the dedicated pushURL configuration. `--push` makes
+        # git report what `git push` would actually use; if no separate
+        # pushURL is configured, this returns the fetch URL (so the check
+        # is trivially satisfied on the common case). If a pushURL IS
+        # configured and disagrees with the resolved canonical, refuse.
+        try:
+            push_url_explicit = git(
+                ["remote", "get-url", "--push", resolved_remote],
+                cwd=repo_root,
+            )
+        except RuntimeError as exc:
+            sys.stderr.write(
+                f"ERROR: cannot re-verify pushURL of remote "
+                f"{resolved_remote!r} pre-push: {exc}\n"
+            )
+            return 6
+        if _normalize_remote_url(push_url_explicit) != _normalize_remote_url(resolved_url):
+            sys.stderr.write(
+                f"ERROR (pushURL mismatch): remote {resolved_remote!r} "
+                f"has a dedicated pushURL "
+                f"({_safe_repr_url(push_url_explicit)}) that does not "
+                f"canonicalize to the resolved URL "
+                f"({_safe_repr_url(resolved_url)}). `git push` would "
+                f"silently target the pushURL, bypassing the canonical "
+                f"check. Refusing to push. To override (NOT recommended "
+                f"for pre-registration), pass --force-unsafe-remote.\n"
             )
             return 6
 

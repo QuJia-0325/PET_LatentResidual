@@ -313,3 +313,126 @@ The C2.3 commit will:
 - remain local-only per the standing operator directive on repository topology
 - run the full test suite (16/16 + 42/42 + new tests) and require all green before commit
 - be signed off (`git commit -s`) following C2.1 / C2.2 precedent
+
+---
+
+## 7. Round 6 — Operator/codex review of C2.3 → C3 + F2 + F3 + F4 absorption
+
+**Source**: `review/0503/operator/OPERATOR_REPLY_C2_3_20260504.md`. Codex
+read C2.3 (D1 + E1) on the operator host, ran the test suite (1/69 failed
+on default `python3` due to missing PyYAML; 69/69 OK on the conda env), and
+raised 5 findings (F1–F5). Round 6 absorbs F1 (renamed C3), F2, F3, F4
+in-tree; F5 deferred to R1b lock-policy decision.
+
+### 7.1 Finding inventory
+
+| ID | Severity | Locus | Summary |
+|----|----------|-------|---------|
+| F1→**C3** | **HIGH (blocker)** | `select_best_ckpt_smoothed.py::list_saved_steps` | only matched legacy `ckpt_step_*.pt` / `ckpt_last.pt` and `global_step` key, but real trainer writes `step_*.pt` / `last.pt` / key=`step` → Method-D non-operational on real outputs |
+| F2 | MEDIUM | `lock_effect_size_threshold.py::compute_paired_stats_from_rows` L657-679 | `skipped_no_metric` counter increments on EVERY in-window train row missing `val_select_score`; produces 33-row false-positive `[warn]` on a perfectly healthy `A_sanity` metrics file |
+| F3 | MEDIUM | `lock_effect_size_threshold.py::main` pre-push TOCTOU L1109-1130 | only re-checked fetch URL; if `remote.<name>.pushURL` is configured separately, `git push` follows it and bypasses the canonical check |
+| F4 | LOW | `OPERATOR_CONFIRM_REQUEST_C2_3.md §2` | recommended bare `python3` which lacks PyYAML on operator host → spurious 1/69 fail |
+| F5 | DEFERRED | Guard 5 / R1b lock-policy | Guard 5 currently permissive on absent rolling-window control; codex flagged it as still-open at R1b lock time |
+
+### 7.2 C3 — Method-D selector dual-name compatibility (P0)
+
+**Disposition**: Fix in tree.
+
+**Patch surface**: `review/0502/scripts/select_best_ckpt_smoothed.py`
+
+- `list_saved_steps()` rewritten to (a) glob both `step_*.pt` and `ckpt_step_*.pt`; (b) return `(sorted_steps, step_to_path)`; (c) try both `last.pt` and `ckpt_last.pt` for `--include-last-pt`; (d) fall back ckpt-key from `"step"` → `"global_step"`.
+- `--ckpt-dir` help text updated to list both naming forms.
+- Final recommendation in `main()` prints the actually-existing `.pt` path discovered in the loop, falling back to a constructed `step_{step:06d}.pt` only when no match exists, with explicit `[warn]` placeholder otherwise.
+
+**Falsifiability**: `review/0502/scripts/test_select_best_ckpt_smoothed.py` (new file, 12 tests, 5 classes):
+
+| Class | Cases | Verifies |
+|-------|-------|----------|
+| `TestListSavedStepsNewForm` | 2 | new-form zero-padded + unpadded step parsing |
+| `TestListSavedStepsLegacyForm` | 1 | legacy-form still works |
+| `TestListSavedStepsCohabitation` | 2 | mixed dir: new wins on tie; disjoint steps both kept |
+| `TestListSavedStepsRobustness` | 3 | non-ckpt files ignored, invalid suffix skipped, empty dir → `[]` |
+| `TestListSavedStepsWithTorch` | 4 (skipUnless torch) | step-key + legacy global_step + ckpt_last.pt + step-preferred |
+
+Mac result: 8 OK + 4 torch-skipped = 12/12 PASS.
+
+### 7.3 F3 — pushURL TOCTOU (P1)
+
+**Disposition**: Fix in tree.
+
+**Patch surface**: `review/0502/scripts/lock_effect_size_threshold.py::main` L1149-1196 (within the existing `if not args.force_unsafe_remote:` guard).
+
+After the existing fetch-URL TOCTOU re-check, add a parallel `git remote get-url --push <remote>` call. If `_normalize_remote_url(push_url) != _normalize_remote_url(resolved_url)`, abort with `ERROR (pushURL mismatch): ... refusing to push`. The new check is a NO-OP on the common case (no separate pushURL configured → `--push` returns the fetch URL and the equality is trivial). The override path is the same `--force-unsafe-remote` flag (already documented as not-recommended for pre-registration).
+
+**Falsifiability**: `review/0502/scripts/test_remote_resolver.py::TestPushUrlTOCTOU` (new class, 3 cases):
+
+| Case | Setup | Expected |
+|------|-------|----------|
+| F3a | `git init`; `remote add origin <fetch>`; no pushURL | `get-url` and `get-url --push` both return fetch URL; both normalize equal |
+| F3b | also `remote set-url --push origin <attacker>` | fetch normalizes canonical; pushURL normalizes DIFFERENT → F3 catches |
+| F3c | also `remote set-url --push origin <https form of same repo>` | fetch ssh + pushURL https both normalize to SAME canonical → F3 does NOT false-positive |
+
+These tests use real local `git init` tempdirs (no subprocess mocking), so they exercise the actual git binary's `--push` semantics — the strongest possible signal that F3 holds across git versions on operator host.
+
+### 7.4 F2 — train-row warning narrowing (P2)
+
+**Disposition**: Fix in tree.
+
+**Patch surface**: `review/0502/scripts/lock_effect_size_threshold.py::compute_paired_stats_from_rows` L657-712.
+
+A row is now classified as "val-like" iff `event=="val"` (case-insensitive) OR the `event` field is absent (legacy-fixture compatibility — the operator's `B_sanity_metrics_val50_schema_reference.jsonl` has no event tag but is val-only by construction). Only val-like in-window rows can increment `skipped_no_metric`. Train rows are still IGNORED for series construction (they have no `val_select_score` to plot), but they no longer noisily inflate the warning counter.
+
+The trainer's actual emitted event values are confirmed `"train"` (L2217) and `"val"` (L2503) in `train_first_hop.py`, so the case-insensitive equality is exact.
+
+**Falsifiability**: `test_metrics_compat.py::TestLockComputePairedCV`, three new cases:
+
+| Test | Surface | Asserts |
+|------|---------|---------|
+| T17 | 5 val + 33 train rows, all in window | N=5 series; **NO** `[warn] compute_paired_cv` line in stderr |
+| T18 (negative-control) | 5 val + 2 partial val (event=val, no metric) | warn STILL fires with "2 in-window row(s) missing" |
+| T19 (legacy-compat) | rows with no event field, 1 partial | warn fires with "1 in-window row(s) missing" |
+
+T18 is critical: F2 must NOT silence genuine val partial-writes, only the train-row noise. T17 reproduces the operator's empirical "33 spurious skips" condition.
+
+### 7.5 F4 — operator-confirm doc PyYAML guidance (P3)
+
+**Disposition**: Documentation fix only.
+
+**Patch surface**: `review/0503/local/OPERATOR_CONFIRM_REQUEST_C2_3.md §2`.
+
+Recommend `<conda-env>/bin/python -m unittest …` (e.g. `/home/qujiaxiang/.conda/envs/rae/bin/python`) and explicitly state that bare `python3` requires PyYAML. Updated test count: 87 (was 69; +12 from C3, +3 each from F2/F3, +0 from F4). Section 1's HEAD-hash expectation softened to "拉到最新 Mac 推送的 commit 即可" since this Round-6 batch will introduce new commits.
+
+**No test code change** for F4 — the missing-PyYAML failure is a runtime-dependency signal, not a regression. Hiding it (e.g. via `@unittest.skipUnless(_HAS_YAML)`) would mask the fact that the lock script CANNOT run without PyYAML.
+
+### 7.6 F5 — DEFERRED
+
+Guard 5 still aborts only on detected rolling-window control mismatch, not on absence of the control flag. Codex flags this as "permissive at lock time" — i.e. a run with no σ-normalize information at all would currently pass Guard 5. Round 6 explicitly defers this to the R1b protocol bump (where the lock-policy decision can move atomically with the locked sample). Reasoning: tightening Guard 5 mid-`v0_pending_R1a` would break the locked-sample contract; the question is a policy decision, not a bug.
+
+### 7.7 Round-6 absorption summary
+
+| Round | Findings raised | Findings absorbed in tree | Findings deferred |
+|-------|-----------------|---------------------------|-------------------|
+| 1 (Codex) | 4 | 4 | 0 |
+| 2 (Codex follow-up) | 3 | 3 | 0 |
+| 2.5 (operator pre-C1) | 1 (schema mismatch) | 1 (C1 patch) | 0 |
+| 4 (Codex Lane A) | 4 | 4 (C2.2: A1, A2, A3, A5) | 0 |
+| 5 (Lane B + Lane E) | 2 | 2 (C2.3: D1, E1) | 0 |
+| **6 (operator/codex)** | **5** | **4 (C3, F2, F3, F4)** | **1 (F5 → R1b)** |
+| **Total**             | **19**          | **18**                    | **1**             |
+
+### 7.8 Test-count audit
+
+| Round | Test file | New tests | Cumulative |
+|-------|-----------|-----------|------------|
+| C2 baseline | test_remote_resolver.py + test_metrics_compat.py | — | 49 |
+| C2.2 (A2/A3/A5) | test_metrics_compat.py | +T13/T14/T15/T16 | 53 |
+| C2.3 (D1/E1) | test_remote_resolver.py | +D1×3, +E1×3, etc. | 69 |
+| **C3 (F1)** | **test_select_best_ckpt_smoothed.py (new)** | **+12 (4 torch-gated)** | **81** |
+| **F2** | test_metrics_compat.py | **+T17/T18/T19** | **84** |
+| **F3** | test_remote_resolver.py | **+F3a/F3b/F3c** | **87** |
+
+Mac (no torch): 87 tests, 83 OK + 4 skipped → `OK (skipped=4)`.
+Operator (with torch): 87 tests, 87 OK → `OK`.
+
+LOCKED_PROTOCOL_VERSION unchanged: still `v0_pending_R1a`.
+

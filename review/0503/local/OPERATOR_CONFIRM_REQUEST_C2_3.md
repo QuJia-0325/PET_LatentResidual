@@ -25,7 +25,7 @@ c01aa27  C2.2  absorb mid-impl peer review MEDIUM polish (A2/A3/B2a/B3b/B4/B10)
 
 需要 operator 做的事情：
 1. **拉取** — §1
-2. **跑测试** — §2（期望 69/69 OK）
+2. **跑测试** — §2（期望 87 tests OK）
 3. **回答 6 个问题** — §3（用于让 Mac 侧确认远端环境与代码兼容）
 4. **决定 C2.4-tests 时机** — §4（可选，不阻塞）
 
@@ -38,9 +38,14 @@ cd <your repo path>
 git fetch gitee
 git checkout foc_lite_hop0
 git pull --ff-only gitee foc_lite_hop0
-git rev-parse HEAD                                    # 期望: de4cc881254e1565180c74c6b8f61b64bfe0b39e
-git log --oneline 8a0757a..HEAD                       # 期望: 2 行 (de4cc88 + c01aa27)
+git rev-parse HEAD                                    # 拉到最新 Mac 推送的 commit 即可
+git log --oneline 8a0757a..HEAD                       # 含 C2.3 + C3/F2/F3/F4 absorption 的若干 commit
 ```
+
+> 注：本文档原版（C2.3 时期）写了 `de4cc881` 作为期望 HEAD，那是 C2.3
+> 那一次推送的 commit。Round-6 absorption（C3 + F2 + F3 + F4）之后会
+> 有新的 commit，HEAD 会前进。只要 `--ff-only` 成功并且 §2 的测试
+> 跑通就 OK。
 
 如果 `git pull --ff-only` 报错（即出现非 fast-forward），**不要强制合并**；直接在回复中说明本机 HEAD 与冲突信息，Mac 侧再分析。
 
@@ -48,26 +53,57 @@ git log --oneline 8a0757a..HEAD                       # 期望: 2 行 (de4cc88 +
 
 ## 2. 测试验证（必做）
 
+> **F4 fix (Round-6 absorption, May 4 2026)**：必须使用带 PyYAML 的解释器。
+> Round-5 反馈中 operator 报告 T16 在 host `python3` 上 1/69 失败，原因是
+> 默认 `python3` 没有 PyYAML，而 `lock_effect_size_threshold.py` 在
+> module-load 时就 `import yaml`。如果改用 `<conda-env>/bin/python`
+> 就 69/69 OK。**切勿** 在 default `python3` 下运行此命令然后报告
+> "测试失败"，那是环境缺包，不是代码 regression。
+
+请明确使用训练用的 conda env，例如 operator 的 `rae` env：
+
 ```bash
-python3 -m unittest \
+# ✅ 正确：直接调用 conda env 的 python（不需要先 activate）
+/home/<your-user>/.conda/envs/rae/bin/python -m unittest \
     review.0502.scripts.test_remote_resolver \
-    review.0502.scripts.test_metrics_compat
+    review.0502.scripts.test_metrics_compat \
+    review.0502.scripts.test_select_best_ckpt_smoothed
 ```
 
-**期望输出**：
+或先 activate 再跑：
+
+```bash
+conda activate rae           # 或你训练用的任何 env
+python -m unittest \
+    review.0502.scripts.test_remote_resolver \
+    review.0502.scripts.test_metrics_compat \
+    review.0502.scripts.test_select_best_ckpt_smoothed
+```
+
+如果你的 env 名字不是 `rae`，把路径替换为你训练用的 conda env。
+快速判断：能跑 `train_first_hop.py` 的 python 就一定能跑测试
+（训练入口同样依赖 PyYAML）。
+
+**期望输出**（Round-6 = C3 + F2 + F3 + F4 absorption 之后）：
 
 ```
-.....................................................................
+.......................................................................................
 ----------------------------------------------------------------------
-Ran 69 tests in <X>s
+Ran 87 tests in <X>s
 
 OK
 ```
 
-如果不是 69/69 OK：
+> 数字说明：69 (C2.3 baseline) + 12 (C3 select_best e2e) + 3 (F2 train-row warning narrowing) + 3 (F3 pushURL TOCTOU) = **87**。F4 是文档修复，不引入测试。
+> 4 个 torch-gated test (`TestListSavedStepsWithTorch::*`) 在
+> 有 torch 的 env 上会跑过 (87 OK)，在无 torch 的 env 上会以 `skipped` 计入仍是 PASS
+> (`Ran 87 tests ... OK (skipped=4)`)。
+> **OK** 是唯一可接受的整体结论；不接受 `FAILED (errors=*)`。
+
+如果不是 OK：
 - 把完整 stderr 粘到回复
 - 不要修改任何代码尝试 fix（先回 Mac 这边分析）
-- 仍然继续训练（69 测试是 lock 工具内部的，不阻塞训练）
+- 仍然继续训练（这 90 测试是 lock 工具内部的，不阻塞训练）
 
 ---
 

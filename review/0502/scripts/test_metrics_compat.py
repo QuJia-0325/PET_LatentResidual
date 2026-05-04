@@ -386,6 +386,133 @@ class TestLockComputePairedCV(unittest.TestCase):
                 f"(A2 architectural single-read invariant broken)"
             )
 
+    def test_T17_train_rows_in_window_do_not_warn(self):
+        """F2 hardening (Round-5 operator review, May 4 2026): in-window
+        rows with ``event="train"`` (and other non-val schemas) NEVER
+        carry ``val_select_score``. Counting them as ``skipped_no_metric``
+        produces a false-positive ``[warn] compute_paired_cv: skipped N
+        in-window row(s) missing 'val_select_score'`` line on perfectly
+        healthy metrics files (operator observed 33 spurious skips on
+        ``A_sanity`` tail-window). The warning must only fire on
+        val-like rows (event=="val" or event absent for legacy
+        fixtures).
+        """
+        import io
+        import tempfile
+        import contextlib
+        import lock_effect_size_threshold as lock
+
+        # 5 healthy val rows (paired-CV minimum N).
+        good_val = [
+            {"step": s, "event": "val", "val_select_score": 0.50}
+            for s in (400, 800, 1200, 1600, 2000)
+        ]
+        # 33 in-window train rows that legitimately lack val_select_score.
+        # These must NOT be counted in the skipped warning.
+        train_rows = [
+            {"step": s, "event": "train", "loss": 0.1}
+            for s in range(500, 4500, 121)
+        ]
+        all_rows = good_val + train_rows
+
+        with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False
+        ) as f:
+            for r in all_rows:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = Path(f.name)
+        try:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                cv, mean, std, n, series, sha = lock.compute_paired_cv(
+                    tmp_path, 400, 18000
+                )
+            self.assertEqual(n, 5, "the 5 val rows must form the series")
+            warning = stderr.getvalue()
+            self.assertNotIn(
+                "[warn] compute_paired_cv", warning,
+                "F2: train rows in window must not trigger the "
+                "val_select_score-missing warning",
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def test_T18_val_rows_missing_metric_still_warn(self):
+        """F2 negative-control: val-event rows that genuinely lack
+        ``val_select_score`` (true trainer partial-write) MUST still
+        trigger the warning. F2 only suppresses train-row noise.
+        """
+        import io
+        import tempfile
+        import contextlib
+        import lock_effect_size_threshold as lock
+
+        good = [
+            {"step": s, "event": "val", "val_select_score": 0.50}
+            for s in (400, 800, 1200, 1600, 2000)
+        ]
+        # Real partial-writes: explicitly val-event but no metric key.
+        partial_val = [
+            {"step": 2400, "event": "val"},
+            {"step": 2800, "event": "val"},
+        ]
+        with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False
+        ) as f:
+            for r in good + partial_val:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = Path(f.name)
+        try:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                cv, mean, std, n, series, sha = lock.compute_paired_cv(
+                    tmp_path, 400, 18000
+                )
+            self.assertEqual(n, 5)
+            warning = stderr.getvalue()
+            self.assertIn("[warn] compute_paired_cv", warning)
+            self.assertIn("2 in-window row(s) missing", warning)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def test_T19_event_absent_treated_as_val_for_legacy_fixtures(self):
+        """F2 backward-compat: rows with no ``event`` field default to
+        val-like, because legacy fixtures (e.g. the operator's
+        ``B_sanity_metrics_val50_schema_reference.jsonl``) have no
+        explicit event tag but every row IS a val measurement.
+        Otherwise F2 would silently drop legacy fixtures from the
+        warning surface, hiding partial-write defects.
+        """
+        import io
+        import tempfile
+        import contextlib
+        import lock_effect_size_threshold as lock
+
+        good_legacy = [
+            {"step": s, "val_select_score": 0.50}   # no "event" key
+            for s in (400, 800, 1200, 1600, 2000)
+        ]
+        partial_legacy = [
+            {"step": 2400},  # no event, no metric — must warn
+        ]
+        with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False
+        ) as f:
+            for r in good_legacy + partial_legacy:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = Path(f.name)
+        try:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                cv, mean, std, n, series, sha = lock.compute_paired_cv(
+                    tmp_path, 400, 18000
+                )
+            self.assertEqual(n, 5)
+            warning = stderr.getvalue()
+            self.assertIn("1 in-window row(s) missing", warning)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
 
 class TestPairedDiffIndex(unittest.TestCase):
     """T12: paired_diff_judge.index_by_step on B-fixture prefix.

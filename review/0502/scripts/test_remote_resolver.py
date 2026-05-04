@@ -670,5 +670,106 @@ class TestResolveOnLiveRepo(unittest.TestCase):
         )
 
 
+class TestPushUrlTOCTOU(unittest.TestCase):
+    """F3 hardening (Round-5 operator review, May 4 2026): the pre-push
+    re-verification must check BOTH the fetch URL and the dedicated
+    pushURL, because `git push <remote>` follows ``remote.<name>.pushURL``
+    when configured. A canonical fetch URL with a divergent pushURL would
+    silently push to a non-canonical target and bypass the pre-registration
+    timestamp guarantee.
+
+    These tests use real ``git`` subprocesses on a tempdir to verify the
+    F3 helper sequence (``git remote get-url`` vs
+    ``git remote get-url --push``) returns what we expect, and that
+    ``_normalize_remote_url`` correctly distinguishes them.
+    """
+
+    def _git_init_with_remote(self, tmpdir, fetch_url, push_url=None):
+        """Create a minimal repo with origin's fetch URL = ``fetch_url`` and
+        (optionally) a different pushURL. Returns the tmpdir Path."""
+        import subprocess
+        repo = Path(tmpdir)
+        # `git init` is enough; we don't need a working tree to manipulate
+        # remote.* config keys.
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "remote", "add", "origin", fetch_url],
+                       cwd=repo, check=True)
+        if push_url is not None:
+            subprocess.run(
+                ["git", "remote", "set-url", "--push", "origin", push_url],
+                cwd=repo, check=True,
+            )
+        return repo
+
+    def test_F3a_no_push_url_configured_returns_fetch_url(self):
+        """Baseline: when no separate pushURL is configured,
+        ``git remote get-url --push origin`` returns the fetch URL.
+        F3's pushURL check is therefore trivially satisfied on the
+        common case (no false positive)."""
+        import subprocess
+        import tempfile
+        fetch = "git@gitee.com:jqu9/PET_LatentResidual.git"
+        with tempfile.TemporaryDirectory() as td:
+            repo = self._git_init_with_remote(td, fetch_url=fetch,
+                                              push_url=None)
+            fetch_observed = L.git(["remote", "get-url", "origin"],
+                                   cwd=repo)
+            push_observed = L.git(["remote", "get-url", "--push", "origin"],
+                                  cwd=repo)
+            self.assertEqual(L._normalize_remote_url(fetch_observed),
+                             L._normalize_remote_url(fetch))
+            self.assertEqual(L._normalize_remote_url(push_observed),
+                             L._normalize_remote_url(fetch),
+                             "no pushURL configured: --push must equal fetch")
+
+    def test_F3b_divergent_push_url_is_observable(self):
+        """The bug F3 fixes: ``git push origin`` would silently follow a
+        configured pushURL even if the fetch URL is canonical. This test
+        proves the pushURL is observable AND that it normalizes
+        differently from the canonical, i.e. F3 has falsifiable signal.
+        """
+        import tempfile
+        fetch = "git@gitee.com:jqu9/PET_LatentResidual.git"   # canonical
+        push = "git@gitee.com:attacker/PET_LatentResidual.git"  # divergent
+        with tempfile.TemporaryDirectory() as td:
+            repo = self._git_init_with_remote(td, fetch_url=fetch,
+                                              push_url=push)
+            fetch_observed = L.git(["remote", "get-url", "origin"],
+                                   cwd=repo)
+            push_observed = L.git(["remote", "get-url", "--push", "origin"],
+                                  cwd=repo)
+            # Fetch URL is unchanged (canonical) — fetch-side check passes.
+            self.assertEqual(L._normalize_remote_url(fetch_observed),
+                             L._normalize_remote_url(fetch))
+            # PushURL diverges — F3 catches this; pre-F3 code would not.
+            self.assertNotEqual(
+                L._normalize_remote_url(push_observed),
+                L._normalize_remote_url(fetch),
+                "divergent pushURL must normalize differently from canonical",
+            )
+
+    def test_F3c_divergent_but_equivalent_push_url_passes(self):
+        """Negative-control for F3: a configured pushURL that is in a
+        DIFFERENT URL form (e.g. https vs ssh) but points at the SAME
+        canonical repo must NOT trigger the F3 abort. ``_normalize_remote_url``
+        is form-agnostic, so https://gitee.com/jqu9/PET_LatentResidual.git
+        and git@gitee.com:jqu9/PET_LatentResidual.git canonicalize to the
+        same string and F3 must accept the configuration.
+        """
+        import tempfile
+        fetch = "git@gitee.com:jqu9/PET_LatentResidual.git"
+        push = "https://gitee.com/jqu9/PET_LatentResidual.git"  # same repo
+        with tempfile.TemporaryDirectory() as td:
+            repo = self._git_init_with_remote(td, fetch_url=fetch,
+                                              push_url=push)
+            push_observed = L.git(["remote", "get-url", "--push", "origin"],
+                                  cwd=repo)
+            self.assertEqual(
+                L._normalize_remote_url(push_observed),
+                L._normalize_remote_url(fetch),
+                "https and ssh forms of same repo must canonicalize equal",
+            )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
