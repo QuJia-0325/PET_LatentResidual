@@ -770,6 +770,134 @@ class TestPushUrlTOCTOU(unittest.TestCase):
                 "https and ssh forms of same repo must canonicalize equal",
             )
 
+    def test_F3d_multiple_push_urls_first_canonical_second_divergent(self):
+        """G1 hardening (Round-7 cross-AI peer review, May 4 2026): a
+        remote may have MULTIPLE pushURLs configured via
+        ``git remote set-url --push --add``. ``git push`` mirrors to all
+        of them, but the Round-6 F3 patch only checked
+        ``git remote get-url --push <remote>`` which returns just the
+        FIRST. A canonical-first-then-hostile multi-pushURL config
+        therefore bypassed the Round-6 F3 check.
+
+        This test simulates that bypass directly:
+          1. fetch URL: canonical
+          2. pushURL #1: canonical (added via --push --add)
+          3. pushURL #2: hostile (added via --push --add)
+
+        It then asserts that:
+          (a) ``--push`` (single, Round-6 form) returns ONLY the first
+              pushURL → the bypass is real;
+          (b) ``--push --all`` (G1 form) returns BOTH pushURLs;
+          (c) at least one of the enumerated pushURLs normalizes
+              differently from the canonical → G1's iteration-then-check
+              loop catches the divergent mirror.
+
+        If git ever changes ``--push --all`` semantics, this test will
+        fail loudly rather than silently regressing the canonical check.
+        """
+        import subprocess
+        import tempfile
+        canonical = "git@gitee.com:jqu9/PET_LatentResidual.git"
+        hostile = "git@evil.com:attacker/PET_LatentResidual.git"
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "remote", "add", "origin", canonical],
+                cwd=repo, check=True,
+            )
+            # Multi-pushURL: append two pushURLs (first canonical, second
+            # hostile). `--add` flag is what creates the multi-URL state
+            # — without `--add` the second `set-url --push` would
+            # *replace* the first.
+            subprocess.run(
+                ["git", "remote", "set-url", "--push", "--add",
+                 "origin", canonical],
+                cwd=repo, check=True,
+            )
+            subprocess.run(
+                ["git", "remote", "set-url", "--push", "--add",
+                 "origin", hostile],
+                cwd=repo, check=True,
+            )
+
+            # (a) Round-6 form sees only the first pushURL (canonical) →
+            # would falsely pass the Round-6 F3 check.
+            single = L.git(["remote", "get-url", "--push", "origin"],
+                           cwd=repo)
+            self.assertEqual(
+                L._normalize_remote_url(single),
+                L._normalize_remote_url(canonical),
+                "single --push must return canonical (the bypass)",
+            )
+
+            # (b) G1 form enumerates BOTH.
+            block = L.git(
+                ["remote", "get-url", "--push", "--all", "origin"],
+                cwd=repo,
+            )
+            urls = [u for u in block.splitlines() if u.strip()]
+            self.assertEqual(
+                len(urls), 2,
+                f"--push --all must enumerate both pushURLs; got {urls!r}",
+            )
+
+            # (c) At least one enumerated URL diverges from canonical →
+            # G1's per-URL normalize-and-compare catches the bypass.
+            canonical_norm = L._normalize_remote_url(canonical)
+            divergent = [u for u in urls
+                         if L._normalize_remote_url(u) != canonical_norm]
+            self.assertEqual(
+                len(divergent), 1,
+                f"exactly one URL ({hostile!r}) must diverge from "
+                f"canonical; got divergent={divergent!r}",
+            )
+            self.assertEqual(
+                L._normalize_remote_url(divergent[0]),
+                L._normalize_remote_url(hostile),
+                "the divergent URL must be the hostile one",
+            )
+
+    def test_F3e_multiple_push_urls_all_canonical_pass(self):
+        """G1 negative-control: multiple pushURLs that ALL canonicalize
+        to the same repo (e.g. ssh + https forms of the same gitee path)
+        must NOT trigger the G1 abort. This is a legitimate "mirror to
+        the same target via two protocols" config.
+        """
+        import subprocess
+        import tempfile
+        canonical_ssh = "git@gitee.com:jqu9/PET_LatentResidual.git"
+        canonical_https = "https://gitee.com/jqu9/PET_LatentResidual.git"
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "remote", "add", "origin", canonical_ssh],
+                cwd=repo, check=True,
+            )
+            subprocess.run(
+                ["git", "remote", "set-url", "--push", "--add",
+                 "origin", canonical_ssh],
+                cwd=repo, check=True,
+            )
+            subprocess.run(
+                ["git", "remote", "set-url", "--push", "--add",
+                 "origin", canonical_https],
+                cwd=repo, check=True,
+            )
+            block = L.git(
+                ["remote", "get-url", "--push", "--all", "origin"],
+                cwd=repo,
+            )
+            urls = [u for u in block.splitlines() if u.strip()]
+            self.assertEqual(len(urls), 2)
+            canonical_norm = L._normalize_remote_url(canonical_ssh)
+            for u in urls:
+                self.assertEqual(
+                    L._normalize_remote_url(u), canonical_norm,
+                    f"all pushURLs must canonicalize equal; got {u!r}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -514,6 +514,143 @@ class TestLockComputePairedCV(unittest.TestCase):
             tmp_path.unlink(missing_ok=True)
 
 
+class TestGuard5StrictBestMetric(unittest.TestCase):
+    """G3 hardening (Round-7 cross-AI peer review, May 4 2026): the
+    Round-6 absorption deferred F5 to R1b on the rationale that
+    tightening Guard 5 mid-`v0_pending_R1a` would break the
+    locked-sample contract. Round-7 cross-AI review rejected that
+    rationale because no locked sample exists yet, so tightening now
+    cannot pollute any artifact.
+
+    G3 contract: at lock time, ``training.best_metric`` MUST be
+    ``val_multi_objective`` exactly. Any other value (None/missing,
+    ``val_select_score``, an unknown key, etc.) aborts with exit 4
+    unless ``--allow-dev-best-metric`` is passed.
+
+    These tests drive ``main()`` end-to-end through the same minimal
+    fixture pattern T16 uses (so the entire pre-Guard-5 pipeline
+    runs); only the config YAML's ``best_metric`` value varies.
+    """
+
+    def _run_main(self, best_metric_value, *, allow_dev_flag=False):
+        """Drive main() with a synthetic fixture whose config has the
+        given ``best_metric`` (or no best_metric line at all if value
+        is the sentinel string ``"<MISSING>"``). Returns
+        (rc, stderr_text).
+        """
+        import io
+        import contextlib
+        import tempfile
+        import unittest.mock
+        import lock_effect_size_threshold as lock
+
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            metrics = tdp / "metrics.jsonl"
+            metrics.write_text("\n".join(
+                json.dumps({
+                    "step": s, "event": "val",
+                    "val_select_score": 0.50,
+                    "val_chain_normal_mse": 0.001,
+                })
+                for s in range(40000, 60001, 400)
+            ) + "\n")
+            cfg = tdp / "config.yaml"
+            if best_metric_value == "<MISSING>":
+                cfg.write_text("training:\n  seed: 0\n")  # no best_metric key
+            else:
+                cfg.write_text(
+                    f"training:\n  best_metric: {best_metric_value}\n"
+                )
+            output = tdp / "EFFECT_SIZE_LOCKED.md"
+            (tdp / ".git").mkdir()
+
+            argv = [
+                "lock_effect_size_threshold.py",
+                "--metrics-a", str(metrics),
+                "--config-a", str(cfg),
+                "--output", str(output),
+                "--no-commit",
+                "--allow-dirty",
+            ]
+            if allow_dev_flag:
+                argv.append("--allow-dev-best-metric")
+
+            stderr = io.StringIO()
+            with unittest.mock.patch.object(sys, "argv", argv), \
+                    contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(stderr):
+                rc = lock.main()
+            return rc, stderr.getvalue()
+
+    def test_G3a_canonical_value_passes(self):
+        """Positive control: the canonical value
+        ``val_multi_objective`` continues to pass under strict G3
+        (and matches T16's pre-G3 baseline)."""
+        rc, stderr = self._run_main("val_multi_objective")
+        self.assertEqual(rc, 0,
+                         f"canonical best_metric must pass; stderr={stderr!r}")
+
+    def test_G3b_missing_best_metric_strict_aborts(self):
+        """Strict abort: a config with no ``best_metric`` key at all
+        used to silently pass (Round-6 allowed None). G3 rejects with
+        exit 4 and a stderr message naming the actual value (None).
+        """
+        rc, stderr = self._run_main("<MISSING>")
+        self.assertEqual(rc, 4)
+        self.assertIn("guard 5 strict", stderr)
+        self.assertIn("None", stderr)
+
+    def test_G3c_val_select_score_strict_aborts(self):
+        """Strict abort: ``val_select_score`` (config-side) was
+        permitted by Round-6 but is NOT canonical. Locking against a
+        run that selected on `val_select_score` directly (rather than
+        on `val_multi_objective`) would record a different selection
+        rule than reviewers expect."""
+        rc, stderr = self._run_main("val_select_score")
+        self.assertEqual(rc, 4)
+        self.assertIn("guard 5 strict", stderr)
+        self.assertIn("val_select_score", stderr)
+
+    def test_G3d_unknown_key_strict_aborts(self):
+        """Strict abort: any unknown best_metric value also aborts
+        (this branch was already in Round-6, kept under strict)."""
+        rc, stderr = self._run_main("some_random_metric")
+        self.assertEqual(rc, 4)
+        self.assertIn("guard 5 strict", stderr)
+        self.assertIn("some_random_metric", stderr)
+
+    def test_G3e_dev_flag_bypasses_with_warning(self):
+        """Opt-out: passing ``--allow-dev-best-metric`` lets
+        non-canonical values pass, BUT must emit a [warn] line
+        surfacing the bypass and the actual value, so operators
+        cannot accidentally lock under dev mode without seeing it.
+        """
+        rc, stderr = self._run_main(
+            "val_select_score", allow_dev_flag=True,
+        )
+        self.assertEqual(rc, 0,
+                         f"opt-out must succeed; stderr={stderr!r}")
+        self.assertIn("[warn] guard 5 strict bypassed", stderr)
+        self.assertIn("val_select_score", stderr)
+        self.assertIn("R1a lock time", stderr,
+                      "the warn must explicitly say 'do not use at "
+                      "R1a lock time'")
+
+    def test_G3f_dev_flag_with_canonical_does_not_warn(self):
+        """Opt-out is harmless on canonical: even with
+        ``--allow-dev-best-metric``, the canonical value still hits
+        the equality branch FIRST, so no warn fires. (Otherwise
+        anyone running with the dev flag would see noise on every
+        production-shaped invocation.)"""
+        rc, stderr = self._run_main(
+            "val_multi_objective", allow_dev_flag=True,
+        )
+        self.assertEqual(rc, 0)
+        self.assertNotIn("[warn] guard 5 strict bypassed", stderr,
+                         "dev flag with canonical value must not warn")
+
+
 class TestPairedDiffIndex(unittest.TestCase):
     """T12: paired_diff_judge.index_by_step on B-fixture prefix.
 

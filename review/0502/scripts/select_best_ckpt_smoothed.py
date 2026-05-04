@@ -130,6 +130,19 @@ def list_saved_steps(ckpt_dir: Path,
 
     # Saved-grid ckpts. Both new (step_NNNNNN.pt) and legacy
     # (ckpt_step_*.pt) shapes. Step is the integer suffix of the stem.
+    #
+    # G2 hardening (Round-7 cross-AI peer review, May 4 2026): a
+    # directory containing BOTH naming forms at the same step is, by
+    # construction, an unexpected state for a pre-registration
+    # selector. Round-6 silently picked the new-form path via
+    # ``setdefault`` + iteration order; G2 keeps that policy (real
+    # trainer output is canonical, legacy is fixture-only) but emits
+    # a `[warn]` line so the operator sees the collision and can
+    # inspect the two files. We do NOT abort: a hard abort would
+    # break the legitimate "ran the trainer twice on the same out_dir
+    # with different conventions" debug workflow. The warn line
+    # contains both file names so the operator can `sha256sum` both
+    # if they're suspicious.
     for pattern in ("step_*.pt", "ckpt_step_*.pt"):
         for cf in ckpt_dir.glob(pattern):
             try:
@@ -137,9 +150,29 @@ def list_saved_steps(ckpt_dir: Path,
             except ValueError:
                 continue
             steps.add(step)
-            # First-match-wins per step. New-form (step_*.pt) is listed
-            # first so it wins ties.
-            step_to_path.setdefault(step, cf)
+            existing = step_to_path.get(step)
+            if existing is None:
+                step_to_path[step] = cf
+            elif existing.name != cf.name:
+                # G2: cross-name collision at the same step. Keep the
+                # earlier (new-form) winner per documented precedence,
+                # but surface the collision so the operator can verify.
+                # Use stable ordering in the warn message: list the
+                # *kept* (winner) path first, then the *ignored* path.
+                # Note: since pattern iteration order is fixed
+                # ("step_*.pt" before "ckpt_step_*.pt"), if `existing`
+                # is new-form we have a true collision; if `existing`
+                # is itself legacy-form (extremely rare — would only
+                # happen if the FS glob ordering somehow swapped)
+                # we still warn but the kept file remains correct.
+                print(
+                    f"[warn] step {step}: both {existing.name!r} "
+                    f"(kept) and {cf.name!r} (ignored) exist in "
+                    f"{ckpt_dir}. If their contents differ "
+                    f"(`sha256sum {existing.name} {cf.name}`), the "
+                    f"recommendation may not match what the eval "
+                    f"script loads. Inspect manually."
+                )
 
     def _try_load_step(candidates: list[str]) -> tuple[int, Path] | None:
         for name in candidates:

@@ -92,6 +92,65 @@ class TestListSavedStepsCohabitation(unittest.TestCase):
             self.assertEqual(m[20000].name, "step_020000.pt")
             self.assertEqual(m[50000].name, "ckpt_step_50000.pt")
 
+    def test_collision_with_different_contents_warns(self):
+        """G2 hardening (Round-7 cross-AI peer review, May 4 2026): a
+        directory containing BOTH naming forms at the same step with
+        DIFFERENT byte contents must (a) still resolve to the new-form
+        path (precedence preserved), and (b) emit a `[warn]` line on
+        stdout naming both files so the operator can `sha256sum` them.
+
+        The Round-6 ``test_new_form_wins_on_tie`` only verified path
+        precedence with empty-byte fixtures; it could not catch a real
+        crash-recovery scenario where the two files disagree on
+        ckpt contents. G2 closes that observability gap.
+        """
+        import io
+        import contextlib
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "step_020000.pt").write_bytes(b"new-form-content-AAA")
+            (d / "ckpt_step_20000.pt").write_bytes(b"legacy-content-ZZZ")
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                steps, m = list_saved_steps(
+                    d, include_best=False, include_last=False,
+                )
+            # (a) precedence preserved: new-form wins.
+            self.assertEqual(steps, [20000])
+            self.assertEqual(m[20000].name, "step_020000.pt")
+            # (b) collision warning: must name BOTH files so operator
+            # can manually verify (sha256sum etc).
+            warning = stdout.getvalue()
+            self.assertIn("[warn] step 20000", warning)
+            self.assertIn("step_020000.pt", warning)
+            self.assertIn("ckpt_step_20000.pt", warning)
+            # The kept file should be flagged "(kept)" and the ignored
+            # one "(ignored)" so the operator can identify which is
+            # which without re-deriving precedence.
+            self.assertIn("(kept)", warning)
+            self.assertIn("(ignored)", warning)
+
+    def test_no_collision_no_warning(self):
+        """G2 negative-control: a directory containing only ONE naming
+        form at each step (the common case on the operator host: only
+        ``step_*.pt`` exists) must NOT emit any collision warning. F4
+        operators have repeatedly complained about noisy false-positive
+        warns; G2 must not regress on that surface.
+        """
+        import io
+        import contextlib
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "step_020000.pt").write_bytes(b"")
+            (d / "step_040000.pt").write_bytes(b"")
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                steps, m = list_saved_steps(
+                    d, include_best=False, include_last=False,
+                )
+            self.assertEqual(steps, [20000, 40000])
+            self.assertNotIn("[warn]", stdout.getvalue())
+
 
 class TestListSavedStepsRobustness(unittest.TestCase):
     """C3: unrelated files in the directory must not blow up the parser."""

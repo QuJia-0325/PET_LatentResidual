@@ -436,3 +436,148 @@ Operator (with torch): 87 tests, 87 OK → `OK`.
 
 LOCKED_PROTOCOL_VERSION unchanged: still `v0_pending_R1a`.
 
+
+---
+
+## 8. Round 7 — Cross-AI peer review on Round 6 → Round 8 absorption (G1 + G2 + G3 + G4 + G5)
+
+**Source**: Two parallel external AI reviews requested after the Mac
+agent's Round-6 self-review came back LIGHT-PASS. The user (anchored on
+the principle that R1a is a one-way door) authorized cross-AI peer
+review before committing the locking sequence. Both reviewers received
+the same Round-7 prompt (file inventory + per-finding bug+fix+test
+summaries + 5 falsifiable questions Q1–Q5).
+
+Both verdicts: **LIGHT-FLAG** (commit Round 6, but address findings
+before R1a lock-in pushes). Two reviewers raised three consensus
+findings + two single-reviewer findings. Round 8 absorbs all five in
+tree.
+
+### 8.1 Finding inventory
+
+| ID | Severity | Origin | Locus | Summary |
+|----|----------|--------|-------|---------|
+| **G1** | MEDIUM, security-adjacent | Both reviewers (consensus, empirically verified by both) | `lock_effect_size_threshold.py::main` push branch | Round-6 F3 used `git remote get-url --push <remote>` which returns ONLY the first pushURL, but `git push` mirrors to ALL configured pushURLs. A canonical-first-then-hostile multi-pushURL config (via `git remote set-url --push --add`) bypasses the F3 check |
+| **G2** | LOW | Both reviewers (consensus) | `select_best_ckpt_smoothed.py::list_saved_steps` | Round-6 C3 silently picks new-form on collision; the `test_new_form_wins_on_tie` test uses empty-byte fixtures so cannot detect content divergence between same-step new+legacy ckpts |
+| **G3** | LOW–MEDIUM | Both reviewers (consensus, distinct rationales) | `lock_effect_size_threshold.py::main` Guard 5 config-side | Round-6 deferred F5 to R1b on the rationale that tightening Guard 5 mid-`v0_pending_R1a` would break the locked-sample contract; reviewers rejected this because no locked sample exists yet |
+| **G4** | TRIVIAL | Reviewer-1 only | `OPERATOR_CONFIRM_REQUEST_C2_3.md` line 106 | One stragger "这 90 测试" remained after the Round-6 F4 fix (other locations correctly say 87) |
+| **G5** | TRIVIAL | Reviewer-2 only | `lock_effect_size_threshold.py` F3 inline comment | F3 comment said `git push <remote> <branch> will go to the pushURL` (singular framing). This single-pushURL framing is the conceptual bug that masked G1 during Round-6 patch authoring |
+
+User decision (May 4 2026): land all five in Round 8, including G3
+strict-mode (option A from the Round-7 synthesis).
+
+### 8.2 G1 — F3 multi-pushURL bypass (P0)
+
+**Disposition**: Fix in tree.
+
+**Patch surface**: `review/0502/scripts/lock_effect_size_threshold.py::main` push-branch (within the `if not args.force_unsafe_remote:` guard, after the existing fetch-URL TOCTOU re-check).
+
+Replace the single-pushURL check (`git remote get-url --push <remote>`) with an enumeration via `git remote get-url --push --all <remote>`. Parse the multiline output; require EVERY URL to canonicalize to the resolved canonical via `_normalize_remote_url`. Defensive: if the enumeration returns no URLs, abort (this should be impossible per git docs but a refusal here costs nothing). Error message names the offending pushURL plus the full pushURL list so the operator can see exactly which mirror is divergent.
+
+**Empirical verification**: on git 2.50.1 (Apple Git-155), confirmed that:
+- `git remote set-url --push --add origin <canonical>` followed by `git remote set-url --push --add origin <hostile>` produces a remote whose `--push` (singular) returns only `<canonical>` but whose `--push --all` returns both URLs (one per line)
+- `git push origin <branch>` mirrors to BOTH bare repos (verified by inspecting `refs/heads/<branch>` in each)
+
+The bypass is therefore real and exploitable on any git ≥ 2.7 host without G1.
+
+**Falsifiability**: `test_remote_resolver.py::TestPushUrlTOCTOU` extended with two new cases (real `git init` tempdirs, no mocking):
+
+| Case | Setup | Asserts |
+|------|-------|---------|
+| **F3d** (discriminating) | `set-url --push --add` × 2: canonical, then hostile | (a) single `--push` returns only canonical → bypass is real; (b) `--push --all` returns both; (c) per-URL normalize-and-compare flags exactly the hostile one |
+| **F3e** (negative-control) | `set-url --push --add` × 2: ssh form, then https form of SAME repo | both pushURLs canonicalize equal — G1 must NOT abort on legitimate mirror configs |
+
+### 8.3 G2 — C3 collision warning (P1)
+
+**Disposition**: Fix in tree.
+
+**Patch surface**: `review/0502/scripts/select_best_ckpt_smoothed.py::list_saved_steps`.
+
+Replace `step_to_path.setdefault(step, cf)` with explicit `get` + branch logic. On cross-name collision (`existing.name != cf.name`), emit `[warn] step <S>: both <kept> (kept) and <ignored> (ignored) exist in <dir>. If their contents differ (sha256sum ...), the recommendation may not match what the eval script loads. Inspect manually.` Precedence is preserved (new-form wins per documented Round-6 policy); we add observability, not policy change. Hard abort was rejected because it would break the legitimate "ran the trainer twice on the same out_dir with different conventions" debug workflow.
+
+**Falsifiability**: `test_select_best_ckpt_smoothed.py::TestListSavedStepsCohabitation` extended with two new cases:
+
+| Test | Setup | Asserts |
+|------|-------|---------|
+| `test_collision_with_different_contents_warns` (discriminating) | both files exist with DIFFERENT byte contents (`b"new-form-content-AAA"` vs `b"legacy-content-ZZZ"`) | (a) precedence preserved (new-form path returned); (b) `[warn]` line on stdout names BOTH file names AND uses `(kept)` / `(ignored)` labels |
+| `test_no_collision_no_warning` (negative-control) | only new-form files, no collision | NO `[warn]` line emitted (G2 must not regress the no-noise property on the common case) |
+
+### 8.4 G3 — Guard 5 strict best_metric (P1)
+
+**Disposition**: Fix in tree.
+
+**Patch surface**: `review/0502/scripts/lock_effect_size_threshold.py::main` Guard 5 config-side block + new `--allow-dev-best-metric` argparse flag.
+
+Tighten the equality from `cfg_metric_key not in (None, "val_multi_objective", "val_select_score")` to `cfg_metric_key != "val_multi_objective"`. Non-canonical values abort with exit 4 and a stderr message naming the actual value AND citing `OPERATOR_REPLY_pre_C1_20260503.md` Op-flag-5 + `MULTI_AGENT_REVIEW_RECORD.md §8 (G3)`. The opt-out path `--allow-dev-best-metric` lets non-canonical values pass but emits a loud `[warn] guard 5 strict bypassed via --allow-dev-best-metric ...` so operators cannot accidentally lock under dev mode.
+
+The opt-out flag's argparse help explicitly says "NEVER pass at R1a lock time — at lock time the strict check is the contract."
+
+**Falsifiability**: new test class `TestGuard5StrictBestMetric` in `test_metrics_compat.py`, 6 cases (drives `main()` end-to-end through the same pattern T16 uses):
+
+| Test | best_metric value | --allow-dev-flag | Expected rc | Asserts |
+|------|-------------------|------------------|-------------|---------|
+| **G3a** (positive control) | `val_multi_objective` | no | 0 | success (no regression vs T16 baseline) |
+| **G3b** (discriminating, was Round-6 false-pass) | (key absent) | no | 4 | stderr names "guard 5 strict" + "None" |
+| **G3c** (discriminating, was Round-6 false-pass) | `val_select_score` | no | 4 | stderr names "guard 5 strict" + "val_select_score" |
+| **G3d** (regression of Round-6 strictness) | `some_random_metric` | no | 4 | stderr names "guard 5 strict" + the unknown value |
+| **G3e** (opt-out positive) | `val_select_score` | yes | 0 | stderr contains `[warn] guard 5 strict bypassed` AND "R1a lock time" gate |
+| **G3f** (opt-out harmless on canonical) | `val_multi_objective` | yes | 0 | NO `[warn]` line (prevent dev-flag noise on production-shaped configs) |
+
+T16 was deliberately written with `best_metric: val_multi_objective` (canonical), so it continues to pass under strict G3 without modification.
+
+### 8.5 G4 — doc test-count straggler (P3)
+
+**Disposition**: Fix in tree (doc-only).
+
+**Patch surface**: `review/0503/local/OPERATOR_CONFIRM_REQUEST_C2_3.md` §1 (preface) + §2 (test count + table).
+
+Round-6 F4 updated most call-sites from 69 → 87, but one straggler at line 106 said "这 90 测试". Reviewer-1 caught this. Round-8 updates ALL call-sites to **97** (87 + 2 G1 + 2 G2 + 6 G3) and adds Round-8 callout "(含 Round-8 absorption: G1 + G2 + G3 + G4 + G5)" so operators can tell which absorption batch the doc reflects.
+
+### 8.6 G5 — F3 comment singular→plural pushURL (P0 lockstep with G1)
+
+**Disposition**: Fix in tree (comment-only, in lockstep with G1).
+
+**Patch surface**: `review/0502/scripts/lock_effect_size_threshold.py::main` F3 inline comment block.
+
+Round-6 F3 comment said "`git push <remote> <branch>` will go to the pushURL" (singular). Reviewer-2 noted this single-pushURL framing is exactly what masked the multi-pushURL gap during Round-6 patch authoring. G5 rewrites the comment with explicit pushURL(s) plural framing AND adds a dedicated `G1 hardening (Round-7 cross-AI peer review, May 4 2026)` paragraph documenting the empirical verification, the bypass mechanism, and the `--push --all` enumeration. The conceptual loop is closed.
+
+### 8.7 F5 status update
+
+The Round-7 reviewers rejected the Round-6 deferral rationale ("would break the locked-sample contract") because no locked sample exists yet. G3 absorbs the substance of F5 in tree (strict equality on `val_multi_objective`). Therefore:
+
+- **Round-6 status** of F5: DEFERRED to R1b
+- **Round-8 status** of F5: **CLOSED** via G3. The R1b deferral is no longer needed.
+
+The Round-6 commit message's qualifier "F5 deferred (rationale, possibly premature — see Round-7 review feedback)" anticipated this correction.
+
+### 8.8 Round-8 absorption summary
+
+| Round | Findings raised | Findings absorbed in tree | Findings deferred |
+|-------|-----------------|---------------------------|-------------------|
+| 1 (Codex) | 4 | 4 | 0 |
+| 2 (Codex follow-up) | 3 | 3 | 0 |
+| 2.5 (operator pre-C1) | 1 | 1 | 0 |
+| 4 (Codex Lane A) | 4 | 4 | 0 |
+| 5 (Lane B + Lane E) | 2 | 2 | 0 |
+| 6 (operator/codex) | 5 | 4 (C3/F2/F3/F4) | 1 (F5 → later closed by G3) |
+| **7 (cross-AI peer review)** | **5** | **5 (G1/G2/G3/G4/G5)** | **0** |
+| **Total**                      | **24**          | **23 + 1 deferred-then-closed** | **0 (open)** |
+
+### 8.9 Test-count audit
+
+| Round | Test surface | New tests | Cumulative |
+|-------|--------------|-----------|------------|
+| C2 baseline | `test_remote_resolver.py` + `test_metrics_compat.py` | — | 49 |
+| C2.2 (A2/A3/A5) | `test_metrics_compat.py` | +T13/T14/T15/T16 | 53 |
+| C2.3 (D1/E1) | `test_remote_resolver.py` | +D1×3, +E1×3, etc. | 69 |
+| Round 6 C3 (F1) | `test_select_best_ckpt_smoothed.py` (new) | +12 (4 torch-gated) | 81 |
+| Round 6 F2 | `test_metrics_compat.py` | +T17/T18/T19 | 84 |
+| Round 6 F3 | `test_remote_resolver.py` | +F3a/F3b/F3c | 87 |
+| **Round 8 G1** | `test_remote_resolver.py` | **+F3d/F3e** | **89** |
+| **Round 8 G2** | `test_select_best_ckpt_smoothed.py` | **+test_collision_*/test_no_collision_*** | **91** |
+| **Round 8 G3** | `test_metrics_compat.py` | **+G3a/G3b/G3c/G3d/G3e/G3f** | **97** |
+
+Mac (no torch): 97 tests, 93 OK + 4 skipped → `OK (skipped=4)`.
+Operator (with torch): 97 tests, 97 OK → `OK`.
+
+LOCKED_PROTOCOL_VERSION unchanged: still `v0_pending_R1a`. R1a lock can now proceed without further peer-review absorption.

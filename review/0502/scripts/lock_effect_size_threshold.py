@@ -167,6 +167,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--allow-dirty", action="store_true",
                    help="DANGEROUS: bypass guard 1 (clean working tree). Only "
                         "for development testing; never use in production.")
+    p.add_argument("--allow-dev-best-metric", action="store_true",
+                   help="DEVELOPMENT-ONLY: bypass strict Guard 5 config-side "
+                        "best_metric check (G3 Round-7/Round-8). Production "
+                        "configs MUST declare "
+                        "`training.best_metric: val_multi_objective`; without "
+                        "this flag, any other value (None/missing, "
+                        "val_select_score, anything else) aborts with exit 4. "
+                        "When this flag is set, non-canonical best_metric "
+                        "values pass with a `[warn]` line surfacing the "
+                        "actual value. NEVER pass at R1a lock time — at lock "
+                        "time the strict check is the contract.")
     return p.parse_args()
 
 
@@ -923,17 +934,57 @@ def main() -> int:
     # side check is performed inside `compute_paired_cv()` via the LOCKED_METRIC_KEY
     # filter (rows missing `val_select_score` are skipped → if 0 rows survive,
     # Guard 4 catches it as N<5).
+    #
+    # G3 hardening (Round-7 cross-AI peer review, May 4 2026): the
+    # Round-6 absorption deferred F5 (Codex Finding 5) to R1b on the
+    # rationale that tightening Guard 5 mid-`v0_pending_R1a` would
+    # break the locked-sample contract. Round-7 cross-AI review
+    # rejected that rationale: there is NO locked sample yet
+    # (`EFFECT_SIZE_LOCKED.md` does not exist; A_main has not crossed
+    # step 60000), so tightening Guard 5 now CANNOT pollute any
+    # existing artifact. The previous relaxation
+    # (cfg_metric_key in {None, "val_multi_objective", "val_select_score"})
+    # meant a config typo deleting the `best_metric:` line silently
+    # passed Guard 5 — a real pre-registration leak (reviewers cannot
+    # tell from `EFFECT_SIZE_LOCKED.md` whether the underlying training
+    # actually used `val_multi_objective` selection or fell through to
+    # a default).
+    #
+    # G3 contract: at lock time, `best_metric` MUST be
+    # `val_multi_objective` exactly. Any other value (None/missing,
+    # `val_select_score`, an unknown key, etc.) aborts with exit 4
+    # unless `--allow-dev-best-metric` is passed (DEVELOPMENT ONLY;
+    # never at R1a lock). The opt-out path emits a loud `[warn]`
+    # surfacing the actual non-canonical value so operators cannot
+    # forget they bypassed the check.
     cfg_a = load_yaml(config_a)
     cfg_metric_key = cfg_a.get("training", {}).get("best_metric")
-    if cfg_metric_key not in (None, "val_multi_objective", "val_select_score"):
+    if cfg_metric_key != "val_multi_objective":
+        if not args.allow_dev_best_metric:
+            sys.stderr.write(
+                f"ERROR (guard 5 strict, G3): A_main config "
+                f"best_metric={cfg_metric_key!r} is not the canonical "
+                f"'val_multi_objective'. Production runs MUST declare "
+                f"`training.best_metric: val_multi_objective` so the "
+                f"locked artifact `EFFECT_SIZE_LOCKED.md` records an "
+                f"unambiguous selection rule. (Round-6 silently allowed "
+                f"None / 'val_select_score' / etc. — Round-7 cross-AI "
+                f"peer review tightened this to strict equality.) "
+                f"For dev/legacy fixtures only, pass "
+                f"--allow-dev-best-metric to bypass this check; "
+                f"NEVER pass at R1a lock time. See "
+                f"OPERATOR_REPLY_pre_C1_20260503.md Op-flag-5 + "
+                f"MULTI_AGENT_REVIEW_RECORD.md \u00a78 (G3).\n"
+            )
+            return 4
+        # Opt-out path: emit a [warn] so the bypass is loud.
         sys.stderr.write(
-            f"ERROR (guard 5 config-side): A_main config best_metric="
-            f"'{cfg_metric_key}' is unexpected. §6.6 was designed assuming "
-            f"val_multi_objective → val_select_score key (see "
-            f"POST_V6_NEXT_STEPS.md §0 + OPERATOR_REPLY_pre_C1_20260503.md "
-            f"Op-flag-5). Aborting to avoid locking against the wrong run.\n"
+            f"[warn] guard 5 strict bypassed via --allow-dev-best-metric "
+            f"(config best_metric={cfg_metric_key!r}; canonical is "
+            f"'val_multi_objective'). Development/legacy use only. "
+            f"Do NOT use this flag at R1a lock time — the locked "
+            f"artifact would record a non-canonical selection rule.\n"
         )
-        return 4
 
     # ---- Single read of metrics_a (A2 architectural fix, Lane A peer
     # review). Earlier revisions read this file three times — inside
@@ -1138,14 +1189,23 @@ def main() -> int:
     # to a non-canonical repo. Skip if --force-unsafe-remote.
     #
     # F3 hardening (Round-5 operator review, May 4 2026): also verify
-    # the PUSH URL, not only the fetch URL. `git remote -v` and
+    # the PUSH URL(s), not only the fetch URL. `git remote -v` and
     # `git remote get-url <remote>` both return the FETCH URL by
     # default. If `remote.<name>.pushURL` is configured separately
     # (e.g. operator points fetch at a read-only mirror but pushes
     # to a write target), `git push <remote> <branch>` will go to
-    # the pushURL — bypassing our fetch-URL canonical check entirely.
-    # Verify both shapes and require both to canonicalize to the
-    # resolved URL.
+    # the pushURL(s) — bypassing our fetch-URL canonical check.
+    #
+    # G1 hardening (Round-7 cross-AI peer review, May 4 2026): a
+    # remote may have MULTIPLE pushURLs configured via
+    # `git remote set-url --push --add <remote> <url>`. `git push`
+    # mirrors to ALL of them (verified empirically on git 2.50.1
+    # against two local bare repos), but
+    # `git remote get-url --push <remote>` returns ONLY the first.
+    # The Round-6 patch checked only the first, leaving a
+    # canonical-first-then-hostile multi-pushURL config as a
+    # bypass. Fix: enumerate ALL pushURLs via `--push --all` and
+    # require every one to canonicalize to the resolved URL.
     if not args.force_unsafe_remote:
         try:
             push_time_url = git(["remote", "get-url", resolved_remote],
@@ -1166,34 +1226,53 @@ def main() -> int:
             )
             return 6
 
-        # F3: verify the dedicated pushURL configuration. `--push` makes
-        # git report what `git push` would actually use; if no separate
-        # pushURL is configured, this returns the fetch URL (so the check
-        # is trivially satisfied on the common case). If a pushURL IS
-        # configured and disagrees with the resolved canonical, refuse.
+        # G1 (was F3): enumerate ALL configured pushURLs. `--push --all`
+        # makes git report every URL `git push` would deliver to (one per
+        # line); if no separate pushURL is configured, this returns a
+        # single line containing the fetch URL (so the check is trivially
+        # satisfied on the common case). Any pushURL whose normalized form
+        # differs from the resolved canonical aborts the push: even one
+        # rogue mirror in a multi-pushURL config would otherwise receive
+        # the pre-registration commit.
         try:
-            push_url_explicit = git(
-                ["remote", "get-url", "--push", resolved_remote],
+            push_urls_block = git(
+                ["remote", "get-url", "--push", "--all", resolved_remote],
                 cwd=repo_root,
             )
         except RuntimeError as exc:
             sys.stderr.write(
-                f"ERROR: cannot re-verify pushURL of remote "
+                f"ERROR: cannot re-verify pushURL(s) of remote "
                 f"{resolved_remote!r} pre-push: {exc}\n"
             )
             return 6
-        if _normalize_remote_url(push_url_explicit) != _normalize_remote_url(resolved_url):
+        push_urls = [u for u in push_urls_block.splitlines() if u.strip()]
+        if not push_urls:
+            # Defensive: `--push --all` is documented to always emit at
+            # least one line (falling back to the fetch URL when no
+            # pushURL is configured). Empty output means an unexpected
+            # git state; refuse to proceed rather than silently treat as
+            # "no pushURLs to check".
             sys.stderr.write(
-                f"ERROR (pushURL mismatch): remote {resolved_remote!r} "
-                f"has a dedicated pushURL "
-                f"({_safe_repr_url(push_url_explicit)}) that does not "
-                f"canonicalize to the resolved URL "
-                f"({_safe_repr_url(resolved_url)}). `git push` would "
-                f"silently target the pushURL, bypassing the canonical "
-                f"check. Refusing to push. To override (NOT recommended "
-                f"for pre-registration), pass --force-unsafe-remote.\n"
+                f"ERROR (pushURL enumeration): `git remote get-url "
+                f"--push --all {resolved_remote}` returned no URLs. "
+                f"Unexpected git state; refusing to push.\n"
             )
             return 6
+        canonical_norm = _normalize_remote_url(resolved_url)
+        for u in push_urls:
+            if _normalize_remote_url(u) != canonical_norm:
+                sys.stderr.write(
+                    f"ERROR (pushURL mismatch): remote {resolved_remote!r} "
+                    f"has a configured pushURL ({_safe_repr_url(u)}) that "
+                    f"does not canonicalize to the resolved URL "
+                    f"({_safe_repr_url(resolved_url)}). `git push` would "
+                    f"deliver the pre-registration commit to a "
+                    f"non-canonical target. Configured pushURL(s): "
+                    f"{[_safe_repr_url(x) for x in push_urls]}. "
+                    f"Refusing to push. To override (NOT recommended "
+                    f"for pre-registration), pass --force-unsafe-remote.\n"
+                )
+                return 6
 
     try:
         # Detect current branch

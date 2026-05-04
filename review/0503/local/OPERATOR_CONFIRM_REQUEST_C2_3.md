@@ -25,7 +25,7 @@ c01aa27  C2.2  absorb mid-impl peer review MEDIUM polish (A2/A3/B2a/B3b/B4/B10)
 
 需要 operator 做的事情：
 1. **拉取** — §1
-2. **跑测试** — §2（期望 87 tests OK）
+2. **跑测试** — §2（期望 97 tests OK，含 Round-8 absorption: G1 + G2 + G3 + G4 + G5）
 3. **回答 6 个问题** — §3（用于让 Mac 侧确认远端环境与代码兼容）
 4. **决定 C2.4-tests 时机** — §4（可选，不阻塞）
 
@@ -84,26 +84,27 @@ python -m unittest \
 快速判断：能跑 `train_first_hop.py` 的 python 就一定能跑测试
 （训练入口同样依赖 PyYAML）。
 
-**期望输出**（Round-6 = C3 + F2 + F3 + F4 absorption 之后）：
+**期望输出**（Round-6 + Round-8 = C3/F2/F3/F4 + G1/G2/G3/G4/G5 absorption 之后）：
 
 ```
-.......................................................................................
+.................................................................................................
 ----------------------------------------------------------------------
-Ran 87 tests in <X>s
+Ran 97 tests in <X>s
 
 OK
 ```
 
-> 数字说明：69 (C2.3 baseline) + 12 (C3 select_best e2e) + 3 (F2 train-row warning narrowing) + 3 (F3 pushURL TOCTOU) = **87**。F4 是文档修复，不引入测试。
+> 数字说明：69 (C2.3 baseline) + 12 (C3 select_best e2e) + 3 (F2 train-row warning narrowing) + 3 (F3 pushURL TOCTOU) + 2 (G1 multi-pushURL) + 2 (G2 collision warn) + 6 (G3 strict best_metric) = **97**。
+> F4 / G4 / G5 是文档/comment 修复，不引入测试。
 > 4 个 torch-gated test (`TestListSavedStepsWithTorch::*`) 在
-> 有 torch 的 env 上会跑过 (87 OK)，在无 torch 的 env 上会以 `skipped` 计入仍是 PASS
-> (`Ran 87 tests ... OK (skipped=4)`)。
+> 有 torch 的 env 上会跑过 (97 OK)，在无 torch 的 env 上会以 `skipped` 计入仍是 PASS
+> (`Ran 97 tests ... OK (skipped=4)`)。
 > **OK** 是唯一可接受的整体结论；不接受 `FAILED (errors=*)`。
 
 如果不是 OK：
 - 把完整 stderr 粘到回复
 - 不要修改任何代码尝试 fix（先回 Mac 这边分析）
-- 仍然继续训练（这 90 测试是 lock 工具内部的，不阻塞训练）
+- 仍然继续训练（这 97 测试是 lock 工具内部的，不阻塞训练）
 
 ---
 
