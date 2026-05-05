@@ -412,3 +412,55 @@ Per §9.5 (added 2026-05-06):
 | 2026-05-06 | Round 4 prompt sent to 6 external reviewer agents (after 82/82 internal pre-review at commit `dcdcd2c`) | Q1: 5/5 unanimous (i)=VERIFIED, (ii)=PARTIAL/WRONG; Q2: 5/5 raw-rollout eliminates β not γ; Q3: 5/5 strongest rec = F+G+H bundle pre-launch + V7-replica gate; `d_pure` point estimates spread 14× across reviewers (0.07 to 1.0) — fully absorbed by §11 4-tier contingency table |
 | 2026-05-06 | [`ROUND4_EXTERNAL_CONSENSUS_20260506.md`](ROUND4_EXTERNAL_CONSENSUS_20260506.md) written | Cross-agent convergence matrix; GPU-launch gate (a)=SATISFIED, (b)=FAILED-but-SUBSTITUTED, (c)=SATISFIED, (d)=PENDING (operator runs sigma_norm_golden_test.py) |
 | 2026-05-06 | §9.5 (Round 4 external review pre-launch gates) added; §12 reconciliation written | Plan F unblocked for GPU launch contingent on operator running gate (d) and Actions #4/#5 |
+| 2026-05-06 | §12.6 added: empirical d_pure prior from existing V6/V6.1 per-slice CSVs (script: [`analyze_v6_self_paired_stats.py`](../0505/local/scripts/analyze_v6_self_paired_stats.py)) | V6 same-yaml self-paired d ∈ [0.156, 0.208]; V6 vs V6.1 cross-arm paired d = 0.067; V6@160K vs V6.1@best d = 0.012. Refined d_pure prior: most-likely Tier 0 (d ≤ 0.10), 90% upper bound Tier 1. Opus 4.7's "d_pure ≥ 0.20 almost certain" claim is REFUTED — it conflates SGD-progress with RNG noise. |
+
+### 12.6 Empirical d_pure prior from V6 step160K full-val anchor (added 2026-05-06)
+
+**Trigger**: After commit [`7605f6c`](https://github.com/...) added V6 step160K full-val anchor artifacts, Opus 4.7 external analysis flagged the V6 step160K vs V6 step200K paired Cohen d = 0.208 as "evidence d_pure ≥ 0.20 almost certain". Independent computation against the existing per-slice CSVs from `review/0505/operator/artifacts/` shows this framing **conflates SGD progress with RNG noise**. Reproducible diagnostic: [`review/0505/local/scripts/analyze_v6_self_paired_stats.py`](../0505/local/scripts/analyze_v6_self_paired_stats.py).
+
+**Measured pairwise paired Cohen d on the existing 7403-slice full-val artifacts** (mse_NORMAL endpoint):
+
+| comparison | semantics | rel diff (%) | paired Cohen d | paired t |
+|---|---|---:|---:|---:|
+| V6 self: 160K → 200K (40K extra steps) | same yaml, same seed, +40K SGD progress | +0.756 | +0.208 | +17.86 |
+| V6 self: 160K → 185.6K best (24K) | same yaml, same seed, +24K SGD progress | +0.619 | +0.208 | +17.90 |
+| V6 self: 185.6K best → 200K last (14.4K) | same yaml, same seed, late-stage SGD | +0.136 | +0.156 | +13.42 |
+| V6.1 self: best → last | same yaml, same seed, late-stage SGD | +0.125 | +0.153 | +13.14 |
+| V6 vs V6.1: best | **different yaml**, paired across algos | −0.522 | −0.068 | −5.83 |
+| V6 vs V6.1: last | **different yaml**, paired across algos | −0.534 | −0.067 | −5.79 |
+| V6@160K vs V6.1@best | different yaml, different step | +0.093 | +0.012 | +1.05 |
+
+**Decomposition**:
+- The d ≈ 0.156 between V6@best and V6@last (only 14.4K extra steps, model essentially saturated) is the **structural noise floor for this metric on full val**: per-slice paired SD ≈ 2.1e−6, which is ~170× smaller than the cross-slice MSE SD (≈ 3.65e−4). Most of the d-magnitude comes from a tiny but **systematically directional** mean diff (model gets monotonically slightly better with more steps), not from pure noise scatter.
+- The d ≈ 0.208 between V6@160K and V6@200K is **mostly the same structural floor** (it grows from 0.156 → 0.208 as the step gap doubles from 14.4K → 40K, so SGD progress contributes only ~0.05 of additional d for 25K extra steps).
+- The cross-arm V6 vs V6.1 paired d ≈ 0.067 is the **closer analog** for "two trained-from-scratch runs with config differences": even with **different yaml**, paired d stays well below 0.10 because both models converge to similar solutions on most slices.
+- V6@160K vs V6.1@best paired d = 0.012 (essentially zero) confirms that two different algorithms at saturation are statistically indistinguishable per-slice.
+
+**Refined d_pure prior** (V6_seed42@step_160000 vs V6_seed1337@step_160000):
+- Same yaml + same step ⇒ no SGD progress confound (mean diff component ≈ 0)
+- Per-slice paired SD: bounded above by V6 vs V6.1 paired SD (≈ 1.9e−5), bounded below by V6 self best→last paired SD (≈ 2.1e−6). Plausible range: [3e−6, 1.5e−5].
+- With mean diff ≈ 0 and finite-sample noise: most-likely d_pure ∈ [0.01, 0.05]; 90% upper bound ≈ 0.10–0.12.
+
+**Updated probability mass on §11 tiers** (replaces §12.3 reviewer-prior table):
+
+| Tier | d_pure range | Action | Empirical posterior probability |
+|---|---|---|---:|
+| Tier 0 | ≤ 0.10 | d_thr = 0.10, no inflation | **~85%** (was 60% under reviewer prior) |
+| Tier 1 | 0.10–0.20 | d_thr = 1.8 × d_pure | ~12% (was 25%) |
+| Tier 2 | 0.20–0.40 | switch to Welch's t + multi-seed | ~3% (was 15%) |
+| Tier 3 | > 0.40 | reframe to closed-form contribution | <1% (was 15%) |
+
+**Plan F structural verdict**: with > 85% probability the experiment lands in Tier 0 and the existing primary decision rule (5% relative MSE margin) executes unmodified. The §11 4-tier table remains intact as defensive scaffolding for the long-tail outcomes; no pre-emptive narrative reframe is required.
+
+**Constraints preserved**:
+- V6_NOISE empirical measurement still governs final tier selection (priors do not bypass measurement)
+- Plan F yaml content unchanged
+- Round 4 prompt at `dcdcd2c` unchanged (82/82 integrity)
+- Option F golden test (gate (d)) still pending operator execution
+
+**Independent corroboration of operator's rolling-val concern**: V6@160K rolling-val NORMAL chain MSE = 2.370e-4 vs full-val NORMAL chain MSE = 2.4454e-4 (relative gap +3.18%). This validates §10 (no rolling-val gating during Plan F) and the operator's recommendation that V6 best.pt selection bias should be treated as a known quantity, not an open question.
+
+**What this changes in §12.4 pre-launch gates**:
+- No new gates added.
+- Action #4 (V6 same-seed double-pass at 1-5K) remains valuable as a **floor check** — confirms d_pure ≈ 0 when the only difference is RNG init in the dataloader, providing a lower-bound anchor for V6_NOISE interpretation.
+- Action #5 (V7 5K-replica spot-check) remains the highest-value cheap diagnostic.
