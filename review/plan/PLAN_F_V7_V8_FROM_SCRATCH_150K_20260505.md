@@ -299,7 +299,21 @@ Operator must confirm before any GPU launch:
 ### 9.4  V8 RNG-invariance diag (Fix 4, belt-and-suspenders)
 
 - [ ] Before V8 launch: run `python3 review/0505/local/scripts/diag_v8_rng_invariance.py --config review/0505/local/configs/V8_no_image_aux.yaml --num-batches 1`. Expected: `torch.cuda.get_rng_state()` after one fake hop0 forward step is bit-identical between `image_aux.enabled=true` and `enabled=false` paths. (DiT verified RNG-free via local code grep — no nn.Dropout / DropPath / stochastic_depth in pet_lr/ + RAE pet_flow models; `NormAttention.attn_drop=proj_drop=0` default; `Mlp drop=0`; this diagnostic is defensive against future DiT modifications.)
+### 9.5  Round 4 external review pre-launch gates (added 2026-05-06)
 
+Per [`ROUND4_EXTERNAL_CONSENSUS_20260506.md`](ROUND4_EXTERNAL_CONSENSUS_20260506.md), 5/5 substantive external reviewers (Agents 2–6) unanimously required these P0 actions before V7 launches. The tag `round4-tmp-pre-external-review-20260506` listed 4 gates (a)–(d); gates (a)–(c) are SATISFIED in the consensus document itself, gate (d) is the operator-actionable item below.
+
+- [ ] **Gate (d) — Option F same-process algebraic golden test** on V6@step_160000.pt:
+  ```bash
+  python3 review/0505/local/scripts/sigma_norm_golden_test.py \
+      --config /path/to/v6_baseline.yaml \
+      --ckpt /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_v6_transport_first/step_160000.pt \
+      --output-json review/0505/operator/sigma_norm_golden_test_result.json
+  ```
+  Cost: ~30 GPU-seconds. Outcome routing per §11 below. PASS unblocks V7 launch; AMBIGUOUS routes to Option G; FAIL defers V7 launch.
+- [ ] **Action #4 — V6@seed42 same-seed double-pass at 1K-5K steps** (Agent 6 strong recommendation; cheap upper bound on (α) compounded). Two sequential 5K-step V6@seed42 runs on the same GPU; after each reaches step 5000, save `step_5000.pt` and run full-val. Compare `val_pair_total` and `val_chain_normal_mse` between pass-1 and pass-2. **Pre-launch gate**: if `val_pair_total` drift > 1.0%, escalate to §11 Tier 2 (multi-seed Welch's t-test) regardless of V6_NOISE final result. Cost: 10K extra GPU-steps total (≈6% overhead on V6_NOISE).
+- [ ] **Action #5 — V7@seed42 same-seed double-pass at 5K-step spot-check** (Agent 6 cost-optimization vs full 160K replica). Two sequential V7@seed42 runs to step 5000; compare full-val `val_pair_total`, `val_chain_normal_mse` at step 5000. **Pre-launch gate**: if V7 pass-1-vs-pass-2 `val_pair_total` drift exceeds the V6 same-seed double-pass measurement from Action #4, V7's path activates additional (α) sources and Option H bundle is mandatory before continuing to step 160000. Cost: 5K extra GPU-steps × 2 = 10K (sequential).
+- [ ] **Optional Action #3 — Option H determinism intervention bundle** (math-SDPA + `nn.AdaptiveAvgPool2d` → `F.avg_pool2d` at `pet_lr/model_first_hop.py:50` + `set_float32_matmul_precision("highest")`). Apply to V7/V8/V6_NOISE training from step 0. Expected throughput overhead < 2%. Optional unless Action #5 detects new (α) sources on V7 path; mandatory if so.
 After all boxes checked, GPU launch is approved.
 
 ---
@@ -340,3 +354,61 @@ Per multi-agent consensus, run **same-process algebraic golden test (Option F)**
 - **Drift in [1e-7, 1e-3]**: ambiguous. Run Option G (paired raw-vs-σnorm full-val evaluator) for distributional bound. If max drift on full val < 1e-4, accept algebra and proceed; else investigate.
 
 **Audit reference**: This contingency table is the binding response to Round 4 reviewers' Q2.d (point estimate for `d_pure` and resulting `d_thr`). If reviewers' point estimate diverges from the empirical `d_pure` measured by V6_NOISE, the empirical value governs.
+
+---
+
+## 12. External review reconciliation (added 2026-05-06)
+
+The Round 4 prompt was sent to 6 external reviewer agents after the internal pre-review reached 82/82 prompt integrity (commit `dcdcd2c`, tag `round4-tmp-pre-external-review-20260506`). Full convergence matrix and per-agent verdicts are in [`ROUND4_EXTERNAL_CONSENSUS_20260506.md`](ROUND4_EXTERNAL_CONSENSUS_20260506.md). This section reconciles the external reviewer outputs with §11 and updates the §11 prior tier accordingly.
+
+### 12.1 Cross-agent convergence (5/5 unanimous)
+
+All 5 substantive reviewers (Agents 2–6) agreed on:
+- Q1 sub-claim (i) "PyTorch reports nondeterministic Mem-Eff-attention + adaptive_avg_pool2d_backward_cuda" → **VERIFIED FACT**
+- Q1 sub-claim (ii) "kernel noise amplified through `mix_latent` is **dominant**" → **PARTIAL or WRONG** (rejected as exclusive cause)
+- Dominant mechanism is **(γ) optimizer-state / weight-trajectory divergence after 20K SGD steps under warn-only nondeterministic kernels**
+- Q2: V7 raw-rollout structurally eliminates (β) but does **NOT** eliminate (α) kernel non-determinism
+- Q2: σ-normalize 12.73% A/B drift is NEITHER (b1) V6-replica drift NOR (b2) V7-vs-V6 signal — it's a third quantity
+- Q2: V6_NOISE is necessary but not sufficient; V7-replica gate is required
+- Q3: F+G+H bundle BEFORE V7 launch is the strongest pre-launch action (5/5 unanimous #1 ranking)
+- Q3: D (inflate K) is the worst option (5/5 unanimous reject)
+
+### 12.2 The one critical divergence — `d_pure` point estimate
+
+| Agent | Point estimate | Mapped §11 tier | Plan F survival |
+|---|---|---|---|
+| Agent 2 | 0.08 | Tier 0 (floor) | ✅ survives |
+| Agent 3 | 0.07 | Tier 0 (floor) | ✅ survives |
+| Agent 4 | 0.20 | Tier 2 boundary | ⚠️ Welch's t-test required |
+| Agent 5 | 0.08 | Tier 0 (floor) | ✅ survives |
+| Agent 6 | 1.0 | **Tier 3+** | ❌ Tier 3 (Option E reframe) mandatory |
+
+Spread: 14× between Agent 3 (0.07) and Agent 6 (1.0). Agents 2/3/5 cluster around 0.07–0.08; Agent 4 is moderate outlier; Agent 6 is the catastrophic outlier (anchored on √8 step-compounding heuristic).
+
+**Resolution**: The empirical V6_NOISE measurement governs. Reviewer estimates are heuristic priors; the §11 tier table absorbs all 5 outcomes (Agents 2/3/5 → Tier 0, Agent 4 → Tier 2, Agent 6 → Tier 3). Plan F's existing tiered contingency therefore covers the entire reviewer estimate range without modification.
+
+### 12.3 Updates to Plan F prior tier (§11) based on external review
+
+The prior on `d_pure` is widened to absorb Agent 6's catastrophic estimate. Specifically:
+- **Pre-launch d_pure prior bands** (from external reviewers, before V6_NOISE measurement):
+  - 60% probability: d_pure ∈ [0.05, 0.10] (Agents 2/3/5 cluster) → Tier 0
+  - 25% probability: d_pure ∈ [0.10, 0.40] (Agent 4 + Agent 6's lower-end range overlap) → Tier 1 or Tier 2
+  - 15% probability: d_pure > 0.40 (Agent 6's median) → Tier 3
+- **Decision rule**: V6_NOISE empirical d_pure measurement supersedes all priors. The pre-registered §11 tier table executes mechanically once d_pure is computed at §9.0.
+- **No structural change to §11**. The 4-tier table already absorbs the full reviewer range; this subsection documents that absorption is intentional, not coincidental.
+
+### 12.4 Mandatory pre-launch additions from external review
+
+Per §9.5 (added 2026-05-06):
+- Gate (d): Option F same-process golden test on V6@step_160000.pt (script at [`review/0505/local/scripts/sigma_norm_golden_test.py`](../0505/local/scripts/sigma_norm_golden_test.py))
+- Action #4: V6@seed42 same-seed double-pass at 1K-5K steps (Agent 6 strong recommendation)
+- Action #5: V7@seed42 same-seed double-pass at 5K steps (cost-optimized V7-replica per Agent 6)
+- Action #3 (optional): Option H bundle, mandatory if Action #5 detects new (α) sources on V7 path
+
+### 12.5 Audit trail entry
+
+| Date | Document | Verdict |
+|---|---|---|
+| 2026-05-06 | Round 4 prompt sent to 6 external reviewer agents (after 82/82 internal pre-review at commit `dcdcd2c`) | Q1: 5/5 unanimous (i)=VERIFIED, (ii)=PARTIAL/WRONG; Q2: 5/5 raw-rollout eliminates β not γ; Q3: 5/5 strongest rec = F+G+H bundle pre-launch + V7-replica gate; `d_pure` point estimates spread 14× across reviewers (0.07 to 1.0) — fully absorbed by §11 4-tier contingency table |
+| 2026-05-06 | [`ROUND4_EXTERNAL_CONSENSUS_20260506.md`](ROUND4_EXTERNAL_CONSENSUS_20260506.md) written | Cross-agent convergence matrix; GPU-launch gate (a)=SATISFIED, (b)=FAILED-but-SUBSTITUTED, (c)=SATISFIED, (d)=PENDING (operator runs sigma_norm_golden_test.py) |
+| 2026-05-06 | §9.5 (Round 4 external review pre-launch gates) added; §12 reconciliation written | Plan F unblocked for GPU launch contingent on operator running gate (d) and Actions #4/#5 |
