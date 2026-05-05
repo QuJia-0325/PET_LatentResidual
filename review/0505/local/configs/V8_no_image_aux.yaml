@@ -1,0 +1,420 @@
+project_name: pet_first_hop_224
+rae_root: /home/qujiaxiang/project/RAE
+output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual
+# ================================================================
+# V8 — No image_aux ablation (V6 minus image_aux)
+# ================================================================
+# Hypothesis (NARROWED, 2026-05-05 after 4-reviewer feedback):
+#   Removing image_aux under V6's exact schedule, does the latent-domain
+#   chain-MSE objective survive? This V8 sanity tests ONE claim only:
+#       (1) Does image_aux materially affect chain MSE / val_multi_objective
+#           at the V6-aligned 50K training stage?
+#
+# What V8 does NOT test (explicitly out of scope for this 50K sanity):
+#   - Decode-domain artifact severity. image_aux's stated motivation in the
+#     paper is to suppress decode artifacts on hop0's pixel branch. chain MSE
+#     is measured in latent space — it cannot falsify or confirm the artifact
+#     claim. A separate qualitative decode comparison (V6_last vs V8_last on a
+#     fixed validation subset) is required before V8 can replace V6 as a
+#     baseline. That step is OUT OF SCOPE here.
+#   - gate_pix / lambda_hop_0 stability after image gradient is removed. We
+#     monitor these in the train log (see dead_branch_watch_steps below) but
+#     they are diagnostic, not the V8 hypothesis.
+#
+# Why this matters for the Grönwall narrative:
+#   image_aux only acts on hop0's decoded image (decode_crop(z_pred_0) vs x_gt_0
+#   in train_first_hop.py:786-820). It does NOT propagate along the chain. From
+#   V6's hop0 step_weight=0.5 (Grönwall closed-form expects ~0.61), we hypothesize
+#   image_aux already absorbs a fraction of the hop0 latent gradient, so V6
+#   deweights hop0 by ~18% to compensate. V8 isolates this hypothesis at the
+#   chain-MSE level only.
+#
+# Predictions:
+#   H0: V8 chain_normal_mse ≈ V6 (within fullval noise)
+#       → image_aux is a wash on chain validation metrics. Decision:
+#         keep image_aux only if a separate decode-artifact study shows
+#         qualitative regression on test slices.
+#   H1: V8 chain_normal_mse > V6 + decision-margin
+#       → image_aux is doing real work for chain quality (likely via
+#         gate_pix / pixel forcing branch receiving training signal it
+#         would otherwise lack). Decision: keep image_aux; defend in paper.
+#   H2: V8 chain_normal_mse < V6 - decision-margin
+#       → image_aux was actively hurting chain MSE (image L1 + SSIM gradient
+#         pulled latents away from the latent-MSE optimum). Decision: drop
+#         image_aux but verify decode artifacts qualitatively before adopting.
+#
+# Code paths affected:
+#   - train_first_hop.py:1618 `img_enabled` → False, the image branch and
+#     hop0_aux_dataloader become no-ops (lambda_img·loss_img drops out of L_total).
+#   - val: `val_hop0_img_total` etc. still computed for monitoring (evaluate(...)
+#     does not skip these even when img_enabled=False) — useful as a passive metric
+#     to confirm the decode quality was not catastrophic.
+#
+# Side effects to verify in V8 train log:
+#   - hop0_aux_ratio still hits coverage_target [0.15, 0.60]? (data path runs even
+#     if loss is zero — this gate is on data, not loss)
+#   - gate_pix and lambda_hop_0 may drift since pixel forcing no longer receives
+#     image-domain gradient; dead_branch_watch_steps now extended to 160000 to
+#     catch any collapse anywhere within Plan F's training window (see schedule note).
+#
+# ================================================================
+# Schedule alignment with V6 — IMPORTANT (4-reviewer consensus blocker)
+# ================================================================
+# V6 main was trained with max_steps=200000. V6 yaml save_interval=20000 →
+# V6 step ckpts exist at {20K, 40K, ..., 200K}. Plan F endpoint is therefore
+# step 160000 (NOT 150000 — V6@step_150000.pt does not exist on disk;
+# cross-AI peer review BLOCKER, fixed via Fix F).
+# Reference key stages on V6's locked schedule:
+#     step  30000: lr warmup ends      (warmup_ratio=0.15 × 200000 = 30000)
+#     step  50000: rollout warmup ends (warmup_ratio=0.25 × 200000 = 50000)
+#                  → lambda_roll just begins ramp from 0
+#                  → lr ≈ 7.74e-5 ≈ 0.97 × base (progress=20/170)
+#     step 100000: rollout ramp midpoint, lambda_roll = 2.0
+#                  → lr ≈ 5.17e-5 ≈ 0.65 × base (progress=70/170)
+#     step 150000: rollout ramp ends, lambda_roll = 4.0 (clamped beyond)
+#                  → lr ≈ 1.75e-5 ≈ 0.22 × base (progress=120/170)
+#     step 160000: rollout plateau, lambda_roll = 4.0  ← Plan F ENDPOINT
+#                  → lr ≈ 1.22e-5 ≈ 0.15 × base (progress=130/170)
+# To make V8@k the bit-equivalent training stage of V6@k for any 0≤k≤160000,
+# we explicitly lock schedule fields to V6-200K values:
+#     training.rollout.warmup_steps        = 50000   (overrides warmup_ratio)
+#     training.rollout.ramp_steps          = 100000  (overrides ramp_ratio)
+#     training.lr_schedule.total_steps_override = 200000
+# Trainer support: train_first_hop.py:_resolve_schedule_steps + lr_schedule:1566
+# + LR formula get_warmup_cosine_lr (train_first_hop.py:62-78).
+#
+# Decision based on full-val, not rolling val
+# ================================================================
+# Rolling-val 64-batch window has CV 25-28% (V6 main log). We set
+# best_select_full_eval_interval=5000 so the trainer (fc7446d) writes best.pt
+# only on full-val improvements. Final V8-vs-V6 decision uses fullval scores
+# (review/0505/scripts/eval_first_hop_fullval_*.py), not rolling-val rows.
+#
+# Training budget (Plan F, see review/plan/PLAN_F_V7_V8_FROM_SCRATCH_150K_*.md)
+#   Approved 2026-05-05 (cross-AI peer review GO-WITH-FIXES; Fix F applied:
+#   150K endpoint moved to 160K because V6@step_150000.pt does not exist).
+#   - max_steps      : 160000  (from-scratch, locked schedule above)
+#   - anchor         : V6@step_160000.pt full-val score (must exist before launch)
+#   - PRIMARY        : V8@step_160000.pt vs V6@step_160000.pt (last.pt = step_160000.pt
+#                      under save_interval=10000)  — NO selection bias
+#   - SECONDARY      : V8@best.pt vs V6@step_160000.pt (Bonferroni-adjusted threshold,
+#                      see ANALYSIS.md §6)
+#   - margin         : paired Cohen's d ≥ 0.10 AND chain_normal_mse Δ ≥ 5%
+#   - 200K main run  : only if Plan F endpoint supports H0 or H2 AND a separate
+#                      qualitative decode-artifact study clears V8
+# Why 160K and not 150K (cross-AI peer review BLOCKER, 2026-05-05):
+#   V6 was trained with save_interval=20000 → step_150000.pt does NOT exist.
+#   Closest existing V6 ckpt at the rollout-plateau region: step_160000.pt
+#   (lambda_roll=4.0 clamped). 160K is chosen so V6 and V8 share identical
+#   (lambda_roll=4.0, lr=1.22e-5) endpoint state. Cost: +20K GPU per arm (+6.7%).
+# ================================================================
+run_name: first_hop_224_v8_no_image_aux
+seed: 42
+device: cuda:0
+
+data:
+  latent_dir: /data_2/qujiaxiang/lowdose_pet_ct/latents_224
+  raw_data_dir: /data_2/qujiaxiang
+  clamp_max: 10.0
+  image_size: 224
+  num_workers: 0
+  batch_size: 8
+  hop0_aux_batch_size: 2
+  verify_alignment: true
+  alignment_check_num_samples: 16
+  alignment_audit_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/alignment_224_audit/alignment_224_clip3_audit.json
+  train_include_x_rollout_first: true
+  train_include_full_x_rollout: false
+  val_include_x_rollout_first: true
+  val_include_full_x_rollout: true
+  val_shuffle: false
+  rollout_timepoints:
+    - D50
+    - D20
+    - D10
+    - D4
+    - NORMAL
+  t_map:
+    D50: 2.0
+    D20: 5.0
+    D10: 10.0
+    D4: 25.0
+    NORMAL: 100.0
+
+training:
+  max_steps: 160000        # Plan F endpoint after Fix F (was 150000 — anchor V6@step_150000.pt missing on disk; was 50000 sanity, was 100000 Plan D)
+  log_interval: 50
+  eval_interval: 400
+  save_interval: 10000
+  max_val_batches: 64
+  max_hop0_val_batches: 64
+  val_window_mode: rolling
+  amp: false
+  grad_clip: 0.5
+  deterministic: true
+  require_fresh_output_dir: true
+  metrics_jsonl_mode: write
+  require_chain_metrics: true
+  loss_balance_watch_enabled: true
+  loss_balance_watch_warn: true
+  loss_balance_watch_enforce: false
+  loss_balance_watch_warmup_steps: 1200
+  loss_balance_watch_patience: 200
+  loss_balance_dominance_threshold: 0.85
+  freeze_backbone: false
+  freeze_rae: true
+
+  best_metric: val_multi_objective
+  best_metric_terms:
+    - name: val_chain_d20_mse
+      weight: 0.50
+    - name: val_chain_d10_mse
+      weight: 0.45
+    - name: val_chain_d4_mse
+      weight: 0.90
+    - name: val_chain_normal_mse
+      weight: 1.50
+
+  # Full-val every 5000 steps to write unbiased best.pt (trainer fc7446d).
+  # Rolling 64-batch best.pt is single-batch noisy — see ANALYSIS.md §7.
+  best_select_full_eval_interval: 5000
+
+  eval_chain_on_all_samples: true
+  eval_chain_unique_slices: true
+  eval_chain_max_unique_slices: 0
+
+  hop0_coverage_target:
+    - 0.15
+    - 0.60
+  gate_explosion_watch_steps: 800
+  gate_abs_max: 2.0
+  lambda_hop0_abs_max: 2.0
+  # Extended from 10000 → 160000 (Plan F): with image_aux disabled, gate_pix /
+  # lambda_hop_0 may collapse to floor any time during the rollout ramp
+  # (steps 50K–150K) or the plateau (150K–160K). For Plan F's 160K endpoint we
+  # cover the full training window so collapse is detected within this run.
+  dead_branch_watch_steps: 160000
+  dead_branch_patience: 120
+  dead_branch_gate_eps: 0.0005
+  dead_branch_lambda_eps: 0.0005
+  # img_loss_zero_eps watchdog is irrelevant when image_aux is disabled, but we
+  # set img_loss_zero_eps = 0 to suppress the dead-branch warning that the
+  # img_enabled=false path would otherwise trigger when val_hop0_img_total is 0.
+  img_loss_zero_eps: 0.0
+  img_loss_zero_patience: 0
+  progress_bar: false
+  print_train_line_with_pbar: false
+  log_grad_norms: true
+  grad_finite_check: true
+  strict_resume_compat: true
+  resume_allow_metric_mismatch: false
+  resume_allow_config_mismatch: false
+  resume_allow_missing_compat_metadata: false
+  metrics_jsonl: true
+
+  # rollout schedule — schedule fields LOCKED to V6-200K values
+  # (see header §"Schedule alignment with V6" for rationale)
+  #
+  # Explicit warmup_steps / ramp_steps override warmup_ratio / ramp_ratio in
+  # train_first_hop.py:_resolve_schedule_steps. With max_steps=160000 (Plan F)
+  # and these absolute values, V8@k is bit-aligned to V6@k for all 0≤k≤160000:
+  #     step  50K: warmup ends → lambda_roll = 0 (ramp begins)
+  #     step 100K: ramp midpoint → lambda_roll = 2.0
+  #     step 150K: ramp ends    → lambda_roll = 4.0
+  #     step 160K: plateau      → lambda_roll = 4.0 (Plan F endpoint)
+  rollout:
+    enabled: true
+    path:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    warmup_steps: 50000     # absolute, locked to V6-200K (overrides warmup_ratio)
+    ramp_steps: 100000      # absolute, locked to V6-200K (overrides ramp_ratio)
+    warmup_ratio: 0.25      # kept for documentation; ignored when warmup_steps present
+    ramp_ratio: 0.50        # kept for documentation; ignored when ramp_steps present
+    alpha_start: 0.0
+    alpha_end: 1.0
+    straight_through_mode: fixed
+    straight_through: true
+    eval_alpha: 1.00
+    lambda_start: 0.0
+    lambda_end: 4.0
+    lambda_scale_mode: none
+    endpoint_loss_weight: 0.25
+    loss_type: mse
+    # IDENTICAL to V6
+    step_weights:
+      - 0.5
+      - 2.0
+      - 1.5
+      - 1.0
+
+  # ============================================================
+  # V8 ONLY CHANGE vs V6: image_aux disabled
+  # train_first_hop.py:1618 `img_enabled = bool(image_aux_cfg.get("enabled", True))`
+  # When False, lambda_img · loss_img is not added to total loss
+  # (train_first_hop.py:2027, 2044). The hop0 aux dataloader still runs to
+  # preserve dataset shuffling / seed alignment with V6, but its image-side
+  # forward is skipped (train_first_hop.py:1970-1975).
+  # ============================================================
+  image_aux:
+    enabled: false
+    warmup_ratio: 0.0
+    ramp_ratio: 0.0
+    lambda_start: 0.0
+    lambda_max: 0.0
+
+optimizer:
+  lr: 8.0e-5
+  weight_decay: 0.01
+  first_hop_weight_decay: 0.0
+  betas:
+    - 0.9
+    - 0.95
+  backbone_lr_mult: 0.4
+  first_hop_lr_mult: 3.5
+
+ema:
+  enabled: true
+  decay: 0.9999
+  warmup_steps: 0
+  update_after_step: 0
+  update_every: 1
+
+lr_schedule:
+  enabled: true
+  warmup_ratio: 0.15
+  min_lr: 2.0e-6
+  # Lock cosine schedule to V6-200K so V8@k sees the same lr stage as V6@k.
+  # Resolved warmup_steps = 0.15 × 200000 = 30000.
+  # Reference points (validated against get_warmup_cosine_lr at L62-78):
+  #     step  30K: lr = base = 8.0e-5    (warmup ends)
+  #     step  50K: lr ≈ 7.74e-5 ≈ 0.97×base   (progress=20/170, cos ≈ 0.97)
+  #     step 100K: lr ≈ 5.17e-5 ≈ 0.65×base   (progress=70/170, cos ≈ 0.64)
+  #     step 150K: lr ≈ 1.75e-5 ≈ 0.22×base   (progress=120/170, cos ≈ 0.20)
+  #     step 160K: lr ≈ 1.22e-5 ≈ 0.15×base   (progress=130/170, cos ≈ 0.13)  ← Plan F endpoint
+  # Trainer reads this in train_first_hop.py:1566 → lr_total_steps = override or max_steps.
+  total_steps_override: 200000
+
+transport:
+  method: mean_flow
+  loss_type: mse
+  velocity_loss_weight: 1.0
+  endpoint_loss_weight: 1.0
+  endpoint_pair_weighting: true
+  endpoint_dt_normalize: true
+  pair_sample_probs:
+    - 0.25
+    - 0.25
+    - 0.25
+    - 0.25
+  pair_weighting: manual
+  pair_loss_weights:
+    - 2.5
+    - 1.0
+    - 1.0
+    - 1.0
+
+backbone:
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke/best.pt
+  model:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size:
+      - 384
+      - 2048
+    depth:
+      - 12
+      - 2
+    num_heads:
+      - 6
+      - 16
+    mlp_ratio: 4.0
+  data:
+    timepoints:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    t_map:
+      D50: 2.0
+      D20: 5.0
+      D10: 10.0
+      D4: 25.0
+      NORMAL: 100.0
+
+rae:
+  encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_input_size: 224
+  dinov2_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_mean:
+    - 0.0
+    - 0.0
+    - 0.0
+  encoder_std:
+    - 1.0
+    - 1.0
+    - 1.0
+  decoder_config_path: /home/qujiaxiang/project/RAE/vit-mae
+  decoder_patch_size: 14
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target_keywords:
+    - attention.qkv
+    - attention.projection
+    - attention.attention.query
+    - attention.attention.key
+    - attention.attention.value
+    - attention.output.dense
+    - .mlp.fc1
+    - .mlp.fc2
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+
+first_hop:
+  num_hops: 4
+  pixel_encoder_stem_channels: 32
+  pixel_encoder_hidden_channels: 64
+  pixel_encoder_max_ratio: 0.05
+  hop_residual_hidden_channels: 192
+  pixel_gate_init: 0.02
+  pixel_gate_floor: 0.001
+  lambda_hop_init: 0.10
+  lambda_hop_floor: 0.001
+  pixel_proj_init_std: 0.002
+  hop_residual_last_init_std: 0.01
+  pair_v_std:
+    - 0.009634
+    - 0.002946
+    - 0.000775
+    - 0.000141
+
+# IDENTICAL to V6 from here down — the loss.image_aux block stays defined but
+# is gated by training.image_aux.enabled=false above, so these weights are unused.
+loss:
+  pair_weight: 15.0
+  pair:
+    velocity_weight: 1.0
+    endpoint_weight: 1.0
+    velocity_rebalance:
+      enabled: true
+      mode: sqrt_ratio
+      clip_min: 1.0
+      clip_max: 4.0
+      eps: 1.0e-12
+  image_aux:
+    l1_weight: 1.0
+    ssim_weight: 0.25
+    seam_weight: 0.1
+    border_width: 14
+    border_weight: 2.0
+    seam_patch_size: 14
+  regularizer:
+    enabled: false
+    lambda_hop_l2_weight: 0.0
+    gate_pix_l2_weight: 0.0
