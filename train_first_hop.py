@@ -885,10 +885,18 @@ def evaluate(
     device: torch.device,
     rollout_times: list[float],
     global_step: int,
+    max_val_batches_override: int | None = None,
 ) -> Dict[str, float]:
     model.eval()
-    max_main_batches_cfg = int(cfg["training"].get("max_val_batches", 32))
-    max_hop0_batches_cfg = int(cfg["training"].get("max_hop0_val_batches", max_main_batches_cfg))
+    if max_val_batches_override is None:
+        max_main_batches_cfg = int(cfg["training"].get("max_val_batches", 32))
+        max_hop0_batches_cfg = int(cfg["training"].get("max_hop0_val_batches", max_main_batches_cfg))
+    else:
+        # Full-val path: passing 0 means "run on every batch in the loader"
+        # via _resolve_eval_window's existing semantic (max_batches_cfg <= 0
+        # OR >= total_batches → return 0, total_batches).
+        max_main_batches_cfg = int(max_val_batches_override)
+        max_hop0_batches_cfg = int(max_val_batches_override)
     window_mode = str(cfg["training"].get("val_window_mode", "rolling")).lower()
     eval_interval = int(cfg["training"].get("eval_interval", 250))
     main_start, max_main_batches = _resolve_eval_window(
@@ -1219,6 +1227,14 @@ def build_best_metric_signature(train_cfg: Dict) -> str:
         payload = {"best_metric": "val_multi_objective", "terms": normalized_terms}
     else:
         payload = {"best_metric": best_metric_name}
+    # Full-val best-selection mode: only embed when enabled, so V6/V6.1
+    # ckpts (which never set this field) keep producing the legacy signature
+    # and remain resume-compatible without forcing
+    # resume_allow_metric_mismatch=true. See review/0502/ROLLING_WINDOW_TRADEOFF.md
+    # §5.1 for why single-rolling-window best.pt selection is biased.
+    full_eval_interval = int(train_cfg.get("best_select_full_eval_interval", 0))
+    if full_eval_interval > 0:
+        payload["best_select_full_eval_interval"] = full_eval_interval
     return json.dumps(payload, ensure_ascii=True, sort_keys=True)
 
 
@@ -1597,6 +1613,35 @@ def main() -> None:
         raise ValueError(f"training.eval_interval must be > 0, got {eval_interval}")
     if save_interval <= 0:
         raise ValueError(f"training.save_interval must be > 0, got {save_interval}")
+    # best.pt selection mode:
+    #   0  = legacy single-rolling-window selection (pre-2026-05-05 behavior).
+    #   >0 = run a full-val evaluate every N steps; best.pt updates only on
+    #        full-val improvements. Rolling eval at every eval_interval steps
+    #        remains for monitoring + d1-best, but no longer writes best.pt.
+    #        See review/0502/ROLLING_WINDOW_TRADEOFF.md §5.1 for why
+    #        single-window selection has -3σ (~-61%) extreme-value bias.
+    best_select_full_eval_interval = int(train_cfg.get("best_select_full_eval_interval", 0))
+    if best_select_full_eval_interval < 0:
+        raise ValueError(
+            f"training.best_select_full_eval_interval must be >= 0, "
+            f"got {best_select_full_eval_interval}"
+        )
+    if best_select_full_eval_interval > 0:
+        if best_select_full_eval_interval % eval_interval != 0:
+            print(
+                f"[startup][warn] best_select_full_eval_interval="
+                f"{best_select_full_eval_interval} is not a multiple of "
+                f"eval_interval={eval_interval}; the two evals will not be "
+                f"co-located on the step grid (functionally fine, just unusual).",
+                flush=True,
+            )
+        print(
+            f"[startup] best.pt selection: FULL-VAL every "
+            f"{best_select_full_eval_interval} steps "
+            f"(rolling-window evals at every {eval_interval} steps remain for "
+            f"monitoring/d1-best only; they no longer write best.pt)",
+            flush=True,
+        )
     grad_clip = float(train_cfg.get("grad_clip", 1.0))
     log_grad_norms = bool(train_cfg.get("log_grad_norms", False))
     print_train_line_with_pbar = bool(train_cfg.get("print_train_line_with_pbar", False))
@@ -2508,7 +2553,11 @@ def main() -> None:
             summary = " ".join([f"{k}={v:.6f}" for k, v in metrics.items()])
             print(f"[val] step={step:05d} {summary}")
 
-            if key < best_val:
+            # When best_select_full_eval_interval > 0, best.pt is owned by
+            # the full-val branch below; the rolling eval keeps writing
+            # event="val" rows into metrics.jsonl for monitoring (and still
+            # drives d1-best selection above) but does NOT touch best.pt.
+            if best_select_full_eval_interval == 0 and key < best_val:
                 best_val = key
                 _ema_ctx3 = ema.average_parameters() if ema is not None else nullcontext()
                 with _ema_ctx3:
@@ -2530,6 +2579,61 @@ def main() -> None:
                         best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
                     )
                 print(f"[val] new best {key_name}={best_val:.6f} at step={step}")
+
+        # ---- full-val best-selection branch ----
+        # Independent step-grid trigger (decoupled from eval_interval).
+        # Runs the full val loader (max_val_batches_override=0 → all batches).
+        # Cost reference: ~423 sec single-GPU on V6 yaml (0505 measurement);
+        # for interval=5000 over 200K total = 40 candidates → ~5h overhead /
+        # ~24h training run = ~20%.
+        if (best_select_full_eval_interval > 0
+                and step > 0
+                and step % best_select_full_eval_interval == 0):
+            _ema_ctx_full = ema.average_parameters() if ema is not None else nullcontext()
+            with _ema_ctx_full:
+                full_metrics = evaluate(
+                    model=model,
+                    main_val_loader=main_val_loader,
+                    hop0_val_loader=hop0_val_loader,
+                    cfg=cfg,
+                    device=device,
+                    rollout_times=rollout_times,
+                    global_step=step,
+                    max_val_batches_override=0,
+                )
+            full_key, full_key_name = resolve_best_selection_score(full_metrics, train_cfg)
+            full_metrics["val_select_score"] = float(full_key)
+            if metrics_fp is not None:
+                val_full_payload = {"event": "val_full", "step": int(step)}
+                for k, v in full_metrics.items():
+                    val_full_payload[k] = float(v)
+                metrics_fp.write(json.dumps(val_full_payload, ensure_ascii=True) + "\n")
+                metrics_fp.flush()
+            summary_full = " ".join([f"{k}={v:.6f}" for k, v in full_metrics.items()])
+            print(f"[val_full] step={step:05d} {summary_full}")
+            if full_key < best_val:
+                best_val = full_key
+                best_metric_name_for_ckpt = full_key_name
+                _ema_ctx_full2 = ema.average_parameters() if ema is not None else nullcontext()
+                with _ema_ctx_full2:
+                    save_checkpoint(
+                        model,
+                        optimizer,
+                        scaler,
+                        step,
+                        output_dir,
+                        "best.pt",
+                        rollout_tps,
+                        ema=ema,
+                        best_val=best_val,
+                        best_metric_name=best_metric_name_for_ckpt,
+                        best_metric_signature=best_metric_signature,
+                        best_d1_val=best_d1_val if best_d1_enabled else None,
+                        best_d1_metric_name=best_d1_metric_name if best_d1_enabled else None,
+                        best_d1_guard_metric_name=best_d1_guard_metric_name if best_d1_enabled else None,
+                        best_d1_guard_best=best_d1_guard_best if best_d1_enabled else None,
+                    )
+                print(f"[val_full] new best {full_key_name}={best_val:.6f} at step={step}")
         if pbar is not None:
             pbar.update(1)
 
