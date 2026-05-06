@@ -401,7 +401,12 @@ def main() -> int:
         msg = (
             f"ambiguous: rel_drift={rel_drift_total:.3e} in "
             f"[{args.rel_tolerance:.0e}, {args.ambiguous_upper:.0e}]; "
-            f"run Option G (paired raw-vs-sigma full-val) for distributional bound"
+            f"run Option G (paired raw-vs-sigma full-val) for distributional bound. "
+            f"Note: per RUNBOOK §3.2-A and §3.3 Step 3, V7/V8/V6_NOISE training arms "
+            f"have no sigma_normalize block in their yaml (grep-verified) so their "
+            f"training paths are structurally insulated from sigma-normalize algebra; "
+            f"the three arms may launch in parallel with Option G — Option G then "
+            f"serves only as forensic narrative for the historical sanity failure."
         )
 
     result = {

@@ -128,8 +128,8 @@ CUDA_VISIBLE_DEVICES=2 python3 review/0505/local/scripts/sigma_norm_golden_test.
 |---|---|---|
 | 0 | PASS | V7 路径不引入 σ-normalize 类残留差异，**解锁 V7 启动** |
 | 2 | setup error | 检查 ckpt / yaml 路径，重跑 |
-| 3 | AMBIGUOUS | 切换 Option G（不同种子重跑），暂缓 V7 |
-| 4 | FAIL | **暂不启动 V7**；与本人确认 §11 Tier 处理路径 |
+| 3 | AMBIGUOUS | **见 §3.3 Step 3 结构隔离论证**：V7/V8/V6_NOISE 三个 yaml 都没有 `sigma_normalize` 块（已 grep 验证），训练时 `step_normalizers=None`，[`rollout_first_hop.py:102`](../../../pet_lr/rollout_first_hop.py) 的除法分支永不执行 → σ-normalize 算法路径与训练 disjoint。三个 arm 可与 Option G 并行启动；Option G 结果仅作 σ-normalize 历史 forensic 归因 |
+| 4 | FAIL | **暂不启动全部三个 arm**；与本人确认 §11 Tier 处理路径 |
 
 #### B. V8 RNG-invariance diagnostic（GPU3，强阻塞 V8 启动）
 
@@ -198,14 +198,41 @@ Step 1: V6 pass-1 vs V6 pass-2
 Step 2: V7 pass-1 vs V7 pass-2
   drift_v7 = abs(pass2.val_pair_total - pass1.val_pair_total) / pass1.val_pair_total
 
-  if drift_v7 ≤ drift_v6 → V7 没引入新 (α) 源，**正常启动 Phase 2**
-  if drift_v7 > drift_v6 → V7 引入新 (α) 源；启动 Phase 2 前必须先应用 Option H bundle
-                          （math-SDPA + AdaptiveAvgPool2d 替换 + matmul_precision('highest')）。
-                          联系本人确认 Option H 应用方式。
+  # Margin derivation: drift_v6 / drift_v7 are each single-shot |Δ| measurements
+  # from one V6/V7 double-pass. Under H0 (V7 path determinism = V6 path), they are
+  # i.i.d. samples; bare "drift_v7 > drift_v6" has ~50% H0 false-positive rate.
+  # Using V6's single drift as the local scale estimate, the conservative margin is:
+  #   epsilon = max(drift_v6, 1e-7)
+  # which gives gate threshold = drift_v6 + epsilon = max(2*drift_v6, drift_v6 + 1e-7).
+  # The 1e-7 absolute floor matches sigma_norm_golden_test rel_tolerance and prevents
+  # "two near-zero noise floors compete" pseudo-triggers when both drifts are tiny.
+  # The factor-of-2 multiplicative term is the single-trial MDE rule-of-thumb; under
+  # half-normal approximation this corresponds to ~1-sigma margin, ~16% H0 FPR.
+  epsilon = max(drift_v6, 1e-7)
+  gate    = drift_v6 + epsilon       # = max(2*drift_v6, drift_v6 + 1e-7)
+
+  if drift_v7 ≤ gate → V7 与 V6 在确定性特性上一致（一个 σ 之内或低于绝对地板），
+                       **正常启动 Phase 2**
+  if drift_v7 > gate → V7 引入超出 V6 RNG floor 一个 σ 的新 (α) 源；启动 Phase 2
+                       前必须先应用 Option H bundle（math-SDPA + AdaptiveAvgPool2d
+                       替换 + matmul_precision('highest')）。
+                       联系本人确认 Option H 应用方式。
 
 Step 3: Gate (d) 验证
-  if Option F exit 0 (PASS)        → 完全解锁 Phase 2
-  if Option F exit 2/3/4           → 见 §3.2-A 退出码表格；不要启动 V7
+  if Option F exit 0 (PASS)         → 完全解锁 Phase 2
+  if Option F exit 2 (setup error)  → 修复 ckpt/yaml 路径后重跑；暂缓 Phase 2
+  if Option F exit 3 (AMBIGUOUS)    → **结构隔离论证**：V7/V8/V6_NOISE 三个 yaml 都没有
+                                      `sigma_normalize` 块（启动前 grep 验证）→ 训练时
+                                      step_normalizers=None → rollout_first_hop.py:102
+                                      的除法分支永不执行 → σ-normalize 算法路径与训练
+                                      disjoint。**三个 arm 可与 Option G 并行启动**
+                                      （Option G ~30 min 完成，仅作 σ-normalize 历史
+                                      forensic 归因，不阻塞训练）。Phase 2 启动后
+                                      operator 须并行触发 Option G 并把结果写入
+                                      `review/0506/operator/option_g_result_20260506.md`
+  if Option F exit 4 (FAIL)         → algebra 真的破了；rollout 代码路径异常，**暂缓
+                                      全部三个 arm**（V7/V8/V6_NOISE 都使用同一
+                                      rollout codepath）；联系本人确认 §11 Tier 处理
 ```
 
 **Phase 1 结束后必须提交的 artifact**：

@@ -436,12 +436,17 @@ Per §9.5 (added 2026-05-06):
 - The cross-arm V6 vs V6.1 paired d ≈ 0.067 is the **closer analog** for "two trained-from-scratch runs with config differences": even with **different yaml**, paired d stays well below 0.10 because both models converge to similar solutions on most slices.
 - V6@160K vs V6.1@best paired d = 0.012 (essentially zero) confirms that two different algorithms at saturation are statistically indistinguishable per-slice.
 
-**Refined d_pure prior** (V6_seed42@step_160000 vs V6_seed1337@step_160000):
-- Same yaml + same step ⇒ no SGD progress confound (mean diff component ≈ 0)
-- Per-slice paired SD: bounded above by V6 vs V6.1 paired SD (≈ 1.9e−5), bounded below by V6 self best→last paired SD (≈ 2.1e−6). Plausible range: [3e−6, 1.5e−5].
-- With mean diff ≈ 0 and finite-sample noise: most-likely d_pure ∈ [0.01, 0.05]; 90% upper bound ≈ 0.10–0.12.
+**Refined d_pure prior** (V6_seed42@step_160000 vs V6_seed1337@step_160000) — primary derivation via RNG exchange symmetry + 1/√N finite-sample argument:
+- **Symmetry condition**: same yaml + same step + only RNG init differs ⇒ no preferred direction in seed permutation ⇒ population mean of paired diffs is identically 0 (mathematical identity, not an empirical bound; this is what the Decomposition above demonstrates is the binding load-bearing assumption — when SGD progress breaks symmetry, d immediately leaves the noise floor at 0.156).
+- **Sampling distribution under H0**: with N=7403 paired validation slices, empirical paired Cohen d̂ ~ N(0, 1/N):
+  - SD[d̂] = 1/√N = **0.0116**
+  - E[|d̂|] = √(2/(πN)) = 0.0093
+  - 95% upper bound: 1.96/√N = **0.0228**
+- **Empirical corroboration**: V6@160K vs V6.1@best paired d = **0.012** (different yaml, both saturated, mean diff effectively zero by saturation symmetry — the closest available analog) sits at 1.03·SD[d̂] under H0, matching the predicted finite-sample noise floor to within 4%. This is convergent evidence — independent of any paired-SD bounding argument.
+- **Posterior**: most-likely d_pure ∈ [0.01, 0.023]; 95% upper bound ≈ 0.05 (allowing mild slice-correlation inflation of finite-sample d̂ variance and one-realization seed-pair fluctuation).
+- **Why this replaces the previous SD-bounding chain**: "V6 vs V6.1 paired SD ≤ V6_seed42 vs V6_seed1337 paired SD" is a plausible heuristic but not a strict mathematical bound (V6 vs V6.1 is cross-yaml, not same-null-distribution as the V6 seed twins). The 1/√N argument bypasses this dependency by deriving the prior directly from the symmetry condition. The empirical paired-SD numbers in the Decomposition table remain useful as saturation-regime sanity checks but are no longer load-bearing for the prior.
 
-**Updated probability mass on §11 tiers** (replaces §12.3 reviewer-prior table):
+**Updated probability mass on §11 tiers** (replaces §12.3 reviewer-prior table; tighter prior strengthens Tier 0 dominance but ratios kept conservative pending V6_NOISE actual measurement):
 
 | Tier | d_pure range | Action | Empirical posterior probability |
 |---|---|---|---:|
