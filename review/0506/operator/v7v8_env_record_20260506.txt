@@ -1,0 +1,32 @@
+=== date ===
+2026-05-06T03:22:04+08:00
+=== git ===
+2a12eb3fc7e52260c27008a3e22923700d33d062
+2a12eb3 review/0506: add 3-GPU launch runbook + preflight double-pass script
+=== nvidia-smi -L ===
+GPU 0: NVIDIA RTX A6000 (UUID: GPU-caad6e17-f27b-2a9d-e624-7085f5af8308)
+GPU 1: NVIDIA RTX A6000 (UUID: GPU-f0aebf61-7ab8-1357-a063-da24f1642c07)
+GPU 2: NVIDIA RTX A6000 (UUID: GPU-4915051c-84ae-540c-8e84-5071cff15640)
+GPU 3: NVIDIA RTX A6000 (UUID: GPU-e2912a4b-6e9f-fe5f-c216-b2ac58194f11)
+
+=== gpu status ===
+0, NVIDIA RTX A6000, GPU-caad6e17-f27b-2a9d-e624-7085f5af8308, 18291, 49140, 100, 83
+1, NVIDIA RTX A6000, GPU-f0aebf61-7ab8-1357-a063-da24f1642c07, 16793, 49140, 100, 80
+2, NVIDIA RTX A6000, GPU-4915051c-84ae-540c-8e84-5071cff15640, 18, 49140, 0, 37
+3, NVIDIA RTX A6000, GPU-e2912a4b-6e9f-fe5f-c216-b2ac58194f11, 18, 49140, 0, 39
+
+=== driver / torch / cuda / cudnn ===
+570.144
+torch = 2.2.0+cu121
+cuda  = 12.1
+cudnn = 8902
+
+=== CUBLAS_WORKSPACE_CONFIG ===
+<unset, launchers set :4096:8>
+
+=== /data_2 free ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda         44T   20T   22T  48% /data_2
+
+=== V6@step_160000.pt ===
+-rw-rw-r-- 1 qujiaxiang qujiaxiang 3.6G May  2 01:10 /data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_v6_transport_first/step_160000.pt

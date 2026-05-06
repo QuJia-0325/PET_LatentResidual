@@ -172,9 +172,9 @@ def _build_real_batch(
     """Build one batch from the val dataset (--use-real-batch mode)."""
     import torch
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     # delayed import; only needed when --use-real-batch
-    from pet_lr.dataset_first_hop import PETFirstHopAligned4HopDataset  # type: ignore
+    from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset  # type: ignore
     from torch.utils.data import DataLoader
 
     data_cfg = cfg["data"]
@@ -245,7 +245,7 @@ def main() -> int:
     cfg = yaml.safe_load(cfg_path.read_text())
 
     # Repository root so we can import pet_lr.
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = Path(__file__).resolve().parents[4]
     sys.path.insert(0, str(repo_root))
     try:
         from pet_lr.model_first_hop import PETFlowDiTFirstHop  # type: ignore

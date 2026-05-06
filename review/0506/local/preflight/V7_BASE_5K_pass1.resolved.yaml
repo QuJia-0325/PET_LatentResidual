@@ -1,0 +1,415 @@
+project_name: pet_first_hop_224
+rae_root: /home/qujiaxiang/project/RAE
+output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/preflight_0506/V7_BASE_5K_pass1
+# ================================================================
+# V7 — Grönwall closed-form raw step_weights (σ-normalize OFF)
+# ================================================================
+# Hypothesis (from review/plan/ARCHITECTURE_ANALYSIS_20260501.md §21.1 / §18.3.3):
+#   The clinical-prior weighted validation objective J = Σ_k β_k · ‖c_k‖²
+#   under multi-hop Grönwall propagation with L_j ≈ 1 gives an optimal
+#   raw-domain step_weights (σ-normalize OFF):
+#       w_j*  ∝  Φ_j / (σ_j · dt_j)²,   where Φ_j = Σ_{k≥j+1} β_k
+#   With β = [0.5, 0.45, 0.9, 1.5] and σ_j·dt_j = (0.0289, 0.01473, 0.01163, 0.01058):
+#       w_raw ∝ [4010, 13135, 17759, 13413]
+#   Normalize so hop1 = 2.0 (match V6 hop1):
+#       w_raw = [0.6106, 2.0000, 2.7041, 2.0423]
+#
+# Why σ-normalize OFF instead of D_closed_form's σ-normalize ON path:
+#   (1) A/B sanity 2026-05-03 FAIL: σ-normalize trajectory drifts ~10% by 50K
+#       under fp32 + warn_only deterministic kernels. D path is contaminated by
+#       this trajectory drift confound. V7 (raw, σ-norm OFF) is the cleanest
+#       implementation of the closed-form: a single line change vs A_control.
+#   (2) Eliminates the `step_loss / n_k` floating-point op that introduced the
+#       drift (see review/0505/local/CODEX_QUESTION_AB_SANITY_ROOT_CAUSE.md §3).
+#
+# Comparison against V6 baseline (raw step_weights):
+#   hop | V6   | V7     | V7 deviation from V6
+#    0  | 0.5  | 0.6106 | +22%   (V7 slightly heavier — V6 likely deweighted by image_aux)
+#    1  | 2.0  | 2.0000 |   0%   (anchor — match exactly)
+#    2  | 1.5  | 2.7041 | +80%   (V7 much heavier — V6 deweighted by 45%)
+#    3  | 1.0  | 2.0423 | +104%  (V7 much heavier — V6 deweighted by 51%)
+#
+# Note on Σw: rollout_first_hop.py:120 normalizes total = Σ(w·ℓ) / Σw
+# (weighted MEAN, not sum). Therefore Σw cancels and effective lambda_roll is
+# unchanged between V6 (Σw=5.0) and V7 (Σw=7.357) — there is NO Σw confound.
+# The hypothesis tested by V7 is exclusively the SHAPE of step_weights.
+#
+# Predictions to falsify (decision endpoint = step 160000, Plan F):
+#   H0 (V6 framing): chain_normal_mse(V7@160K) ≈ chain_normal_mse(V6@160K) within
+#                    full-val noise (paired Cohen's d < 0.10)
+#                    → Grönwall closed-form is descriptive only; V6 hop2/hop3 deweight
+#                      reflects empirical signal saturation we cannot derive.
+#   H1 (Grönwall framing): chain_normal_mse(V7@160K) < chain_normal_mse(V6@160K)
+#                    by ≥5% with paired Cohen's d ≥ 0.10
+#                    → V6 hop2/hop3 are sub-optimal; closed-form is the right prior.
+#                      Run V7 200K full and replace V6 baseline.
+#   H2 (Mixed): chain_d20/d10 worse but chain_d4/normal better
+#                    → Closed-form trades early-hop loss for late-hop gain.
+#                      Acceptable for the clinical NORMAL endpoint goal.
+#
+# ================================================================
+# Schedule alignment with V6 — IMPORTANT (4-reviewer consensus blocker)
+# ================================================================
+# V6 main was trained with max_steps=200000 and ratio-based schedules.
+# V6 yaml save_interval=20000 → V6 step ckpts exist at {20K, 40K, ..., 200K}.
+# Plan F endpoint is therefore step 160000 (NOT 150000 — V6@step_150000.pt does
+# not exist on disk; cross-AI peer review BLOCKER, fixed via Fix F).
+# Reference key stages on V6's locked schedule:
+#     step  30000: lr warmup ends      (warmup_ratio=0.15 × 200000 = 30000)
+#     step  50000: rollout warmup ends (warmup_ratio=0.25 × 200000 = 50000)
+#                  → lambda_roll just begins ramp from 0
+#                  → lr ≈ 7.74e-5 ≈ 0.97 × base (early cosine, progress=20/170)
+#     step 100000: rollout ramp midpoint, lambda_roll = 2.0
+#                  → lr ≈ 5.17e-5 ≈ 0.65 × base (progress=70/170)
+#     step 150000: rollout ramp ends, lambda_roll = 4.0 (clamped beyond)
+#                  → lr ≈ 1.75e-5 ≈ 0.22 × base (progress=120/170)
+#     step 160000: rollout plateau, lambda_roll = 4.0  ← Plan F ENDPOINT
+#                  → lr ≈ 1.22e-5 ≈ 0.15 × base (progress=130/170)
+#                  → V6 has step_160000.pt on disk — valid paired anchor
+#     step 200000: V6 final, lr → min_lr=2e-6
+#
+# If V7 used max_steps=160000 with the same ratios, ALL schedules would be
+# compressed and V7@k would face a different lambda_roll/lr stage than V6@k.
+# To preserve clean V7-vs-V6 paired comparisons at step 50000 / 100000 / 160000,
+# we explicitly lock the schedule fields to the V6-200K absolute values:
+#     training.rollout.warmup_steps        = 50000   (overrides warmup_ratio)
+#     training.rollout.ramp_steps          = 100000  (overrides ramp_ratio)
+#     training.lr_schedule.total_steps_override = 200000
+# This makes V7@k the bit-equivalent training stage of V6@k for any 0≤k≤160000.
+# Trainer support: train_first_hop.py:_resolve_schedule_steps (steps_key wins
+# over ratio_key) + lr_schedule total_steps_override (train_first_hop.py:1566)
+# + LR formula get_warmup_cosine_lr (train_first_hop.py:62-78).
+#
+# Decision based on full-val, not rolling val
+# ================================================================
+# Rolling-val 64-batch window has CV 25-28% (V6 main log) — 5% margin is below
+# the noise floor. We therefore set best_select_full_eval_interval=5000 so the
+# trainer (fc7446d) writes best.pt only on full-val improvements. Final V7-vs-V6
+# decision uses fullval scores (review/0505/scripts/eval_first_hop_fullval_*.py),
+# not rolling-val rows.
+#
+# Training budget (Plan F, see review/plan/PLAN_F_V7_V8_FROM_SCRATCH_150K_*.md)
+#   Approved 2026-05-05 (cross-AI peer review GO-WITH-FIXES; Fix F applied:
+#   150K endpoint moved to 160K because V6@step_150000.pt does not exist
+#   on disk — V6 save_interval=20000 only emits {20K,40K,...,200K}).
+#   - max_steps      : 160000  (from-scratch, locked schedule above)
+#   - anchor         : V6@step_160000.pt full-val score (must exist before launch)
+#   - PRIMARY        : V7@step_160000.pt vs V6@step_160000.pt (last.pt = step_160000.pt
+#                      under save_interval=10000)  — NO selection bias
+#   - SECONDARY      : V7@best.pt vs V6@step_160000.pt (Bonferroni-adjusted threshold,
+#                      see ANALYSIS.md §6; selection bias: 32-way max-search inflation)
+#   - margin         : paired Cohen's d ≥ 0.10 AND chain_normal_mse Δ ≥ 5%
+#   - 200K main run  : only if Plan F endpoint supports H1 or H2 (see ANALYSIS.md §6)
+# Why 160K and not 150K (cross-AI peer review BLOCKER, 2026-05-05):
+#   V6 was trained with save_interval=20000 → step_150000.pt does NOT exist.
+#   Closest existing V6 ckpts at the rollout-plateau region: step_140000.pt
+#   (lambda_roll=3.6, ramp not yet complete) and step_160000.pt (lambda_roll=4.0
+#   clamped). 160K is chosen so V6 and V7/V8 share identical (lambda_roll=4.0,
+#   lr=1.22e-5) endpoint state. Cost: +20K GPU per arm (+6.7%) vs 150K Plan F.
+# ================================================================
+run_name: first_hop_224_v7_gronwall_5k_pass1
+seed: 42
+device: cuda:0
+
+data:
+  latent_dir: /data_2/qujiaxiang/lowdose_pet_ct/latents_224
+  raw_data_dir: /data_2/qujiaxiang
+  clamp_max: 10.0
+  image_size: 224
+  num_workers: 0
+  batch_size: 8
+  hop0_aux_batch_size: 2
+  verify_alignment: true
+  alignment_check_num_samples: 16
+  alignment_audit_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/alignment_224_audit/alignment_224_clip3_audit.json
+  train_include_x_rollout_first: true
+  train_include_full_x_rollout: false
+  val_include_x_rollout_first: true
+  val_include_full_x_rollout: true
+  val_shuffle: false
+  rollout_timepoints:
+    - D50
+    - D20
+    - D10
+    - D4
+    - NORMAL
+  t_map:
+    D50: 2.0
+    D20: 5.0
+    D10: 10.0
+    D4: 25.0
+    NORMAL: 100.0
+
+training:
+  max_steps: 5000
+  log_interval: 50
+  eval_interval: 400
+  save_interval: 5000
+  max_val_batches: 64
+  max_hop0_val_batches: 64
+  val_window_mode: rolling
+  amp: false
+  grad_clip: 0.5
+  deterministic: true
+  require_fresh_output_dir: true
+  metrics_jsonl_mode: write
+  require_chain_metrics: true
+  loss_balance_watch_enabled: true
+  loss_balance_watch_warn: true
+  loss_balance_watch_enforce: false
+  loss_balance_watch_warmup_steps: 1200
+  loss_balance_watch_patience: 200
+  loss_balance_dominance_threshold: 0.85
+  freeze_backbone: false
+  freeze_rae: true
+
+  # Chain-quality-oriented selection — same as V6 for direct comparability.
+  best_metric: val_multi_objective
+  best_metric_terms:
+    - name: val_chain_d20_mse
+      weight: 0.50
+    - name: val_chain_d10_mse
+      weight: 0.45
+    - name: val_chain_d4_mse
+      weight: 0.90
+    - name: val_chain_normal_mse
+      weight: 1.50
+
+  # Full-val every 5000 steps to write unbiased best.pt (trainer fc7446d).
+  # Rolling 64-batch best.pt is single-batch noisy — see ANALYSIS.md §7.
+  best_select_full_eval_interval: 5000
+
+  eval_chain_on_all_samples: true
+  eval_chain_unique_slices: true
+  eval_chain_max_unique_slices: 0
+
+  hop0_coverage_target:
+    - 0.15
+    - 0.60
+  gate_explosion_watch_steps: 800
+  gate_abs_max: 2.0
+  lambda_hop0_abs_max: 2.0
+  dead_branch_watch_steps: 10000
+  dead_branch_patience: 120
+  dead_branch_gate_eps: 0.0005
+  dead_branch_lambda_eps: 0.0005
+  img_loss_zero_eps: 0.0005
+  img_loss_zero_patience: 120
+  progress_bar: false
+  print_train_line_with_pbar: false
+  log_grad_norms: true
+  grad_finite_check: true
+  strict_resume_compat: true
+  resume_allow_metric_mismatch: false
+  resume_allow_config_mismatch: false
+  resume_allow_missing_compat_metadata: false
+  metrics_jsonl: true
+
+  # ============================================================
+  # rollout schedule — schedule fields LOCKED to V6-200K values
+  # (see header §"Schedule alignment with V6" for rationale)
+  #
+  # Explicit warmup_steps / ramp_steps override warmup_ratio / ramp_ratio in
+  # train_first_hop.py:_resolve_schedule_steps. With max_steps=160000 (Plan F)
+  # and these absolute values, V7@k is bit-aligned to V6@k for all 0≤k≤160000:
+  #     step  50K: warmup ends → lambda_roll = 0 (ramp begins)
+  #     step 100K: ramp midpoint → lambda_roll = 2.0
+  #     step 150K: ramp ends    → lambda_roll = 4.0
+  #     step 160K: plateau      → lambda_roll = 4.0 (Plan F endpoint)
+  # If V7 ever runs 200K main: warmup_steps + ramp_steps already match V6.
+  # ============================================================
+  rollout:
+    enabled: true
+    path:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    warmup_steps: 50000     # absolute, locked to V6-200K (overrides warmup_ratio)
+    ramp_steps: 100000      # absolute, locked to V6-200K (overrides ramp_ratio)
+    warmup_ratio: 0.25      # kept for documentation; ignored when warmup_steps present
+    ramp_ratio: 0.50        # kept for documentation; ignored when ramp_steps present
+    alpha_start: 0.0
+    alpha_end: 1.0
+    straight_through_mode: fixed
+    straight_through: true
+    eval_alpha: 1.00
+    lambda_start: 0.0
+    lambda_end: 4.0
+    lambda_scale_mode: none
+    endpoint_loss_weight: 0.25
+    loss_type: mse
+    # ============================================================
+    # V7 ONLY CHANGE vs V6: step_weights = Grönwall closed-form raw
+    # σ-normalize is OFF (no sigma_normalize block) so these weights act
+    # directly on raw rollout MSE. Note: rollout total is a weighted MEAN
+    # (rollout_first_hop.py:120: total = Σ(w·ℓ)/Σw), so the difference in Σw
+    # between V6 (5.0) and V7 (7.357) cancels — effective lambda_roll is
+    # identical to V6. V7 isolates SHAPE only.
+    # ============================================================
+    step_weights:
+      - 0.6106
+      - 2.0000
+      - 2.7041
+      - 2.0423
+
+  # image_aux IDENTICAL to V6 (do not confound with V8 ablation)
+  image_aux:
+    enabled: true
+    warmup_ratio: 0.0
+    ramp_ratio: 0.0
+    lambda_start: 0.04
+    lambda_max: 0.04
+
+optimizer:
+  lr: 8.0e-5
+  weight_decay: 0.01
+  first_hop_weight_decay: 0.0
+  betas:
+    - 0.9
+    - 0.95
+  backbone_lr_mult: 0.4
+  first_hop_lr_mult: 3.5
+
+ema:
+  enabled: true
+  decay: 0.9999
+  warmup_steps: 0
+  update_after_step: 0
+  update_every: 1
+
+lr_schedule:
+  enabled: true
+  warmup_ratio: 0.15
+  min_lr: 2.0e-6
+  # Lock cosine schedule to V6-200K so V7@k sees the same lr stage as V6@k.
+  # Resolved warmup_steps = 0.15 × 200000 = 30000.
+  # Reference points (validated against get_warmup_cosine_lr at L62-78):
+  #     step  30K: lr = base = 8.0e-5    (warmup ends)
+  #     step  50K: lr ≈ 7.74e-5 ≈ 0.97×base   (progress=20/170, cos ≈ 0.97)
+  #     step 100K: lr ≈ 5.17e-5 ≈ 0.65×base   (progress=70/170, cos ≈ 0.64)
+  #     step 150K: lr ≈ 1.75e-5 ≈ 0.22×base   (progress=120/170, cos ≈ 0.20)
+  #     step 160K: lr ≈ 1.22e-5 ≈ 0.15×base   (progress=130/170, cos ≈ 0.13)  ← Plan F endpoint
+  # Trainer reads this in train_first_hop.py:1566 → lr_total_steps = override or max_steps.
+  total_steps_override: 200000
+
+transport:
+  method: mean_flow
+  loss_type: mse
+  velocity_loss_weight: 1.0
+  endpoint_loss_weight: 1.0
+  endpoint_pair_weighting: true
+  endpoint_dt_normalize: true
+  pair_sample_probs:
+    - 0.25
+    - 0.25
+    - 0.25
+    - 0.25
+  pair_weighting: manual
+  pair_loss_weights:
+    - 2.5
+    - 1.0
+    - 1.0
+    - 1.0
+
+backbone:
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke/best.pt
+  model:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size:
+      - 384
+      - 2048
+    depth:
+      - 12
+      - 2
+    num_heads:
+      - 6
+      - 16
+    mlp_ratio: 4.0
+  data:
+    timepoints:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    t_map:
+      D50: 2.0
+      D20: 5.0
+      D10: 10.0
+      D4: 25.0
+      NORMAL: 100.0
+
+rae:
+  encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_input_size: 224
+  dinov2_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_mean:
+    - 0.0
+    - 0.0
+    - 0.0
+  encoder_std:
+    - 1.0
+    - 1.0
+    - 1.0
+  decoder_config_path: /home/qujiaxiang/project/RAE/vit-mae
+  decoder_patch_size: 14
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target_keywords:
+    - attention.qkv
+    - attention.projection
+    - attention.attention.query
+    - attention.attention.key
+    - attention.attention.value
+    - attention.output.dense
+    - .mlp.fc1
+    - .mlp.fc2
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+
+first_hop:
+  num_hops: 4
+  pixel_encoder_stem_channels: 32
+  pixel_encoder_hidden_channels: 64
+  pixel_encoder_max_ratio: 0.05
+  hop_residual_hidden_channels: 192
+  pixel_gate_init: 0.02
+  pixel_gate_floor: 0.001
+  lambda_hop_init: 0.10
+  lambda_hop_floor: 0.001
+  pixel_proj_init_std: 0.002
+  hop_residual_last_init_std: 0.01
+  pair_v_std:
+    - 0.009634
+    - 0.002946
+    - 0.000775
+    - 0.000141
+
+# IDENTICAL to V6 from here down.
+loss:
+  pair_weight: 15.0
+  pair:
+    velocity_weight: 1.0
+    endpoint_weight: 1.0
+    velocity_rebalance:
+      enabled: true
+      mode: sqrt_ratio
+      clip_min: 1.0
+      clip_max: 4.0
+      eps: 1.0e-12
+  image_aux:
+    l1_weight: 1.0
+    ssim_weight: 0.25
+    seam_weight: 0.1
+    border_width: 14
+    border_weight: 2.0
+    seam_patch_size: 14
+  regularizer:
+    enabled: false
+    lambda_hop_l2_weight: 0.0
+    gate_pix_l2_weight: 0.0

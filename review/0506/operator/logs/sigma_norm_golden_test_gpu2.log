@@ -1,0 +1,24 @@
+[sigma_norm_golden_test] building model from pet_flow_first_hop_224_v6_transport_first.yaml
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[sigma_norm_golden_test] rollout_times=[0.5, 0.2, 0.1, 0.04, 0.0]
+[sigma_norm_golden_test] building synthetic deterministic batch (seed=42)
+[sigma_norm_golden_test] computing path A (raw rollout, w_v6, no normalizer)
+[sigma_norm_golden_test] n_j=['9.593765', '0.099678', '0.002483', '0.000037']
+[sigma_norm_golden_test] w_B = w_v6 * n_j = ['4.796883', '0.199356', '0.003725', '0.000037']
+[sigma_norm_golden_test] sum(w_v6)=5.0000000000, sum(w_B)=5.0000000000
+[sigma_norm_golden_test] computing path B (sigma-normalize rollout, w_B, with normalizers)
+========================================================================
+[sigma_norm_golden_test] VERDICT: PASS
+  loss_total A          = 2.0106770992e+00
+  loss_total B          = 2.0106770992e+00
+  abs drift             = 0.000000e+00
+  rel drift             = 0.000000e+00
+  rel_tolerance         = 1e-07
+  ambiguous_upper       = 1e-03
+  per-hop raw drift     = ['0.000e+00', '0.000e+00', '0.000e+00', '0.000e+00']
+  per-hop raw rel drift = ['0.000e+00', '0.000e+00', '0.000e+00', '0.000e+00']
+  preserve_v6_sum residual = 0.000000e+00
+  message: algebra verified: rel_drift=0.000e+00 < rel_tolerance=1.000e-07; (beta) and (zeta) FALSIFIED at inference
+========================================================================
+[sigma_norm_golden_test] result JSON written to /home/qujiaxiang/project/PET_LatentResidual/review/0506/operator/sigma_norm_golden_test_result.json

@@ -1,0 +1,7 @@
+[diag_v8_rng_invariance] config=/home/qujiaxiang/project/PET_LatentResidual/review/0505/local/configs/V8_no_image_aux.yaml
+[diag_v8_rng_invariance] image_aux.enabled=False
+[diag_v8_rng_invariance] num_batches=1 device=cuda:0
+[diag_v8_rng_invariance] CPU  RNG state stable post-forward: True
+[diag_v8_rng_invariance] CUDA RNG state stable post-forward: True
+[diag_v8_rng_invariance] result JSON written to /home/qujiaxiang/project/PET_LatentResidual/review/0506/operator/v8_rng_invariance_result.json
+[diag_v8_rng_invariance] OK: RNG-invariance verified for V8 path (no hidden stochastic ops detected).

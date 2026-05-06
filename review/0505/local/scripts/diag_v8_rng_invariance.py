@@ -41,6 +41,7 @@ to disk. Safe to run repeatedly.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -55,6 +56,7 @@ def main() -> int:
     parser.add_argument("--config", required=True, help="Path to V8_no_image_aux.yaml")
     parser.add_argument("--num-batches", type=int, default=1, help="Number of hop0 batches to step (default: 1)")
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--output-json", default=None, help="Optional path to write diagnostic result JSON")
     args = parser.parse_args()
 
     cfg_path = Path(args.config).expanduser().resolve()
@@ -117,6 +119,23 @@ def main() -> int:
     print(f"[diag_v8_rng_invariance] num_batches={args.num_batches} device={device}")
     print(f"[diag_v8_rng_invariance] CPU  RNG state stable post-forward: {cpu_eq}")
     print(f"[diag_v8_rng_invariance] CUDA RNG state stable post-forward: {cuda_eq}")
+
+    result = {
+        "verdict": "PASS" if (cpu_eq and cuda_eq) else "FAIL",
+        "rng_byte_identical": bool(cpu_eq and cuda_eq),
+        "cpu_rng_stable": bool(cpu_eq),
+        "cuda_rng_stable": bool(cuda_eq),
+        "config_path": str(cfg_path),
+        "image_aux_enabled": bool(cfg["training"]["image_aux"]["enabled"]),
+        "num_batches": int(args.num_batches),
+        "device": str(device),
+    }
+
+    if args.output_json:
+        out_path = Path(args.output_json).expanduser().resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, indent=2) + "\n")
+        print(f"[diag_v8_rng_invariance] result JSON written to {out_path}")
 
     if not (cpu_eq and cuda_eq):
         _abort(

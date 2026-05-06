@@ -1,0 +1,76 @@
+{
+  "verdict": "PASS",
+  "exit_code": 0,
+  "rel_tolerance": 1e-07,
+  "ambiguous_upper": 0.001,
+  "loss_total": {
+    "A": 2.0106770992279053,
+    "B": 2.0106770992279053,
+    "abs_drift": 0.0,
+    "rel_drift": 0.0
+  },
+  "step_losses_raw": {
+    "A": [
+      2.0140509605407715,
+      2.0121703147888184,
+      2.008201837539673,
+      2.009716749191284
+    ],
+    "B": [
+      2.0140509605407715,
+      2.0121703147888184,
+      2.008201837539673,
+      2.009716749191284
+    ],
+    "abs_drift_per_hop": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rel_drift_per_hop": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "normalizers": {
+    "n_j": [
+      9.593765348245409,
+      0.09967787821697403,
+      0.002483357285265677,
+      3.653351544932478e-05
+    ],
+    "w_v6": [
+      0.5,
+      2.0,
+      1.5,
+      1.0
+    ],
+    "w_B": [
+      4.796882674122704,
+      0.19935575643394807,
+      0.003725035927898515,
+      3.653351544932478e-05
+    ],
+    "sum_w_v6": 5.0,
+    "sum_w_B": 5.0,
+    "preserve_v6_sum_residual": 0.0
+  },
+  "config": {
+    "config_path": "/home/qujiaxiang/project/PET_LatentResidual/configs/pet_flow/pet_flow_first_hop_224_v6_transport_first.yaml",
+    "ckpt_path": "/data_2/qujiaxiang/outputs/PET_LatentResidual/first_hop_224_v6_transport_first/step_160000.pt",
+    "device": "cuda:0",
+    "seed": 42,
+    "use_real_batch": false,
+    "rollout_times": [
+      0.5,
+      0.2,
+      0.1,
+      0.04,
+      0.0
+    ]
+  },
+  "message": "algebra verified: rel_drift=0.000e+00 < rel_tolerance=1.000e-07; (beta) and (zeta) FALSIFIED at inference"
+}

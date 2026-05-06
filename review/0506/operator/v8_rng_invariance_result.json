@@ -1,0 +1,10 @@
+{
+  "verdict": "PASS",
+  "rng_byte_identical": true,
+  "cpu_rng_stable": true,
+  "cuda_rng_stable": true,
+  "config_path": "/home/qujiaxiang/project/PET_LatentResidual/review/0505/local/configs/V8_no_image_aux.yaml",
+  "image_aux_enabled": false,
+  "num_batches": 1,
+  "device": "cuda:0"
+}
