@@ -1,0 +1,381 @@
+project_name: pet_first_hop_224
+rae_root: /home/qujiaxiang/project/RAE
+output_dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V6_NOISE/run
+# ================================================================
+# V6-seed1337 — V6 noise-baseline replica (Plan F + Fix F + Q10-A)
+# ================================================================
+# PURPOSE (added 2026-05-05, in response to user concern over V6/V6.1
+# "best.pt selection bias"):
+#   This run is a SEED-only twin of the V6 transport-first 200K baseline.
+#   It exists exclusively to estimate the **pure run-to-run noise floor**
+#   d_pure = paired_cohen_d(V6-seed42@step_160000.pt, V6-seed1337@step_160000.pt)
+#   on val_chain_normal_mse, full-val (n=7403 unique slices).
+#
+# Why this is needed:
+#   The historical V6 vs V6.1 paired Cohen's d ≈ 0.056 conflates THREE sources:
+#     (a) algorithmic difference (V6.1 has rollout-floor change vs V6)
+#     (b) checkpoint-selection bias (each arm's best.pt at different steps)
+#     (c) pure run-to-run RNG noise (different seeds, data orderings, etc.)
+#   Plan F's d ≥ 0.10 PRIMARY threshold was justified as ~1.8× this 0.056
+#   estimate, but 0.056 is contaminated by (a) and (b). After this run we
+#   replace the heuristic with an empirically grounded
+#       PRIMARY threshold = max(0.10, 1.8 × d_pure)
+#   where d_pure is measured here under (a)=0 and (b)=0 — same algorithm,
+#   same step, only seed differs.
+#
+# How it differs from V6-seed42 baseline (only):
+#   1. seed: 1337 (was 42)
+#   2. max_steps: 160000 (was 200000) — only need step_160000.pt
+#   3. save_interval: 10000 (was 20000) — guarantees step_160000.pt = last.pt
+#   4. rollout.warmup_steps / ramp_steps + lr_schedule.total_steps_override:
+#      explicit absolute lock at V6-200K values (50000 / 100000 / 200000)
+#      so schedule trajectory is bit-equivalent to V6-seed42 for steps 0..160000.
+#      (Without the lock, max_steps=160000 + ratio=0.25 would resolve to
+#       warmup_steps=40000 — a DIFFERENT schedule than V6-seed42.)
+#   5. run_name: first_hop_224_v6_seed1337 (was first_hop_224_v6_transport_first)
+#      → unique output dir, no overwrite of existing V6 run.
+#
+# Everything else IS BIT-IDENTICAL to V6-seed42 yaml:
+#   step_weights: [0.5, 2.0, 1.5, 1.0]   (V6 raw shape)
+#   image_aux: enabled=true, lambda=0.04 constant
+#   pair_weight: 15.0
+#   pair_loss_weights: [2.5, 1.0, 1.0, 1.0]
+#   straight_through_mode: fixed
+#   lambda_scale_mode: none
+#   dead_branch_watch_steps: 10000   (matches V6 baseline default)
+#   best_metric / best_metric_terms: identical to V6 (rolling-val selection)
+#   NO best_select_full_eval_interval — V6-seed42 didn't have it; adding it
+#   here would consume extra RNG via 32 full-evals and break (a)=0 invariance.
+#
+# CRITICAL: do NOT change any other field in this file. The whole point is
+# bit-equivalence with V6-seed42 except for seed. Any unintended drift
+# (e.g., an extra training option, a different default) would re-pollute
+# the noise estimate with non-seed sources of variance.
+#
+# Schedule alignment with V6 — IMPORTANT
+# ================================================================
+# V6-seed42 was trained max_steps=200000 with ratio-based schedules:
+#     rollout.warmup_ratio=0.25 → warmup_steps=50000
+#     rollout.ramp_ratio=0.50   → ramp_steps=100000
+#     lr_schedule.warmup_ratio=0.15 → lr_warmup_steps=30000
+#     lr_schedule.total_steps for cosine = max_steps = 200000
+# At step k (0 ≤ k ≤ 200000), V6-seed42 sees:
+#     step  30000: lr = 8.00e-5 = base (warmup ends)
+#     step  50000: lambda_roll = 0 (rollout warmup just ends), lr ≈ 7.74e-5 (≈0.97×base)
+#     step 100000: lambda_roll = 2.0 (ramp midpoint),         lr ≈ 5.17e-5 (≈0.65×base)
+#     step 150000: lambda_roll = 4.0 (ramp ends, clamped),    lr ≈ 1.75e-5 (≈0.22×base)
+#     step 160000: lambda_roll = 4.0 (clamped),               lr ≈ 1.22e-5 (≈0.15×base)
+#
+# To make V6-seed1337 see the SAME schedule values at the SAME steps,
+# we explicitly lock:
+#     training.rollout.warmup_steps        = 50000
+#     training.rollout.ramp_steps          = 100000
+#     training.lr_schedule.total_steps_override = 200000
+# trainer support:
+#     train_first_hop.py:_resolve_schedule_steps  (steps_key wins over ratio_key)
+#     train_first_hop.py:1566                     (lr_total_steps = override or max_steps)
+#     train_first_hop.py:62-78                    (get_warmup_cosine_lr)
+# Verified: with these locks + max_steps=160000, the lr/lambda at step k
+# is the same float64 value as V6-seed42's at the same k (modulo seed-driven
+# data-order RNG, which is the WHOLE POINT of this run).
+#
+# d_pure measurement (post-train):
+#   eval V6-seed42@step_160000.pt and V6-seed1337@step_160000.pt against the
+#   SAME val_chain_normal_mse evaluator (review/0505/scripts/eval_first_hop_fullval_psnr_chain_mse.py).
+#   compute paired Cohen's d across the 7403 unique slices:
+#       d_pure = mean(diff_per_slice) / std(diff_per_slice)  (paired form)
+#   Plan F PRIMARY threshold becomes: d ≥ max(0.10, 1.8 × d_pure).
+#   Decision logic in ANALYSIS.md §6 (post-Q10-A update).
+# ================================================================
+run_name: first_hop_224_v6_seed1337
+seed: 1337
+device: cuda:0
+
+data:
+  latent_dir: /data_2/qujiaxiang/lowdose_pet_ct/latents_224
+  raw_data_dir: /data_2/qujiaxiang
+  clamp_max: 10.0
+  image_size: 224
+  num_workers: 0
+  batch_size: 8
+  hop0_aux_batch_size: 2
+  verify_alignment: true
+  alignment_check_num_samples: 16
+  alignment_audit_json: /data_2/qujiaxiang/outputs/PET_LatentResidual/alignment_224_audit/alignment_224_clip3_audit.json
+  train_include_x_rollout_first: true
+  train_include_full_x_rollout: false
+  val_include_x_rollout_first: true
+  val_include_full_x_rollout: true
+  val_shuffle: false
+  rollout_timepoints:
+    - D50
+    - D20
+    - D10
+    - D4
+    - NORMAL
+  t_map:
+    D50: 2.0
+    D20: 5.0
+    D10: 10.0
+    D4: 25.0
+    NORMAL: 100.0
+
+training:
+  max_steps: 160000
+  log_interval: 50
+  eval_interval: 400
+  save_interval: 10000     # parity with V7/V8 (was 20000 in V6-seed42); ensures step_160000.pt = last.pt
+  max_val_batches: 64
+  max_hop0_val_batches: 64
+  val_window_mode: rolling
+  amp: false
+  grad_clip: 0.5
+  deterministic: true
+  require_fresh_output_dir: true
+  metrics_jsonl_mode: write
+  require_chain_metrics: true
+  loss_balance_watch_enabled: true
+  loss_balance_watch_warn: true
+  loss_balance_watch_enforce: false
+  loss_balance_watch_warmup_steps: 1200
+  loss_balance_watch_patience: 200
+  loss_balance_dominance_threshold: 0.85
+  freeze_backbone: false
+  freeze_rae: true
+
+  # Chain-quality-oriented selection — IDENTICAL to V6-seed42.
+  best_metric: val_multi_objective
+  best_metric_terms:
+    - name: val_chain_d20_mse
+      weight: 0.50
+    - name: val_chain_d10_mse
+      weight: 0.45
+    - name: val_chain_d4_mse
+      weight: 0.90
+    - name: val_chain_normal_mse
+      weight: 1.50
+
+  # NOTE: NO best_select_full_eval_interval here — V6-seed42 doesn't have it.
+  # Adding it would consume extra RNG via the 32 full-eval passes and break
+  # the seed-only-difference invariant. d_pure uses last.pt (= step_160000.pt)
+  # in BOTH arms, so unbiased best.pt is not needed for the noise estimate.
+
+  eval_chain_on_all_samples: true
+  eval_chain_unique_slices: true
+  eval_chain_max_unique_slices: 0
+
+  hop0_coverage_target:
+    - 0.15
+    - 0.60
+  gate_explosion_watch_steps: 800
+  gate_abs_max: 2.0
+  lambda_hop0_abs_max: 2.0
+  dead_branch_watch_steps: 10000      # IDENTICAL to V6-seed42 (do not change)
+  dead_branch_patience: 120
+  dead_branch_gate_eps: 0.0005
+  dead_branch_lambda_eps: 0.0005
+  img_loss_zero_eps: 0.0005
+  img_loss_zero_patience: 120
+  progress_bar: false
+  print_train_line_with_pbar: false
+  log_grad_norms: true
+  grad_finite_check: true
+  strict_resume_compat: true
+  resume_allow_metric_mismatch: false
+  resume_allow_config_mismatch: false
+  resume_allow_missing_compat_metadata: false
+  metrics_jsonl: true
+
+  # ============================================================
+  # rollout schedule — schedule fields LOCKED to V6-seed42 absolute values.
+  # See header §"Schedule alignment with V6" for rationale.
+  # ============================================================
+  rollout:
+    enabled: true
+    path:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    warmup_steps: 50000     # absolute, locked to V6-seed42 (overrides warmup_ratio)
+    ramp_steps: 100000      # absolute, locked to V6-seed42 (overrides ramp_ratio)
+    warmup_ratio: 0.25      # kept for documentation; ignored when warmup_steps present
+    ramp_ratio: 0.50        # kept for documentation; ignored when ramp_steps present
+    alpha_start: 0.0
+    alpha_end: 1.0
+    straight_through_mode: fixed
+    straight_through: true
+    eval_alpha: 1.00
+    lambda_start: 0.0
+    lambda_end: 4.0
+    lambda_scale_mode: none
+    endpoint_loss_weight: 0.25
+    loss_type: mse
+    # IDENTICAL to V6-seed42: middle-heavy raw step_weights
+    step_weights:
+      - 0.5
+      - 2.0
+      - 1.5
+      - 1.0
+
+  # image_aux IDENTICAL to V6-seed42 (do not turn off — that would conflate
+  # with V8 ablation; we want pure noise-only delta).
+  image_aux:
+    enabled: true
+    warmup_ratio: 0.0
+    ramp_ratio: 0.0
+    lambda_start: 0.04
+    lambda_max: 0.04
+
+optimizer:
+  lr: 8.0e-5
+  weight_decay: 0.01
+  first_hop_weight_decay: 0.0
+  betas:
+    - 0.9
+    - 0.95
+  backbone_lr_mult: 0.4
+  first_hop_lr_mult: 3.5
+
+ema:
+  enabled: true
+  decay: 0.9999
+  warmup_steps: 0
+  update_after_step: 0
+  update_every: 1
+
+lr_schedule:
+  enabled: true
+  warmup_ratio: 0.15
+  min_lr: 2.0e-6
+  # Lock cosine schedule to V6-200K so V6-seed1337@k sees the same lr stage
+  # as V6-seed42@k for all 0 ≤ k ≤ 160000.
+  # Resolved warmup_steps = 0.15 × 200000 = 30000 (= V6-seed42's effective).
+  # Reference points (validated against get_warmup_cosine_lr at L62-78):
+  #     step  30K: lr = base = 8.0e-5    (warmup ends)
+  #     step  50K: lr ≈ 7.74e-5 ≈ 0.97×base
+  #     step 100K: lr ≈ 5.17e-5 ≈ 0.65×base
+  #     step 150K: lr ≈ 1.75e-5 ≈ 0.22×base
+  #     step 160K: lr ≈ 1.22e-5 ≈ 0.15×base   ← Q10-A endpoint
+  total_steps_override: 200000
+
+transport:
+  method: mean_flow
+  loss_type: mse
+  velocity_loss_weight: 1.0
+  endpoint_loss_weight: 1.0
+  endpoint_pair_weighting: true
+  endpoint_dt_normalize: true
+  pair_sample_probs:
+    - 0.25
+    - 0.25
+    - 0.25
+    - 0.25
+  pair_weighting: manual
+  pair_loss_weights:
+    - 2.5
+    - 1.0
+    - 1.0
+    - 1.0
+
+backbone:
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_flow_224_small_rollout_hopaware_smoke/mean_flow_224_small_rollout4hop_hopaware_smoke/best.pt
+  model:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size:
+      - 384
+      - 2048
+    depth:
+      - 12
+      - 2
+    num_heads:
+      - 6
+      - 16
+    mlp_ratio: 4.0
+  data:
+    timepoints:
+      - D50
+      - D20
+      - D10
+      - D4
+      - NORMAL
+    t_map:
+      D50: 2.0
+      D20: 5.0
+      D10: 10.0
+      D4: 25.0
+      NORMAL: 100.0
+
+rae:
+  encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_input_size: 224
+  dinov2_path: /home/qujiaxiang/project/RAE/dinov2
+  encoder_mean:
+    - 0.0
+    - 0.0
+    - 0.0
+  encoder_std:
+    - 1.0
+    - 1.0
+    - 1.0
+  decoder_config_path: /home/qujiaxiang/project/RAE/vit-mae
+  decoder_patch_size: 14
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target_keywords:
+    - attention.qkv
+    - attention.projection
+    - attention.attention.query
+    - attention.attention.key
+    - attention.attention.value
+    - attention.output.dense
+    - .mlp.fc1
+    - .mlp.fc2
+  checkpoint_path: /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+
+first_hop:
+  num_hops: 4
+  pixel_encoder_stem_channels: 32
+  pixel_encoder_hidden_channels: 64
+  pixel_encoder_max_ratio: 0.05
+  hop_residual_hidden_channels: 192
+  pixel_gate_init: 0.02
+  pixel_gate_floor: 0.001
+  lambda_hop_init: 0.10
+  lambda_hop_floor: 0.001
+  pixel_proj_init_std: 0.002
+  hop_residual_last_init_std: 0.01
+  pair_v_std:
+    - 0.009634
+    - 0.002946
+    - 0.000775
+    - 0.000141
+
+# IDENTICAL to V6-seed42 from here down.
+loss:
+  pair_weight: 15.0
+  pair:
+    velocity_weight: 1.0
+    endpoint_weight: 1.0
+    velocity_rebalance:
+      enabled: true
+      mode: sqrt_ratio
+      clip_min: 1.0
+      clip_max: 4.0
+      eps: 1.0e-12
+  image_aux:
+    l1_weight: 1.0
+    ssim_weight: 0.25
+    seam_weight: 0.1
+    border_width: 14
+    border_weight: 2.0
+    seam_patch_size: 14
+  regularizer:
+    enabled: false
+    lambda_hop_l2_weight: 0.0
+    gate_pix_l2_weight: 0.0

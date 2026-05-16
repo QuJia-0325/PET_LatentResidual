@@ -1,0 +1,4 @@
+experiment,status,latest_train_step,final_rolling_step,final_rolling_select,final_rolling_d20,final_rolling_d10,final_rolling_d4,final_rolling_normal,best_rolling_step,best_rolling_select,best_rolling_normal,final_full_step,final_full_select,final_full_d20,final_full_d10,final_full_d4,final_full_normal,best_full_step,best_full_select,best_full_normal,num_full_val,errors
+V7,done,160000,160000,0.000857,0.000296,0.000276,0.000252,0.000239,156400,0.00061,0.000171,160000,0.000904,0.00033,0.000296,0.000263,0.000246,160000,0.000904,0.000246,32,0
+V8,done,160000,160000,0.000907,0.000307,0.00029,0.000267,0.000255,156400,0.00065,0.000184,160000,0.000953,0.00034,0.00031,0.000279,0.000262,160000,0.000953,0.000262,32,0
+V6_NOISE,done,160000,160000,0.000861,0.000297,0.000277,0.000253,0.00024,139200,0.000611,0.000173,,,,,,,,,,0,0
