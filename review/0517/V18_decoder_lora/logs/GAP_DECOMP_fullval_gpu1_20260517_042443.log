@@ -1,0 +1,26 @@
+[probe] device=cuda:0, config=review/0511/log_snapshots_20260516_163900/configs/V7_config.resolved.yaml, ckpt=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[probe] state_dict load: missing=0, unexpected=0
+[probe] SANITY: type(rae.decoder.decoder_layers[-1].attention.attention.query) = Linear
+[probe] KEY AUDIT: V7 best.pt contains 0 decoder LoRA keys
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 17.2s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 4.6s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[probe] dataset val: n=7403 samples
+[probe] processed 7403 slices in 223.8s (skipped 0)
+[probe] wrote review/0517/V18_decoder_lora/gap_decomp_fullval_20260517/GAP_DECOMP_PER_SLICE.csv
+[probe] wrote review/0517/V18_decoder_lora/gap_decomp_fullval_20260517/GAP_DECOMP_SUMMARY.json
+[probe] wrote review/0517/V18_decoder_lora/gap_decomp_fullval_20260517/GAP_DECOMP_REPORT.md
+[probe] DECISION: V18_LAUNCH_RANK32_KLFIX
+[probe] attackable_gap mean = 11.200 dB, median = 12.025 dB

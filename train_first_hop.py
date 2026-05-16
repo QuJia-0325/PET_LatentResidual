@@ -29,6 +29,7 @@ from pet_lr.rollout_first_hop import (
     rollout_multistep_losses_first_hop,
     sample_chain_first_hop,
 )
+from pet_lr.decoder_lora import compute_kl_pullback_loss
 from pet_lr.path_guard import DEFAULT_OUTPUT_ROOT, ensure_repo_local_outputs_absent, resolve_data_disk_dir
 
 
@@ -88,6 +89,70 @@ def _l2_grad_norm(params: list[torch.nn.Parameter]) -> float:
 
 def _numel(params: list[torch.nn.Parameter]) -> int:
     return int(sum(int(p.numel()) for p in params))
+
+
+def _is_lora_key(name: str) -> bool:
+    return name.endswith(".lora_A") or name.endswith(".lora_B")
+
+
+def _remap_state_dict_for_decoder_lora(
+    state_dict: Dict[str, torch.Tensor],
+    model: PETFlowDiTFirstHop,
+) -> tuple[Dict[str, torch.Tensor], int]:
+    """Map pre-LoRA decoder Linear keys to LinearWithLoRA base keys.
+
+    V7 checkpoints store e.g. `rae.decoder.decoder_layers.11...query.weight`.
+    After V18 wraps that Linear, the same frozen base weight lives at
+    `rae.decoder.decoder_layers.11...query.linear.weight`. This remap preserves
+    the V7 base decoder exactly while leaving fresh LoRA A/B missing by design.
+    """
+    target_keys = model.state_dict().keys()
+    target_key_set = set(target_keys)
+    remapped: Dict[str, torch.Tensor] = {}
+    remap_count = 0
+    for key, value in state_dict.items():
+        if key in target_key_set:
+            remapped[key] = value
+            continue
+        candidate = None
+        for suffix in (".weight", ".bias"):
+            if key.startswith("rae.decoder.") and key.endswith(suffix):
+                candidate = key[: -len(suffix)] + ".linear" + suffix
+                break
+        if candidate is not None and candidate in target_key_set:
+            remapped[candidate] = value
+            remap_count += 1
+        else:
+            remapped[key] = value
+    return remapped, remap_count
+
+
+def _assert_v18_step0_equivalence(model: PETFlowDiTFirstHop, device: torch.device, cfg: Dict) -> None:
+    rae_frozen = getattr(model, "rae_frozen", None)
+    if rae_frozen is None:
+        return
+    q = model.rae.decoder.decoder_layers[-1].attention.attention.query
+    if type(q).__name__ != "LinearWithLoRA":
+        raise RuntimeError(
+            "V18 wrap did not produce LinearWithLoRA at last decoder block; "
+            f"got {type(q).__name__}"
+        )
+    latent_channels = int(cfg.get("backbone", {}).get("model", {}).get("in_channels", 768))
+    latent_size = int(cfg.get("backbone", {}).get("model", {}).get("input_size", 16))
+    gen = torch.Generator(device="cpu")
+    gen.manual_seed(20260517)
+    z = torch.randn(1, latent_channels, latent_size, latent_size, generator=gen, dtype=torch.float32).to(device)
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        x_lora = model.rae.decode(z)
+        x_frozen = rae_frozen.decode(z)
+        err = float((x_lora - x_frozen).abs().max().item())
+    if was_training:
+        model.train()
+    if err >= 1.0e-5:
+        raise RuntimeError(f"V18 step-0 forward differs from frozen decoder by max_abs={err:.6e}")
+    print(f"[decoder_lora] step0 decode equivalence OK: max_abs={err:.3e}", flush=True)
 
 
 def _format_alignment_summary(summary: Dict) -> str:
@@ -1278,6 +1343,9 @@ def save_checkpoint(
         "best_d1_guard_metric_name": best_d1_guard_metric_name,
         "best_d1_guard_best": float(best_d1_guard_best) if best_d1_guard_best is not None else None,
         "ema": ema.state_dict() if ema is not None else None,
+        "decoder_lora_enabled": bool(getattr(model, "_decoder_lora_params", [])),
+        "decoder_lora_wrapped_count": len(getattr(model, "_decoder_lora_wrapped_names", [])),
+        "decoder_lora_wrapped_names": list(getattr(model, "_decoder_lora_wrapped_names", [])),
         "rng_state": rng_state,
     }
     torch.save(ckpt, output_dir / name)
@@ -1295,10 +1363,11 @@ def main() -> None:
     deterministic = bool(train_cfg_boot.get("deterministic", False))
     set_seed(int(cfg.get("seed", 42)), deterministic=deterministic)
     device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
-    if not bool(train_cfg_boot.get("freeze_rae", True)):
+    decoder_lora_enabled = bool(train_cfg_boot.get("decoder_lora", {}).get("enabled", False))
+    if not bool(train_cfg_boot.get("freeze_rae", True)) and not decoder_lora_enabled:
         raise RuntimeError(
-            "docs/main.md requires training.freeze_rae=true for first-hop training. "
-            "Decoder unfreezing is not allowed in this trainer."
+            "training.freeze_rae=false requires training.decoder_lora.enabled=true "
+            "(full RAE/decoder unfreeze is not allowed in this trainer)."
         )
 
     repo_root = Path(__file__).resolve().parent
@@ -1382,6 +1451,17 @@ def main() -> None:
     model = PETFlowDiTFirstHop(cfg, device=device).to(device)
     print("[startup] model initialized", flush=True)
     model.assert_decoder_frozen()
+    if decoder_lora_enabled:
+        wrapped_count = len(getattr(model, "_decoder_lora_wrapped_names", []))
+        if wrapped_count <= 0:
+            raise RuntimeError("decoder_lora.enabled=true but no decoder Linear modules were wrapped")
+        q = model.rae.decoder.decoder_layers[-1].attention.attention.query
+        if type(q).__name__ != "LinearWithLoRA":
+            raise RuntimeError(
+                "V18 wrap did not produce LinearWithLoRA at last decoder block; "
+                f"got {type(q).__name__}"
+            )
+        print(f"[decoder_lora] trainer type check OK; wrapped Linear modules={wrapped_count}", flush=True)
 
     # N2 stage-2: freeze all except seam_refiner
     freeze_first_hop = bool(train_cfg_boot.get("freeze_all_except_seam_refiner", False))
@@ -1440,6 +1520,10 @@ def main() -> None:
     backbone_params = [p for p in model.backbone.parameters() if p.requires_grad]
     backbone_ids = {id(p) for p in backbone_params}
     first_hop_params = [p for p in trainable_params if id(p) not in backbone_ids]
+    decoder_lora_params = list(getattr(model, "_decoder_lora_params", []))
+    decoder_lora_ids = {id(p) for p in decoder_lora_params}
+    if decoder_lora_params:
+        first_hop_params = [p for p in first_hop_params if id(p) not in decoder_lora_ids]
 
     param_groups = []
     if backbone_params:
@@ -1461,6 +1545,29 @@ def main() -> None:
                 "lr_scale": first_hop_lr_mult,
                 "weight_decay": first_hop_weight_decay,
             }
+        )
+    if decoder_lora_params:
+        decoder_lr_mult = float(opt_cfg.get("decoder_lr_mult", 0.00625))
+        decoder_wd = float(opt_cfg.get("decoder_weight_decay", 0.0))
+        if decoder_lr_mult <= 0.0 or decoder_wd < 0.0:
+            raise ValueError(
+                f"optimizer decoder settings invalid: decoder_lr_mult={decoder_lr_mult}, "
+                f"decoder_weight_decay={decoder_wd}"
+            )
+        param_groups.append(
+            {
+                "name": "decoder_lora",
+                "params": decoder_lora_params,
+                "lr": base_lr * decoder_lr_mult,
+                "lr_scale": decoder_lr_mult,
+                "weight_decay": decoder_wd,
+            }
+        )
+        print(
+            f"[optimizer] decoder_lora param group: tensors={len(decoder_lora_params)}, "
+            f"numel={_numel(decoder_lora_params):,}, lr={base_lr * decoder_lr_mult:.3e}, "
+            f"lr_mult={decoder_lr_mult:.6f}, wd={decoder_wd:.3e}",
+            flush=True,
         )
     if not param_groups:
         raise RuntimeError("No optimizer param groups were created")
@@ -1730,7 +1837,19 @@ def main() -> None:
         # Allow missing keys ONLY for known new-module prefixes.
         # Unexpected keys or unknown missing keys → hard fail.
         _KNOWN_NEW_MODULE_PREFIXES = ("seam_refiner.", "alignment_projector.")
-        load_result = model.load_state_dict(ckpt["model"], strict=False)
+        ckpt_model_state = ckpt["model"]
+        decoder_lora_remapped = 0
+        if decoder_lora_enabled:
+            ckpt_model_state, decoder_lora_remapped = _remap_state_dict_for_decoder_lora(
+                ckpt_model_state,
+                model,
+            )
+            print(
+                f"[resume][decoder_lora] remapped {decoder_lora_remapped} decoder base Linear keys "
+                "to LinearWithLoRA .linear.* keys",
+                flush=True,
+            )
+        load_result = model.load_state_dict(ckpt_model_state, strict=False)
         if load_result.unexpected_keys:
             raise RuntimeError(
                 f"Resume checkpoint has unexpected keys (possible architecture mismatch): "
@@ -1739,7 +1858,9 @@ def main() -> None:
         if load_result.missing_keys:
             allowed_missing = [
                 k for k in load_result.missing_keys
-                if any(k.startswith(pfx) for pfx in _KNOWN_NEW_MODULE_PREFIXES)
+                if any(k.startswith(pfx) for pfx in _KNOWN_NEW_MODULE_PREFIXES) or (
+                    decoder_lora_enabled and _is_lora_key(k)
+                )
             ]
             unknown_missing = [k for k in load_result.missing_keys if k not in allowed_missing]
             if unknown_missing:
@@ -1765,6 +1886,13 @@ def main() -> None:
                 _arch_changed = False
         else:
             _arch_changed = False
+        if decoder_lora_enabled:
+            if decoder_lora_remapped <= 0:
+                raise RuntimeError(
+                    "V18 resume did not remap any decoder base Linear keys; "
+                    "check checkpoint naming and LoRA wrap order."
+                )
+            _assert_v18_step0_equivalence(model, device=device, cfg=cfg)
         if not _arch_changed:
             if "optimizer" in ckpt and ckpt["optimizer"] is not None:
                 optimizer.load_state_dict(ckpt["optimizer"])
@@ -1775,24 +1903,27 @@ def main() -> None:
         allow_metric_mismatch = bool(train_cfg.get("resume_allow_metric_mismatch", False))
         ckpt_metric_signature = ckpt.get("best_metric_signature", None)
         best_state_compatible = True
-        if ckpt_metric_signature is None:
-            msg = (
-                "Resume checkpoint missing best_metric_signature; cannot guarantee objective continuity. "
-                "Set training.resume_allow_metric_mismatch=true to bypass explicitly."
-            )
-            if not allow_metric_mismatch:
-                raise RuntimeError(msg)
-            print(f"[resume][warn] {msg}", flush=True)
+        if _arch_changed:
             best_state_compatible = False
-        elif str(ckpt_metric_signature) != str(best_metric_signature):
-            msg = (
-                "Resume best-metric signature mismatch between checkpoint and current config. "
-                "Set training.resume_allow_metric_mismatch=true to bypass explicitly."
-            )
-            if not allow_metric_mismatch:
-                raise RuntimeError(msg)
-            print(f"[resume][warn] {msg}", flush=True)
-            best_state_compatible = False
+        else:
+            if ckpt_metric_signature is None:
+                msg = (
+                    "Resume checkpoint missing best_metric_signature; cannot guarantee objective continuity. "
+                    "Set training.resume_allow_metric_mismatch=true to bypass explicitly."
+                )
+                if not allow_metric_mismatch:
+                    raise RuntimeError(msg)
+                print(f"[resume][warn] {msg}", flush=True)
+                best_state_compatible = False
+            elif str(ckpt_metric_signature) != str(best_metric_signature):
+                msg = (
+                    "Resume best-metric signature mismatch between checkpoint and current config. "
+                    "Set training.resume_allow_metric_mismatch=true to bypass explicitly."
+                )
+                if not allow_metric_mismatch:
+                    raise RuntimeError(msg)
+                print(f"[resume][warn] {msg}", flush=True)
+                best_state_compatible = False
 
         if strict_resume_compat:
             allow_missing_compat = bool(train_cfg.get("resume_allow_missing_compat_metadata", False))
@@ -1831,7 +1962,13 @@ def main() -> None:
         best_val_ckpt = ckpt.get("best_val", None)
         if _arch_changed:
             # Warm-start mode: new modules exist, treat as fresh training from step 0
-            start_step = 0
+            if decoder_lora_enabled:
+                # V18 is explicitly a continuation from V7 best.pt to max_steps
+                # (e.g. 160K -> 200K). Preserve the checkpoint step so LR,
+                # rollout, and full-val cadence remain on the V7 schedule.
+                start_step = int(ckpt.get("step", 0))
+            else:
+                start_step = 0
             best_val = float("inf")
             best_metric_name_for_ckpt = str(train_cfg.get("best_metric", "val_rollout_total"))
             if best_d1_enabled:
@@ -1839,10 +1976,19 @@ def main() -> None:
                 best_d1_guard_best = float("inf")
             # Do NOT restore rng_state — fresh randomness for new architecture
             print(
-                f"[resume][warm-start] architecture changed → reset step=0, best_val=inf, "
+                f"[resume][warm-start] architecture changed → start_step={start_step}, best_val=inf, "
                 f"fresh optimizer/scaler/rng (model weights warm-started from checkpoint)",
                 flush=True,
             )
+            if ema is not None:
+                ema = EMA(
+                    model,
+                    decay=float(ema_cfg.get("decay", 0.9999)),
+                    warmup_steps=int(ema_cfg.get("warmup_steps", 0)),
+                    update_after_step=int(ema_cfg.get("update_after_step", 0)),
+                    update_every=int(ema_cfg.get("update_every", 1)),
+                ).to(device)
+                print("[resume][warm-start] reset EMA shadow from warm-started model", flush=True)
         else:
             if best_state_compatible and best_val_ckpt is not None:
                 best_val = float(best_val_ckpt)
@@ -2066,12 +2212,36 @@ def main() -> None:
                     z_ref = z_ref[:, :align_proj.shape[1]]
                 loss_align = F.mse_loss(align_proj.float(), z_ref.float())
 
+            loss_kl = main_out["z_pred"].new_zeros(())
+            lambda_kl = 0.0
+            rae_frozen = getattr(model, "rae_frozen", None)
+            if rae_frozen is not None:
+                kl_cfg = cfg.get("loss", {}).get("decoder_kl_pullback", {})
+                if bool(kl_cfg.get("enabled", False)):
+                    lambda_kl_max = float(kl_cfg.get("lambda_kl", 0.0))
+                    lambda_kl = get_linear_schedule_value(
+                        global_step=step,
+                        warmup_steps=0,
+                        ramp_steps=int(kl_cfg.get("warmup_steps", 0)),
+                        start=0.0,
+                        end=lambda_kl_max,
+                    )
+                    if lambda_kl > 0.0:
+                        z_kl = main_out["z_pred"] if bool(kl_cfg.get("use_pred_latent", True)) else main_batch["z_dst"]
+                        loss_kl = compute_kl_pullback_loss(
+                            rae_lora=model.rae,
+                            rae_frozen=rae_frozen,
+                            z_gt=z_kl,
+                            crop_size=int(cfg["data"].get("image_size", 224)),
+                        )
+
             total_loss = (
                 pair_loss_weight * pair_losses["total"]
                 + rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
                 + float(lambda_img) * loss_img
                 + foc_losses["lambda_foc"] * foc_losses["loss_total"]
                 + float(lambda_align) * loss_align
+                + float(lambda_kl) * loss_kl
             )
 
             reg_cfg = cfg["loss"].get("regularizer", {})
@@ -2088,7 +2258,8 @@ def main() -> None:
             roll_weighted = rollout_losses["lambda_roll"] * rollout_losses["loss_total"]
             img_weighted = pair_weighted.new_tensor(float(lambda_img)) * loss_img
             foc_weighted = foc_losses["lambda_foc"] * foc_losses["loss_total"]
-            weighted_total = pair_weighted + roll_weighted + img_weighted + foc_weighted
+            kl_weighted = pair_weighted.new_tensor(float(lambda_kl)) * loss_kl
+            weighted_total = pair_weighted + roll_weighted + img_weighted + foc_weighted + kl_weighted
             frac_denom = weighted_total.abs().clamp_min(1.0e-12)
             pair_frac_t = (pair_weighted / frac_denom).clamp(min=-10.0, max=10.0)
             roll_frac_t = (roll_weighted / frac_denom).clamp(min=-10.0, max=10.0)
@@ -2317,12 +2488,17 @@ def main() -> None:
                 "dead_branch_observed_steps": int(dead_branch_observed_steps),
                 "lr_firsthop": float(lr_now * first_hop_lr_mult),
                 "lr_backbone": float(lr_now * backbone_lr_mult),
-                "foc": float(foc_losses["loss_total"].item()),
-                "foc_gap": float(foc_losses["gap_norm"].item()),
-                "lambda_foc": float(foc_losses["lambda_foc"].item()),
-                "align": float(loss_align.item()),
-                "lambda_align": float(lambda_align),
-            }
+                    "foc": float(foc_losses["loss_total"].item()),
+                    "foc_gap": float(foc_losses["gap_norm"].item()),
+                    "lambda_foc": float(foc_losses["lambda_foc"].item()),
+                    "align": float(loss_align.item()),
+                    "lambda_align": float(lambda_align),
+                    "decoder_kl": float(loss_kl.item()),
+                    "lambda_kl": float(lambda_kl),
+                    "kl_w": float(kl_weighted.detach().item()),
+                    "lr_decoder_lora": float(lr_now * float(opt_cfg.get("decoder_lr_mult", 0.00625)))
+                    if decoder_lora_params else 0.0,
+                }
             if metrics_fp is not None:
                 metrics_fp.write(json.dumps(metrics_payload, ensure_ascii=True) + "\n")
                 metrics_fp.flush()
@@ -2403,6 +2579,7 @@ def main() -> None:
                         f" v_hop_abs_hop0={v_hop_abs_hop0:.6f}"
                         f" sf_alpha={float(sf_info['alpha_sf'].item()) if sf_info is not None else 0.0:.3f}"
                         f" sf_gap={float(sf_info['gap_norm'].item()) if sf_info is not None else 0.0:.6f}"
+                        f" decoder_kl={float(loss_kl.item()):.6f} lambda_kl={float(lambda_kl):.4f}"
                         f"{grad_suffix}"
                     )
             else:
@@ -2451,6 +2628,7 @@ def main() -> None:
                     f" v_hop_abs_hop0={v_hop_abs_hop0:.6f}"
                     f" sf_alpha={float(sf_info['alpha_sf'].item()) if sf_info is not None else 0.0:.3f}"
                     f" sf_gap={float(sf_info['gap_norm'].item()) if sf_info is not None else 0.0:.6f}"
+                    f" decoder_kl={float(loss_kl.item()):.6f} lambda_kl={float(lambda_kl):.4f}"
                     f"{grad_suffix}"
                 )
         if step % save_interval == 0:

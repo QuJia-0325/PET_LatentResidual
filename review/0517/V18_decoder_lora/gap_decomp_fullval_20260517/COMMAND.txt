@@ -1,0 +1,9 @@
+CUDA_VISIBLE_DEVICES=1 /home/qujiaxiang/.conda/envs/rae/bin/python -u tools/probe_v18_gap_decomposition.py \
+  --config review/0511/log_snapshots_20260516_163900/configs/V7_config.resolved.yaml \
+  --checkpoint /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt \
+  --out-dir review/0517/V18_decoder_lora/gap_decomp_fullval_20260517 \
+  --batch-size 8 \
+  --max-slices 0 \
+  --split val \
+  --device cuda:0 \
+  --num-workers 0

@@ -1,0 +1,78 @@
+[startup] loading config: review/0517/V18_decoder_lora/smoke_v18_train/V18_decoder_lora_smoke_1step.yaml
+[startup] run dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora_smoke/run/first_hop_224_v18_decoder_lora_smoke_1step
+[startup] resume from: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt
+[startup] building datasets/dataloaders...
+[io] loading latents(train): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt (115.3GB)
+[io] still loading latents(train) (20.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (40.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (60.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (80.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (100.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (120.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (140.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (160.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (180.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] still loading latents(train) (200.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] loaded latents(train) in 214.7s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] image timepoints(train)=['D50', 'D20']
+[io] loading raw(train,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(train,D50) in 6.0s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(train,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(train,D20) in 6.0s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[startup] train dataset ready: 104988 pair-samples
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] still loading latents(val) (20.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loaded latents(val) in 21.4s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.9s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.9s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 5.9s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 5.9s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.9s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[startup] val dataset ready: 29612 pair-samples
+[alignment][train] D50:matched=42.49dB,gap_roll1=21.56dB,n=256 | D20:matched=46.48dB,gap_roll1=24.74dB,n=256 | NORMAL:matched=52.65dB,gap_roll1=30.10dB,n=256
+[alignment][val] D50:matched=42.31dB,gap_roll1=21.88dB,n=256 | D20:matched=46.33dB,gap_roll1=25.10dB,n=256 | NORMAL:matched=52.35dB,gap_roll1=30.44dB,n=256
+[transport] pair_sample_probs(normalized)= [0.25, 0.25, 0.25, 0.25]
+[startup] dataloaders ready: main_bs=8, hop0_aux_bs=2, workers=0
+[rollout] path= ['D50', 'D20', 'D10', 'D4', 'NORMAL']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] wrapped 12 Linear modules across last 2 decoder layers of rae.decoder.decoder_layers; trainable LoRA params (A+B per Linear) = 589,824; first 3 wrapped: ['decoder_layers[6].attention.attention.query', 'decoder_layers[6].attention.attention.key', 'decoder_layers[6].attention.attention.value']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] built frozen RAE reference for KL pull-back
+[startup] model initialized
+[decoder_lora] trainer type check OK; wrapped Linear modules=12
+[startup] EMA enabled: decay=0.9999 warmup=0 update_every=1
+[optimizer] decoder_lora param group: tensors=24, numel=589,824, lr=5.000e-07, lr_mult=0.006250, wd=0.000e+00
+[config] loss.pair_weight = 15.0000
+[optimizer] AdamW base_lr=8.000e-05, wd_global=1.000e-02, wd_backbone=1.000e-02, wd_firsthop=0.000e+00, betas=(0.9, 0.95), backbone_lr_mult=0.40, first_hop_lr_mult=3.50
+[optimizer] params: backbone=207,667,412, first_hop=1,252,421
+[lr_schedule] warmup+cosine enabled: warmup_steps=30000, min_lr=2.000e-06, total_steps_override=200000
+[schedule] rollout warmup=50000 ramp=100000; image warmup=0 ramp=0
+[startup] resume enabled: force metrics_jsonl_mode=append
+[resume][decoder_lora] remapped 24 decoder base Linear keys to LinearWithLoRA .linear.* keys
+[resume][info] 24 new-module keys initialized from scratch: ['rae.decoder.decoder_layers.6.attention.attention.query.lora_A', 'rae.decoder.decoder_layers.6.attention.attention.query.lora_B', 'rae.decoder.decoder_layers.6.attention.attention.key.lora_A', 'rae.decoder.decoder_layers.6.attention.attention.key.lora_B', 'rae.decoder.decoder_layers.6.attention.attention.value.lora_A', 'rae.decoder.decoder_layers.6.attention.attention.value.lora_B', 'rae.decoder.decoder_layers.6.attention.output.dense.lora_A', 'rae.decoder.decoder_layers.6.attention.output.dense.lora_B', 'rae.decoder.decoder_layers.6.intermediate.dense.lora_A', 'rae.decoder.decoder_layers.6.intermediate.dense.lora_B']...
+[resume][warn] architecture has new modules — skipping optimizer/scaler restore and resetting best_val/step to avoid stale state.
+/home/qujiaxiang/.conda/envs/rae/lib/python3.10/site-packages/torch/nn/modules/linear.py:116: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  return F.linear(input, self.weight, self.bias)
+/home/qujiaxiang/project/RAE/code/RAE/src/stage1/decoders/decoder.py:368: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+/home/qujiaxiang/project/RAE/code/RAE/src/stage1/decoders/decoder.py:383: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  context_layer = torch.matmul(attention_probs, value_layer)
+/home/qujiaxiang/project/RAE/code/RAE/src/utils/lora.py:39: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  lora = torch.matmul(self.dropout(x), self.lora_A.t())
+/home/qujiaxiang/project/RAE/code/RAE/src/utils/lora.py:40: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  lora = torch.matmul(lora, self.lora_B.t())
+[decoder_lora] step0 decode equivalence OK: max_abs=0.000e+00
+Traceback (most recent call last):
+  File "/home/qujiaxiang/project/PET_LatentResidual/train_first_hop.py", line 2842, in <module>
+    main()
+  File "/home/qujiaxiang/project/PET_LatentResidual/train_first_hop.py", line 1921, in main
+    raise RuntimeError(msg)
+RuntimeError: Resume best-metric signature mismatch between checkpoint and current config. Set training.resume_allow_metric_mismatch=true to bypass explicitly.

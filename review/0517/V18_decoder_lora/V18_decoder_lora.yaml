@@ -220,7 +220,10 @@ training:
     #                                          / intermediate.dense / output.dense
     target_root: "rae.decoder.decoder_layers"
     last_n_blocks: 2   # 后两层 (ViTB decoder 总 12 层 → 取 layer 10, 11)
-    rank: 8
+    # Full-val gap probe 2026-05-17:
+    # attackable_gap mean=11.200 dB >= 5 dB -> pre-registered decision
+    # V18_LAUNCH_RANK32_KLFIX.
+    rank: 32
     alpha: 16
     dropout: 0.0
     init_scale_zero: true   # B 零初始化 → V18 step 0 == V7 best.pt

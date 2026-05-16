@@ -276,6 +276,11 @@ class PETFlowDiTFirstHop(nn.Module):
         train_cfg = cfg.get("training", {})
         self.freeze_backbone = bool(train_cfg.get("freeze_backbone", False))
         self.freeze_rae = bool(train_cfg.get("freeze_rae", True))
+        # Non-registered reference decoder used only for KL pull-back. Keep it
+        # out of state_dict/checkpoints; otherwise V18 would save a second RAE.
+        self.__dict__["rae_frozen"] = None
+        self._decoder_lora_params: list[nn.Parameter] = []
+        self._decoder_lora_wrapped_names: list[str] = []
 
         if self.freeze_backbone:
             self.backbone.requires_grad_(False)
@@ -284,6 +289,25 @@ class PETFlowDiTFirstHop(nn.Module):
         if self.freeze_rae:
             self.rae.requires_grad_(False)
             self.rae.eval()
+        else:
+            if not bool(train_cfg.get("decoder_lora", {}).get("enabled", False)):
+                raise RuntimeError(
+                    "training.freeze_rae=false requires training.decoder_lora.enabled=true; "
+                    "full RAE/decoder finetuning is intentionally unsupported."
+                )
+            from .decoder_lora import wrap_decoder_with_lora
+
+            self._decoder_lora_params, self._decoder_lora_wrapped_names = wrap_decoder_with_lora(self.rae, cfg)
+            # Keep encoder/decoder stochastic layers fixed; LoRA Linear adapters still train normally.
+            self.rae.eval()
+            kl_cfg = cfg.get("loss", {}).get("decoder_kl_pullback", {})
+            if bool(kl_cfg.get("enabled", False)):
+                rae_frozen = build_rae(cfg, device)
+                for p in rae_frozen.parameters():
+                    p.requires_grad_(False)
+                rae_frozen.eval()
+                self.__dict__["rae_frozen"] = rae_frozen
+                print("[decoder_lora] built frozen RAE reference for KL pull-back", flush=True)
 
         model_cfg = cfg.get("backbone", {}).get("model", {})
         first_cfg = cfg.get("first_hop", {})
@@ -431,8 +455,22 @@ class PETFlowDiTFirstHop(nn.Module):
 
     def assert_decoder_frozen(self) -> None:
         for name, p in self.rae.named_parameters():
-            if p.requires_grad:
-                raise RuntimeError(f"Decoder param must be frozen but is trainable: {name}")
+            is_lora = name.endswith(".lora_A") or name.endswith(".lora_B")
+            if p.requires_grad and not is_lora:
+                raise RuntimeError(f"Non-LoRA RAE param must be frozen but is trainable: {name}")
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_backbone:
+            self.backbone.eval()
+        # The RAE is always used as a deterministic decoder/encoder component.
+        # V18 trains only LoRA Linear parameters, which do not require module.train().
+        if self.freeze_rae or self._decoder_lora_params:
+            self.rae.eval()
+        rae_frozen = self.__dict__.get("rae_frozen", None)
+        if rae_frozen is not None:
+            rae_frozen.eval()
+        return self
 
     def sigma_for_hop(self, hop_idx: torch.Tensor) -> torch.Tensor:
         return self.pair_v_std[hop_idx.long()].view(-1, 1, 1, 1)

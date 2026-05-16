@@ -1,0 +1,5 @@
+CUDA_VISIBLE_DEVICES=1 /home/qujiaxiang/.conda/envs/rae/bin/python -u train_first_hop.py \
+  --config review/0517/V18_decoder_lora/V18_decoder_lora.yaml \
+  --resume /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt
+log: review/0517/V18_decoder_lora/logs/V18_rank32_train_gpu1_20260517_045325.log
+session: v18_rank32_gpu1_0517
