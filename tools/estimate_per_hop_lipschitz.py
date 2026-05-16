@@ -34,11 +34,20 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import sys
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 import torch
 import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset
+from pet_lr.model_first_hop import PETFlowDiTFirstHop
 
 
 def parse_args():
@@ -49,6 +58,8 @@ def parse_args():
     p.add_argument("--n-samples", type=int, default=64)
     p.add_argument("--eps", type=float, default=1e-3)
     p.add_argument("--device", default="cuda:0")
+    p.add_argument("--split", choices=["val"], default="val")
+    p.add_argument("--seed", type=int, default=20260517)
     return p.parse_args()
 
 
@@ -78,6 +89,127 @@ def closed_form_weights(beta: List[float], L: List[float], sigma_dt: List[float]
     return [wi / anchor for wi in w]
 
 
+def summarize(values: torch.Tensor) -> Dict[str, float]:
+    values = values.detach().float().flatten()
+    finite = values[torch.isfinite(values)]
+    if finite.numel() == 0:
+        return {"n": 0.0, "mean": float("nan"), "std": float("nan"), "min": float("nan"), "max": float("nan")}
+    return {
+        "n": float(finite.numel()),
+        "mean": float(finite.mean().item()),
+        "std": float(finite.std(unbiased=False).item()),
+        "min": float(finite.min().item()),
+        "max": float(finite.max().item()),
+    }
+
+
+def build_dataset(cfg: Dict, split: str) -> PETFirstHopAligned4HopDataset:
+    data_cfg = cfg["data"]
+    latent_path = os.path.join(data_cfg["latent_dir"], f"latents_{split}.pt")
+    alignment_audit_json = str(data_cfg.get("alignment_audit_json", "")).strip() or None
+    return PETFirstHopAligned4HopDataset(
+        latent_path=latent_path,
+        raw_data_dir=data_cfg["raw_data_dir"],
+        split=split,
+        clamp_max=float(data_cfg.get("clamp_max", 10.0)),
+        t_map=data_cfg["t_map"],
+        rollout_timepoints=data_cfg.get("rollout_timepoints", ["D50", "D20", "D10", "D4", "NORMAL"]),
+        verify_alignment=bool(data_cfg.get("verify_alignment", True)),
+        alignment_check_num_samples=int(data_cfg.get("alignment_check_num_samples", 16)),
+        alignment_audit_json=alignment_audit_json,
+        include_x_rollout_first=True,
+        include_full_x_rollout=False,
+        image_size=int(data_cfg.get("image_size", 224)),
+        image_timepoints=["D50", "D20"],
+        latent_mmap=bool(data_cfg.get("latent_mmap", False)),
+    )
+
+
+def load_model(cfg: Dict, ckpt_path: str, device: torch.device) -> tuple[PETFlowDiTFirstHop, Dict]:
+    model = PETFlowDiTFirstHop(cfg, device=device).to(device)
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    state = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
+    model.load_state_dict(state, strict=True)
+    if isinstance(ckpt, dict):
+        ckpt_pixel = ckpt.get("first_hop_pixel_enabled", None)
+        current_pixel = not model.pixel_forcing_disabled
+        if ckpt_pixel is not None and bool(ckpt_pixel) != current_pixel:
+            raise RuntimeError(
+                "Lipschitz eval pixel_forcing semantic mismatch: "
+                f"checkpoint first_hop_pixel_enabled={ckpt_pixel}, "
+                f"config pixel_forcing_disabled={model.pixel_forcing_disabled}"
+            )
+    model.eval()
+    return model, ckpt if isinstance(ckpt, dict) else {}
+
+
+def sample_hop_inputs(
+    dataset: PETFirstHopAligned4HopDataset,
+    n_samples: int,
+) -> tuple[list[torch.Tensor], torch.Tensor | None, list[int]]:
+    n = int(dataset.num_slices)
+    k = min(int(n_samples), n)
+    # Deterministic coverage across the validation volume; avoids cherry-picked contiguous slices.
+    idx = torch.linspace(0, n - 1, steps=k).round().long()
+    tps = list(dataset.rollout_timepoints)
+    if len(tps) != 5:
+        raise ValueError(f"Expected five rollout timepoints, got {tps}")
+    z_per_hop = [dataset.latents[tps[hop]][idx].clone() for hop in range(4)]
+    x_hop0 = dataset.images["D50"][idx].clone() if "D50" in dataset.images else None
+    return z_per_hop, x_hop0, [int(i) for i in idx.tolist()]
+
+
+@torch.no_grad()
+def estimate_lipschitz(
+    model: PETFlowDiTFirstHop,
+    cfg: Dict,
+    dataset: PETFirstHopAligned4HopDataset,
+    n_samples: int,
+    eps: float,
+    device: torch.device,
+    seed: int,
+) -> tuple[list[float], dict[str, dict[str, float]], list[int]]:
+    z_per_hop, x_hop0, slice_indices = sample_hop_inputs(dataset, n_samples=n_samples)
+    tps = list(dataset.rollout_timepoints)
+    t_map = cfg["data"]["t_map"]
+    generator = torch.Generator(device="cpu").manual_seed(int(seed))
+    l_means: list[float] = []
+    per_hop_stats: dict[str, dict[str, float]] = {}
+
+    for hop in range(4):
+        z = z_per_hop[hop].to(device, non_blocking=True)
+        delta = torch.randn(z.shape, generator=generator, dtype=z.dtype) * float(eps)
+        delta = delta.to(device, non_blocking=True)
+        bsz = int(z.shape[0])
+        t_src = torch.full((bsz,), float(t_map[tps[hop]]), device=device)
+        t_dst = torch.full((bsz,), float(t_map[tps[hop + 1]]), device=device)
+        hop_idx = torch.full((bsz,), hop, device=device, dtype=torch.long)
+        x_src = x_hop0.to(device, non_blocking=True) if hop == 0 and x_hop0 is not None else None
+
+        out0 = model.predict_latent_step(
+            z_src=z,
+            t_src=t_src,
+            t_dst=t_dst,
+            hop_idx=hop_idx,
+            x_src_img=x_src,
+        )
+        out1 = model.predict_latent_step(
+            z_src=z + delta,
+            t_src=t_src,
+            t_dst=t_dst,
+            hop_idx=hop_idx,
+            x_src_img=x_src,
+        )
+        f0 = out0["z_pred"] if isinstance(out0, dict) else out0
+        f1 = out1["z_pred"] if isinstance(out1, dict) else out1
+        ratios = (f1 - f0).flatten(1).norm(dim=1) / delta.flatten(1).norm(dim=1).clamp_min(1e-12)
+        stats = summarize(ratios.detach().cpu())
+        l_means.append(float(stats["mean"]))
+        per_hop_stats[f"hop{hop}_{tps[hop]}_to_{tps[hop + 1]}"] = stats
+
+    return l_means, per_hop_stats, slice_indices
+
+
 def main():
     args = parse_args()
 
@@ -98,42 +230,17 @@ def main():
     current_sw = list(cfg["training"]["rollout"]["step_weights"])
     sigma_dt = load_v7_sigma_dt()
 
-    # ----- TODO: build model + load checkpoint -----
-    # from pet_lr.model_first_hop import PETFlowDiTFirstHop
-    # model = PETFlowDiTFirstHop(**cfg["model"]).to(args.device)
-    # sd = torch.load(args.checkpoint, map_location="cpu")
-    # model.load_state_dict(sd["model"], strict=True)
-    # model.eval()
-
-    # ----- TODO: sample z_at_hop[k] from val loader -----
-    # from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset
-    # ds = PETFirstHopAligned4HopDataset(...)
-    # loader = torch.utils.data.DataLoader(ds, batch_size=args.n_samples, shuffle=True)
-    # batch = next(iter(loader))  # contains z_D50, z_D20, z_D10, z_D4 (the chain inputs)
-    # z_per_hop = [batch["z_D50"], batch["z_D20"], batch["z_D10"], batch["z_D4"]]
-
-    # ----- TODO: per-hop Lipschitz estimate -----
-    # L_per_hop = []
-    # with torch.no_grad():
-    #     for k in range(4):
-    #         z = z_per_hop[k].to(args.device)
-    #         delta = torch.randn_like(z) * args.eps
-    #         # NOTE: confirm the actual PETFlowDiTFirstHop call signature; this is a sketch.
-    #         out0 = model.predict_latent_step(z, hop_idx=k)
-    #         out1 = model.predict_latent_step(z + delta, hop_idx=k)
-    #         F0 = out0["z_pred"] if isinstance(out0, dict) else out0
-    #         F1 = out1["z_pred"] if isinstance(out1, dict) else out1
-    #         num = (F1 - F0).flatten(1).norm(dim=1)
-    #         den = delta.flatten(1).norm(dim=1)
-    #         L_k = (num / den.clamp_min(1e-12)).mean().item()
-    #         L_per_hop.append(L_k)
-
-    # ----- STUB to keep the script runnable on a laptop (delete on server) -----
-    L_per_hop = [1.00, 1.00, 1.00, 1.00]
-    note = (
-        "STUB output: L_per_hop hard-coded to 1.0 because model/data wiring is TODO. "
-        "When wired on the GPU server, the values come from the actual model. The "
-        "rest of the math below (closed-form, alignment) reacts correctly to any L."
+    device = torch.device(args.device)
+    dataset = build_dataset(cfg, args.split)
+    model, ckpt_meta = load_model(cfg, args.checkpoint, device)
+    L_per_hop, L_stats, slice_indices = estimate_lipschitz(
+        model=model,
+        cfg=cfg,
+        dataset=dataset,
+        n_samples=int(args.n_samples),
+        eps=float(args.eps),
+        device=device,
+        seed=int(args.seed),
     )
 
     # ----- closed-form with measured L -----
@@ -154,14 +261,21 @@ def main():
         "checkpoint": args.checkpoint,
         "config": args.config,
         "n_samples": args.n_samples,
+        "actual_n_samples": len(slice_indices),
         "eps": args.eps,
+        "split": args.split,
+        "seed": args.seed,
         "beta": beta,
         "sigma_dt": sigma_dt,
         "L_per_hop": L_per_hop,
+        "L_per_hop_stats": L_stats,
+        "deviation_pct": [float((l - 1.0) * 100.0) for l in L_per_hop],
         "closed_form_w_with_measured_L": w_closed,
         "current_step_weights": current_sw,
         "alignment_distance_pct": dist_pct,
-        "stub_note": note,
+        "sample_slice_indices": slice_indices,
+        "checkpoint_step": ckpt_meta.get("step") if isinstance(ckpt_meta, dict) else None,
+        "checkpoint_best_val": ckpt_meta.get("best_val") if isinstance(ckpt_meta, dict) else None,
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

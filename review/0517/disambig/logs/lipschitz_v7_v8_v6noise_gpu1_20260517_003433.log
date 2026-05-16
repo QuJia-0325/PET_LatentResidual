@@ -1,0 +1,467 @@
+[launch] 2026-05-17 00:34:33 CST GPU=1
+===== V7 start 2026-05-17 00:34:33 CST =====
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 18.9s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.6s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.8s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+{
+  "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/last.pt",
+  "config": "review/0511/log_snapshots_20260516_163900/configs/V7_config.resolved.yaml",
+  "n_samples": 64,
+  "actual_n_samples": 64,
+  "eps": 0.001,
+  "split": "val",
+  "seed": 20260517,
+  "beta": [
+    0.5,
+    0.45,
+    0.9,
+    1.5
+  ],
+  "sigma_dt": [
+    0.02889,
+    0.01475,
+    0.0117,
+    0.010575000000000001
+  ],
+  "L_per_hop": [
+    1.004050850868225,
+    1.0080559253692627,
+    1.00824773311615,
+    1.009087085723877
+  ],
+  "L_per_hop_stats": {
+    "hop0_D50_to_D20": {
+      "n": 64.0,
+      "mean": 1.004050850868225,
+      "std": 0.00817511510103941,
+      "min": 0.9941549301147461,
+      "max": 1.0390121936798096
+    },
+    "hop1_D20_to_D10": {
+      "n": 64.0,
+      "mean": 1.0080559253692627,
+      "std": 0.012819444760680199,
+      "min": 0.9962063431739807,
+      "max": 1.0827587842941284
+    },
+    "hop2_D10_to_D4": {
+      "n": 64.0,
+      "mean": 1.00824773311615,
+      "std": 0.011181625537574291,
+      "min": 0.9996634721755981,
+      "max": 1.0549993515014648
+    },
+    "hop3_D4_to_NORMAL": {
+      "n": 64.0,
+      "mean": 1.009087085723877,
+      "std": 0.020282158628106117,
+      "min": 0.9974976778030396,
+      "max": 1.1338013410568237
+    }
+  },
+  "deviation_pct": [
+    0.40508508682250977,
+    0.8055925369262695,
+    0.8247733116149902,
+    0.9087085723876953
+  ],
+  "closed_form_w_with_measured_L": [
+    0.6191148537158996,
+    2.0,
+    2.6445791753921104,
+    2.000415075892362
+  ],
+  "current_step_weights": [
+    0.6106,
+    2.0,
+    2.7041,
+    2.0423
+  ],
+  "alignment_distance_pct": 0.5709824854396244,
+  "sample_slice_indices": [
+    0,
+    117,
+    235,
+    352,
+    470,
+    587,
+    705,
+    822,
+    940,
+    1057,
+    1175,
+    1292,
+    1410,
+    1527,
+    1645,
+    1762,
+    1880,
+    1997,
+    2115,
+    2232,
+    2350,
+    2467,
+    2585,
+    2702,
+    2820,
+    2937,
+    3055,
+    3172,
+    3290,
+    3407,
+    3525,
+    3642,
+    3760,
+    3877,
+    3995,
+    4112,
+    4230,
+    4347,
+    4465,
+    4582,
+    4700,
+    4817,
+    4935,
+    5052,
+    5170,
+    5287,
+    5405,
+    5522,
+    5640,
+    5757,
+    5875,
+    5992,
+    6110,
+    6227,
+    6345,
+    6462,
+    6580,
+    6697,
+    6815,
+    6932,
+    7050,
+    7167,
+    7285,
+    7402
+  ],
+  "checkpoint_step": 160000,
+  "checkpoint_best_val": 0.000903636957482411
+}
+===== V7 done 2026-05-17 00:35:31 CST =====
+===== V8 start 2026-05-17 00:35:31 CST =====
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 18.5s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.3s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+{
+  "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V8/run/first_hop_224_v8_no_image_aux/last.pt",
+  "config": "review/0511/log_snapshots_20260516_163900/configs/V8_config.resolved.yaml",
+  "n_samples": 64,
+  "actual_n_samples": 64,
+  "eps": 0.001,
+  "split": "val",
+  "seed": 20260517,
+  "beta": [
+    0.5,
+    0.45,
+    0.9,
+    1.5
+  ],
+  "sigma_dt": [
+    0.02889,
+    0.01475,
+    0.0117,
+    0.010575000000000001
+  ],
+  "L_per_hop": [
+    1.0027251243591309,
+    1.0064939260482788,
+    1.0054528713226318,
+    1.0067400932312012
+  ],
+  "L_per_hop_stats": {
+    "hop0_D50_to_D20": {
+      "n": 64.0,
+      "mean": 1.0027251243591309,
+      "std": 0.007121048402041197,
+      "min": 0.9930257797241211,
+      "max": 1.031143069267273
+    },
+    "hop1_D20_to_D10": {
+      "n": 64.0,
+      "mean": 1.0064939260482788,
+      "std": 0.010003740899264812,
+      "min": 0.9973345994949341,
+      "max": 1.050961971282959
+    },
+    "hop2_D10_to_D4": {
+      "n": 64.0,
+      "mean": 1.0054528713226318,
+      "std": 0.011805903166532516,
+      "min": 0.9972352385520935,
+      "max": 1.0865299701690674
+    },
+    "hop3_D4_to_NORMAL": {
+      "n": 64.0,
+      "mean": 1.0067400932312012,
+      "std": 0.0322389081120491,
+      "min": 0.9983882904052734,
+      "max": 1.2608548402786255
+    }
+  },
+  "deviation_pct": [
+    0.27251243591308594,
+    0.6493926048278809,
+    0.5452871322631836,
+    0.6740093231201172
+  ],
+  "closed_form_w_with_measured_L": [
+    0.6181169763002741,
+    2.0,
+    2.6558136977140157,
+    2.0148035784222107
+  ],
+  "current_step_weights": [
+    0.5,
+    2.0,
+    1.5,
+    1.0
+  ],
+  "alignment_distance_pct": 14.079950158354562,
+  "sample_slice_indices": [
+    0,
+    117,
+    235,
+    352,
+    470,
+    587,
+    705,
+    822,
+    940,
+    1057,
+    1175,
+    1292,
+    1410,
+    1527,
+    1645,
+    1762,
+    1880,
+    1997,
+    2115,
+    2232,
+    2350,
+    2467,
+    2585,
+    2702,
+    2820,
+    2937,
+    3055,
+    3172,
+    3290,
+    3407,
+    3525,
+    3642,
+    3760,
+    3877,
+    3995,
+    4112,
+    4230,
+    4347,
+    4465,
+    4582,
+    4700,
+    4817,
+    4935,
+    5052,
+    5170,
+    5287,
+    5405,
+    5522,
+    5640,
+    5757,
+    5875,
+    5992,
+    6110,
+    6227,
+    6345,
+    6462,
+    6580,
+    6697,
+    6815,
+    6932,
+    7050,
+    7167,
+    7285,
+    7402
+  ],
+  "checkpoint_step": 160000,
+  "checkpoint_best_val": 0.000953388031244193
+}
+===== V8 done 2026-05-17 00:36:27 CST =====
+===== V6_NOISE start 2026-05-17 00:36:27 CST =====
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 18.0s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.6s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.5s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+{
+  "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V6_NOISE/run/first_hop_224_v6_seed1337/last.pt",
+  "config": "review/0511/log_snapshots_20260516_163900/configs/V6_NOISE_config.resolved.yaml",
+  "n_samples": 64,
+  "actual_n_samples": 64,
+  "eps": 0.001,
+  "split": "val",
+  "seed": 20260517,
+  "beta": [
+    0.5,
+    0.45,
+    0.9,
+    1.5
+  ],
+  "sigma_dt": [
+    0.02889,
+    0.01475,
+    0.0117,
+    0.010575000000000001
+  ],
+  "L_per_hop": [
+    1.0046579837799072,
+    1.0050036907196045,
+    1.0051954984664917,
+    1.0056755542755127
+  ],
+  "L_per_hop_stats": {
+    "hop0_D50_to_D20": {
+      "n": 64.0,
+      "mean": 1.0046579837799072,
+      "std": 0.009616297669708729,
+      "min": 0.9951980710029602,
+      "max": 1.042054295539856
+    },
+    "hop1_D20_to_D10": {
+      "n": 64.0,
+      "mean": 1.0050036907196045,
+      "std": 0.006353091448545456,
+      "min": 0.996121346950531,
+      "max": 1.0286595821380615
+    },
+    "hop2_D10_to_D4": {
+      "n": 64.0,
+      "mean": 1.0051954984664917,
+      "std": 0.00670393742620945,
+      "min": 0.9971938133239746,
+      "max": 1.0267642736434937
+    },
+    "hop3_D4_to_NORMAL": {
+      "n": 64.0,
+      "mean": 1.0056755542755127,
+      "std": 0.011808320879936218,
+      "min": 0.9983872175216675,
+      "max": 1.0790826082229614
+    }
+  },
+  "deviation_pct": [
+    0.46579837799072266,
+    0.5003690719604492,
+    0.5195498466491699,
+    0.5675554275512695
+  ],
+  "closed_form_w_with_measured_L": [
+    0.6166942014603094,
+    2.0,
+    2.656413621116238,
+    2.0179379409817657
+  ],
+  "current_step_weights": [
+    0.5,
+    2.0,
+    1.5,
+    1.0
+  ],
+  "alignment_distance_pct": 14.110852046232925,
+  "sample_slice_indices": [
+    0,
+    117,
+    235,
+    352,
+    470,
+    587,
+    705,
+    822,
+    940,
+    1057,
+    1175,
+    1292,
+    1410,
+    1527,
+    1645,
+    1762,
+    1880,
+    1997,
+    2115,
+    2232,
+    2350,
+    2467,
+    2585,
+    2702,
+    2820,
+    2937,
+    3055,
+    3172,
+    3290,
+    3407,
+    3525,
+    3642,
+    3760,
+    3877,
+    3995,
+    4112,
+    4230,
+    4347,
+    4465,
+    4582,
+    4700,
+    4817,
+    4935,
+    5052,
+    5170,
+    5287,
+    5405,
+    5522,
+    5640,
+    5757,
+    5875,
+    5992,
+    6110,
+    6227,
+    6345,
+    6462,
+    6580,
+    6697,
+    6815,
+    6932,
+    7050,
+    7167,
+    7285,
+    7402
+  ],
+  "checkpoint_step": 160000,
+  "checkpoint_best_val": 0.0006106140197942978
+}
+===== V6_NOISE done 2026-05-17 00:37:23 CST =====
+[all_done] 2026-05-17 00:37:23 CST
