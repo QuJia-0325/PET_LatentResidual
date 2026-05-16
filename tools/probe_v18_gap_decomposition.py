@@ -45,6 +45,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -55,7 +56,11 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from pet_lr.data_first_hop import Hop0OnlyViewDataset, PETFirstHopAligned4HopDataset
 from pet_lr.model_first_hop import PETFlowDiTFirstHop
 from pet_lr.path_guard import ensure_repo_local_outputs_absent, resolve_data_disk_dir
 from pet_lr.rollout_first_hop import sample_chain_first_hop
@@ -79,7 +84,7 @@ def parse_args():
     p.add_argument("--max-slices", type=int, default=0, help="0 = all val slices")
     p.add_argument("--split", choices=["train", "val"], default="val")
     p.add_argument("--device", default="cuda:0")
-    p.add_argument("--num-workers", type=int, default=4)
+    p.add_argument("--num-workers", type=int, default=0)
     return p.parse_args()
 
 
@@ -93,6 +98,42 @@ def _to_2d(x: torch.Tensor) -> torch.Tensor:
     if x.dim() == 4 and x.shape[1] > 1:
         x = x[:, 0:1]
     return x
+
+
+def build_dataset(cfg: Dict, split: str) -> Hop0OnlyViewDataset:
+    """Build a full-rollout val dataset with one sample per slice.
+
+    PETFirstHopAligned4HopDataset indexes all four training pairs by default
+    (`4 * num_slices`). The gap decomposition is a D50->D20 diagnostic, so the
+    evaluation unit must be the hop0 slice, not all four pair rows.
+    """
+    data_cfg = cfg["data"]
+    latent_path = os.path.join(data_cfg["latent_dir"], f"latents_{split}.pt")
+    alignment_audit_json = str(data_cfg.get("alignment_audit_json", "")).strip() or None
+    base = PETFirstHopAligned4HopDataset(
+        latent_path=latent_path,
+        raw_data_dir=data_cfg["raw_data_dir"],
+        split=split,
+        clamp_max=float(data_cfg.get("clamp_max", 10.0)),
+        t_map=data_cfg["t_map"],
+        rollout_timepoints=data_cfg.get("rollout_timepoints", ["D50", "D20", "D10", "D4", "NORMAL"]),
+        verify_alignment=bool(data_cfg.get("verify_alignment", True)),
+        alignment_check_num_samples=int(data_cfg.get("alignment_check_num_samples", 16)),
+        alignment_audit_json=alignment_audit_json,
+        include_x_rollout_first=True,
+        include_full_x_rollout=True,
+        image_size=int(data_cfg.get("image_size", 224)),
+        latent_mmap=bool(data_cfg.get("latent_mmap", False)),
+    )
+    return Hop0OnlyViewDataset(base)
+
+
+def maybe_subset_dataset(ds: Hop0OnlyViewDataset, max_slices: int):
+    if max_slices <= 0 or max_slices >= len(ds):
+        return ds
+    idx = torch.linspace(0, len(ds) - 1, steps=max_slices).round().long()
+    idx = torch.unique(idx, sorted=True).tolist()
+    return torch.utils.data.Subset(ds, idx)
 
 
 @torch.no_grad()
@@ -144,12 +185,7 @@ def main():
         print(f"[probe] !!! Stage 2 may have used decoder LoRA. V18 wrap logic needs revision.")
 
     # ---- build dataset & loader ----
-    data_cfg = cfg["data"]
-    if args.max_slices > 0:
-        # Override to a small subset for quick smoke test
-        data_cfg = dict(data_cfg)
-        data_cfg["debug_max_val_slices"] = args.max_slices
-    ds = PETFirstHopAligned4HopDataset(data_cfg, split=args.split)
+    ds = maybe_subset_dataset(build_dataset(cfg, args.split), args.max_slices)
     print(f"[probe] dataset {args.split}: n={len(ds)} samples")
 
     # We only need hop-0 samples for D20 GT pair AND access to z_rollout[1] for z_GT_D20.
@@ -166,7 +202,7 @@ def main():
     n_skipped = 0
     t0 = time.time()
     with torch.no_grad():
-        for batch in tqdm(loader, desc="probe"):
+        for batch in tqdm(loader, desc="probe", disable=not sys.stderr.isatty()):
             slice_idx = batch["slice_idx"].cpu().numpy()
             hop_idx_per_sample = batch["hop_idx"].cpu().numpy()
 
