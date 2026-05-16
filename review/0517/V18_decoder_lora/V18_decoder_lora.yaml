@@ -212,14 +212,26 @@ training:
   resume_allow_missing_compat_metadata: false
   decoder_lora:
     enabled: true
-    target_root: "rae.decoder.blocks"
-    last_n_blocks: 2
+    # *** UPDATED 20260517 下午 — RAE 架构检查后修正 ***
+    # RAE 本身已 LoRA-tune (encoder)，但 decoder 是 vanilla ViT-MAE (12-24 层 ViTMAELayer)，从未引入过 LoRA。
+    # 这里重用 RAE 自带的 src/utils/lora.py:LinearWithLoRA 包装器，不重复实现。
+    # 精确的 attribute path 是 rae.decoder.decoder_layers（不是 .blocks）。
+    # ViTMAELayer 内部 Linear 命名：attention.attention.{query,key,value} / attention.output.dense
+    #                                          / intermediate.dense / output.dense
+    target_root: "rae.decoder.decoder_layers"
+    last_n_blocks: 2   # 后两层 (ViTB decoder 总 12 层 → 取 layer 10, 11)
     rank: 8
     alpha: 16
-    target_module_types: ["Linear"]
-    name_regex: ".*(qkv|proj|fc1|fc2|to_q|to_k|to_v|to_out).*"
     dropout: 0.0
-    init_scale_zero: true
+    init_scale_zero: true   # B 零初始化 → V18 step 0 == V7 best.pt
+    # 复用 RAE 原 LinearWithLoRA 在 attention/MLP 上的 keywords (与 RAE encoder 口径一致)
+    target_keywords:
+      - "attention.attention.query"
+      - "attention.attention.key"
+      - "attention.attention.value"
+      - "attention.output.dense"
+      - "intermediate.dense"   # ViTMAEIntermediate.dense ≡ fc1
+      - "output.dense"         # ViTMAEOutput.dense       ≡ fc2
   metrics_jsonl: true
 
   # ============================================================

@@ -1,113 +1,67 @@
-"""V18 — RAE decoder LoRA finetune helper (SPEC / STUB FOR CODEX TO COMPLETE)
+"""V18 — RAE decoder LoRA finetune helper.
 
-This file is a contract sketch. Codex MUST inspect the actual RAE decoder
-structure on the GPU server before filling in the TODOs marked below.
+Reuses RAE's own LinearWithLoRA implementation (RAE/src/utils/lora.py) to avoid
+divergent code paths. Only adds two pieces:
 
-Why this is a stub on the laptop side
--------------------------------------
-The RAE module is loaded from `/home/qujiaxiang/project/RAE/code/RAE/` (path
-configured in V7 yaml as `rae_root`). The decoder structure (block list,
-attention/MLP layer naming) lives in that external repo and is NOT mirrored
-in this repo. Without server access I cannot enumerate the actual `nn.Linear`
-modules to wrap.
+1. wrap_decoder_with_lora(rae, cfg): scoped LoRA injection limited to the
+   last_n_blocks of `rae.decoder.decoder_layers` (a ViT-MAE decoder block
+   list). RAE encoder LoRA is loaded separately via inference_pet_flow.py
+   and is orthogonal to this.
 
-Codex Day-1 Phase A (server, ≤30 min):
-1. Load V7 best.pt model. Run `print(model.rae)` and copy first 200 lines to
-   review/0517/V18_decoder_lora/RAE_DECODER_STRUCTURE.txt (commit to gitee).
-2. Identify the attribute path to the decoder's transformer block list
-   (e.g. `model.rae.decoder.blocks` or `model.rae.dec.layers`).
-   Update V18 yaml's `training.decoder_lora.target_root` accordingly.
-3. For the last block (`blocks[-1]`), run `for n,m in blocks[-1].named_modules():
-   print(n, type(m).__name__)` and copy that output to STRUCTURE.txt too.
-4. Update `target_module_types` / `name_regex` in yaml so that the wrap pass
-   below selects 4-8 Linear modules per block (q/k/v/out + mlp.fc1/fc2 is
-   the safest default).
+2. compute_kl_pullback_loss(rae_lora, rae_frozen, z_gt, crop_size):
+   MSE(decode_lora(z_gt) - decode_frozen(z_gt)) to prevent decoder drift.
 
-API contract for this file
---------------------------
-- `wrap_decoder_with_lora(rae, cfg)` is the entry point called from
-  `model_first_hop.py:PETFlowDiTFirstHop.__init__` when `training.decoder_lora.enabled=true`.
-- It must:
-    a. freeze ALL decoder params (rae.requires_grad_(False))
-    b. enumerate target Linear modules in last_n_blocks
-    c. wrap each with a LoRAAdapter
-    d. set ONLY the LoRA A/B matrices to requires_grad=True
-    e. return a list of LoRA params for the optimizer
-- `compute_kl_pullback_loss(rae, rae_frozen, z_gt)` is called from train loop
-  to compute `MSE(decode_lora(z_gt) - decode_frozen(z_gt))`.
+Architecture facts confirmed by reading the RAE source (RAE/RAE/src/stage1/):
 
-Determinism contract
---------------------
-- With `init_scale_zero=True` (default), LoRA B is zero-init so V18 step 0
-  output == V7 best.pt output EXACTLY. This means warm-start can be verified
-  by running 1 eval batch before training and confirming PSNR == V7 baseline.
+- rae.encoder = DINOv2 (already LoRA-tuned in RAE pretraining; checkpoint
+  loaded from rae_cfg.checkpoint_path). We DO NOT touch encoder here.
+- rae.decoder = GeneralDecoder, contains:
+    rae.decoder.decoder_embed       (nn.Linear)
+    rae.decoder.decoder_layers      (nn.ModuleList[ViTMAELayer], 12 layers for ViTB)
+    rae.decoder.decoder_norm        (nn.LayerNorm)
+    rae.decoder.decoder_pred        (nn.Linear)   # the patch->pixel projection
+- Each ViTMAELayer contains:
+    layer.attention.attention.query   (nn.Linear)
+    layer.attention.attention.key     (nn.Linear)
+    layer.attention.attention.value   (nn.Linear)
+    layer.attention.output.dense      (nn.Linear)
+    layer.intermediate.dense          (nn.Linear)   == fc1
+    layer.output.dense                (nn.Linear)   == fc2
+
+LoRA contract:
+  * On wrap, ALL rae params are frozen (encoder + decoder), then per-layer
+    LinearWithLoRA wrapping unlocks only lora_A/lora_B in the last N decoder
+    layers.
+  * LinearWithLoRA does zero-init B -> step 0 output identical to V7 best.pt.
+  * RAE encoder LoRA params (loaded from RAE pretrained ckpt) stay frozen.
+
+For the KL pull-back loss we build a SECOND, fully frozen RAE via the
+existing load_rae_model() function (re-imported from
+src.pet_flow.inference_pet_flow). This second copy has its own encoder
+LoRA loaded but never touched.
 """
 from __future__ import annotations
 
-import math
-import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 import torch.nn as nn
 
 
-class LoRAAdapter(nn.Module):
-    """Standard low-rank adapter: y = Wx + (B@A)@x * alpha/rank.
-
-    Wraps an existing nn.Linear without changing its weight (frozen).
-    """
-
-    def __init__(
-        self,
-        base: nn.Linear,
-        rank: int = 8,
-        alpha: float = 16.0,
-        dropout: float = 0.0,
-        init_scale_zero: bool = True,
-    ) -> None:
-        super().__init__()
-        assert isinstance(base, nn.Linear), f"LoRAAdapter only wraps nn.Linear, got {type(base)}"
-        self.base = base
-        for p in self.base.parameters():
-            p.requires_grad_(False)
-
-        in_f = base.in_features
-        out_f = base.out_features
-        self.rank = int(rank)
-        self.scale = float(alpha) / float(rank)
-        self.dropout = nn.Dropout(p=float(dropout)) if dropout > 0 else nn.Identity()
-
-        # A: in_f -> rank   (Kaiming-uniform init like standard LoRA)
-        self.lora_A = nn.Parameter(torch.empty(self.rank, in_f, dtype=base.weight.dtype))
-        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-
-        # B: rank -> out_f  (zero-init so B@A == 0 at step 0; preserves base output)
-        self.lora_B = nn.Parameter(torch.zeros(out_f, self.rank, dtype=base.weight.dtype))
-        if not init_scale_zero:
-            nn.init.normal_(self.lora_B, std=1e-4)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # base path (frozen)
-        out = self.base(x)
-        # LoRA delta
-        delta = self.dropout(x) @ self.lora_A.t() @ self.lora_B.t()
-        return out + self.scale * delta
-
-    def lora_parameters(self) -> List[nn.Parameter]:
-        return [self.lora_A, self.lora_B]
-
-
 def _resolve_attr_path(obj: object, dotted: str) -> object:
     """Walk `a.b.c` style path; raises with helpful message on miss."""
     cur = obj
+    # Allow paths starting with 'rae.' or just '.decoder...'
+    if dotted.startswith("rae."):
+        dotted = dotted[len("rae."):]
     for piece in dotted.split("."):
         if piece == "":
             continue
         if not hasattr(cur, piece):
             raise AttributeError(
                 f"decoder_lora.target_root path failed at '{piece}' (full path '{dotted}'). "
-                f"Codex must inspect `print(model.rae)` and update target_root in yaml."
+                f"Inspect `print(rae)` and update target_root in yaml. "
+                f"Expected for ViT-MAE decoder: 'rae.decoder.decoder_layers'."
             )
         cur = getattr(cur, piece)
     return cur
@@ -119,27 +73,42 @@ def wrap_decoder_with_lora(
 ) -> Tuple[List[nn.Parameter], List[str]]:
     """Wrap last_n_blocks of `rae`'s decoder with LoRA adapters.
 
+    Uses RAE's native LinearWithLoRA (zero-init B -> step 0 output unchanged).
+
     Returns:
-      (lora_params, wrapped_names) -- pass lora_params to optimizer as a new param group.
+      (lora_params, wrapped_names) -- pass lora_params to optimizer as a new
+      param group; wrapped_names goes to startup log for verification.
     """
     lora_cfg = cfg["training"].get("decoder_lora", {})
     if not bool(lora_cfg.get("enabled", False)):
         return [], []
 
-    target_root = str(lora_cfg.get("target_root", "decoder.blocks"))
+    # Import RAE's own LoRA tooling. We do this lazily so non-LoRA runs
+    # don't pay the import cost.
+    from src.utils.lora import LinearWithLoRA  # type: ignore
+
+    target_root = str(lora_cfg.get("target_root", "rae.decoder.decoder_layers"))
     last_n = int(lora_cfg.get("last_n_blocks", 2))
     rank = int(lora_cfg.get("rank", 8))
     alpha = float(lora_cfg.get("alpha", 16.0))
     dropout = float(lora_cfg.get("dropout", 0.0))
     init_zero = bool(lora_cfg.get("init_scale_zero", True))
-    target_types = tuple(lora_cfg.get("target_module_types", ["Linear"]))
-    name_regex = lora_cfg.get("name_regex", "")
-    name_re = re.compile(name_regex) if name_regex else None
+    target_keywords = tuple(lora_cfg.get("target_keywords", (
+        "attention.attention.query",
+        "attention.attention.key",
+        "attention.attention.value",
+        "attention.output.dense",
+        "intermediate.dense",
+        "output.dense",
+    )))
 
-    # First: freeze ALL decoder params (defensive; trainer should also do this)
+    # Step 1: freeze ALL rae params (encoder + decoder). This is defensive;
+    # RAE encoder LoRA params loaded from pretrained ckpt remain frozen here
+    # -- V18 only touches decoder, never encoder.
     for p in rae.parameters():
         p.requires_grad_(False)
 
+    # Step 2: resolve decoder block list
     blocks = _resolve_attr_path(rae, target_root)
     if not hasattr(blocks, "__len__"):
         raise RuntimeError(
@@ -151,31 +120,30 @@ def wrap_decoder_with_lora(
             f"decoder_lora.last_n_blocks={last_n} > total blocks={len(blocks)}"
         )
 
+    if not init_zero:
+        # RAE's LinearWithLoRA always zero-inits B (see lora.py:34). If user
+        # really wants non-zero B init, they have to monkey-patch reset_parameters.
+        # We don't support that here; warn loudly.
+        print(
+            f"[decoder_lora] WARN: init_scale_zero=false ignored. "
+            f"RAE LinearWithLoRA hard-codes zero-init for B. "
+            f"V18 step 0 output WILL equal V7 best.pt output exactly.",
+            flush=True,
+        )
+
+    # Step 3: wrap matching Linear in the last N blocks
     lora_params: List[nn.Parameter] = []
     wrapped_names: List[str] = []
 
     for block_idx in range(len(blocks) - last_n, len(blocks)):
         block = blocks[block_idx]
-        # collect candidates: walk (name, module) and pick by type + name regex
-        candidates = []
-        for sub_name, sub_mod in block.named_modules():
-            type_name = type(sub_mod).__name__
-            if type_name not in target_types:
+        block_wraps = []
+        for sub_name, sub_mod in list(block.named_modules()):
+            if not isinstance(sub_mod, nn.Linear):
                 continue
-            if name_re is not None and not name_re.search(sub_name):
+            if not any(kw in sub_name for kw in target_keywords):
                 continue
-            candidates.append((sub_name, sub_mod))
-
-        if not candidates:
-            print(
-                f"[decoder_lora] WARN block[{block_idx}] no Linear matched "
-                f"regex='{name_regex}' types={target_types}; LoRA skipped this block",
-                flush=True,
-            )
-            continue
-
-        for sub_name, sub_mod in candidates:
-            # replace in-place: find parent module that owns sub_mod
+            # locate parent for in-place replacement
             parent_path = sub_name.rsplit(".", 1)
             if len(parent_path) == 1:
                 parent = block
@@ -183,50 +151,75 @@ def wrap_decoder_with_lora(
             else:
                 parent = block.get_submodule(parent_path[0])
                 attr = parent_path[1]
-            adapter = LoRAAdapter(
-                base=sub_mod, rank=rank, alpha=alpha,
-                dropout=dropout, init_scale_zero=init_zero,
-            )
+            adapter = LinearWithLoRA(sub_mod, rank=rank, alpha=alpha, dropout=dropout)
+            adapter.to(sub_mod.weight.device)
             setattr(parent, attr, adapter)
-            lora_params.extend(adapter.lora_parameters())
-            wrapped_names.append(f"block[{block_idx}].{sub_name}")
+            lora_params.append(adapter.lora_A)
+            lora_params.append(adapter.lora_B)
+            wrapped_names.append(f"decoder_layers[{block_idx}].{sub_name}")
+            block_wraps.append(sub_name)
+        if not block_wraps:
+            print(
+                f"[decoder_lora] WARN block[{block_idx}]: no Linear matched "
+                f"keywords {target_keywords}. Skipped.",
+                flush=True,
+            )
 
     if not lora_params:
         raise RuntimeError(
             "decoder_lora is enabled but ZERO Linear modules were wrapped. "
-            "Codex must verify target_root / name_regex / target_module_types match the actual RAE decoder. "
-            "Inspect with `for n,m in rae.named_modules(): print(n, type(m).__name__)` and update yaml."
+            "Inspect `print(rae.decoder.decoder_layers[-1])` and update "
+            "decoder_lora.target_keywords in yaml. Expected matches per ViTMAELayer: "
+            "attention.attention.{query,key,value}, attention.output.dense, "
+            "intermediate.dense, output.dense (6 Linear per layer)."
+        )
+
+    # Sanity: confirm only the wrapped LoRA params have requires_grad=True on rae
+    trainable_rae = [n for n, p in rae.named_parameters() if p.requires_grad]
+    expected_count = len(lora_params)
+    actual_count = len(trainable_rae)
+    if actual_count != expected_count:
+        sample = trainable_rae[:5]
+        raise RuntimeError(
+            f"[decoder_lora] consistency check failed: rae has {actual_count} "
+            f"trainable params but we expected {expected_count} LoRA params. "
+            f"First 5 trainable: {sample}. "
+            f"This means freeze step failed or RAE has non-LoRA trainable params elsewhere."
         )
 
     print(
         f"[decoder_lora] wrapped {len(wrapped_names)} Linear modules across "
-        f"last {last_n} blocks of {target_root}; "
-        f"trainable LoRA params = {sum(p.numel() for p in lora_params)}",
+        f"last {last_n} decoder layers of {target_root}; "
+        f"trainable LoRA params (A+B per Linear) = {sum(p.numel() for p in lora_params):,}; "
+        f"first 3 wrapped: {wrapped_names[:3]}",
         flush=True,
     )
     return lora_params, wrapped_names
 
 
-def build_frozen_reference_decoder(rae_template: nn.Module, cfg: Dict, device: torch.device) -> nn.Module:
-    """Build a SECOND, fully frozen copy of the RAE decoder for KL pull-back.
+def build_frozen_reference_decoder(cfg: Dict, device: torch.device) -> nn.Module:
+    """Build a SECOND, fully frozen RAE for KL pull-back.
 
-    Called once at boot, BEFORE LoRA wrapping. This copy is never wrapped or
-    updated; it provides the reference `decode_pretrained(z_gt)` output for
-    the KL loss.
-
-    Codex implementation note:
-      It is acceptable (and cheaper) to skip this if `decoder_kl_pullback.enabled=false`.
-      If enabled, the simplest implementation is to re-call `build_rae(cfg, device)`
-      a second time before wrapping the primary copy. This doubles RAE memory but
-      RAE is small relative to backbone.
+    Called BEFORE wrap_decoder_with_lora() so this copy has no V18 LoRA
+    (only the RAE-pretrained encoder LoRA, which is loaded from
+    rae_cfg.checkpoint_path inside load_rae_model). This copy is never
+    updated.
     """
-    # Codex TODO: import build_rae from pet_lr.model_first_hop or pet_lr.model
-    # from pet_lr.model_first_hop import build_rae as _build_rae  # circular; resolve at runtime
-    raise NotImplementedError(
-        "Codex must wire build_frozen_reference_decoder by calling build_rae(cfg, device) "
-        "BEFORE wrap_decoder_with_lora() is invoked. Return value goes to the main model "
-        "as `self.rae_frozen` and is set to .eval() + requires_grad_(False) permanently."
+    from src.pet_flow.inference_pet_flow import load_rae_model  # type: ignore
+
+    rae_frozen = load_rae_model(cfg, device)
+    for p in rae_frozen.parameters():
+        p.requires_grad_(False)
+    rae_frozen.eval()
+    n_trainable = sum(1 for _, p in rae_frozen.named_parameters() if p.requires_grad)
+    print(
+        f"[decoder_lora] built frozen reference RAE for KL pull-back. "
+        f"trainable params = {n_trainable} (must be 0)",
+        flush=True,
     )
+    if n_trainable != 0:
+        raise RuntimeError("frozen reference RAE has trainable params; check load_rae_model")
+    return rae_frozen
 
 
 def compute_kl_pullback_loss(
@@ -237,10 +230,11 @@ def compute_kl_pullback_loss(
 ) -> torch.Tensor:
     """L = MSE(decode_lora(z_gt) - decode_frozen(z_gt)).
 
-    Both decoders see the same z_gt (a GT latent from the validation manifold).
-    Gradient flows only through rae_lora (rae_frozen is in eval+no_grad).
+    Both decoders see the same z_gt (a GT latent). Gradient flows only
+    through rae_lora (rae_frozen is in eval+no_grad).
+
+    The crop logic mirrors PETFlowDiTFirstHop.decode_crop's center-crop step.
     """
-    # decode_lora path: gradients flow through LoRA A/B
     x_lora = rae_lora.decode(z_gt)
     if x_lora.shape[1] > 1:
         x_lora = x_lora[:, 0:1]
@@ -249,6 +243,10 @@ def compute_kl_pullback_loss(
         top = (h - crop_size) // 2
         left = (w - crop_size) // 2
         x_lora = x_lora[:, :, top:top + crop_size, left:left + crop_size]
+    elif h < crop_size or w < crop_size:
+        raise ValueError(
+            f"compute_kl_pullback_loss: decoded shape {(h, w)} < crop {crop_size}"
+        )
 
     with torch.no_grad():
         x_frozen = rae_frozen.decode(z_gt)

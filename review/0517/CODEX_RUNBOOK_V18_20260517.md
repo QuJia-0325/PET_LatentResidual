@@ -8,6 +8,8 @@
 
 > **TL;DR for codex**: 3 independent reviewers in Round 3 confirmed claude's 4th confirmation bias (diagnostic laundering — 6 days of review, 0 GPU launches). Real bottleneck is the **frozen RAE decoder**, locked by `train_first_hop.py:1298` hard assert. V18 unlocks last 1-2 decoder blocks via LoRA with KL pull-back, expected +0.5-2.0 dB NORMAL PSNR_clip3 (3-10× the entire V11/V17 family combined). **Hard timebox: Day 2 must have V18 + V14 on GPUs.**
 
+> **20260517 下午更新**：claude 在写本 runbook 后读了 [RAE/RAE/src](../../RAE/RAE/src)，验证了 decoder 结构、复用了 RAE 自带 `LinearWithLoRA`。完整发现见 [RAE_ARCHITECTURE_FINDING_20260517.md](./V18_decoder_lora/RAE_ARCHITECTURE_FINDING_20260517.md)。**Day 0 依赖 inspection 变 < 5 分钟**，其余部分（§3 Phase B/C 与 §4 Day 1）仍有效。
+
 ---
 
 ## §1 — 项目当前 decision state
