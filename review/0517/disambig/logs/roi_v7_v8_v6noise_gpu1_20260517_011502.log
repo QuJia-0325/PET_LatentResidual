@@ -1,0 +1,59 @@
+[launch] 2026-05-17 01:15:02 CST GPU=1 MAX_SLICES=0
+===== V7_last start 2026-05-17 01:15:02 CST =====
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 19.4s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.7s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.4s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 5.2s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+Saved JSON: review/0517/disambig/roi_psnr/V7_last/roi_psnr_summary.json
+Saved CSV: review/0517/disambig/roi_psnr/V7_last/roi_psnr_per_slice.csv
+===== V7_last done 2026-05-17 01:22:22 CST =====
+===== V8_last start 2026-05-17 01:22:22 CST =====
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 18.3s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.8s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 5.3s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 5.4s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.4s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+Saved JSON: review/0517/disambig/roi_psnr/V8_last/roi_psnr_summary.json
+Saved CSV: review/0517/disambig/roi_psnr/V8_last/roi_psnr_per_slice.csv
+===== V8_last done 2026-05-17 01:29:44 CST =====
+===== V6_NOISE_last start 2026-05-17 01:29:44 CST =====
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 17.9s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.3s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 5.0s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 4.8s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+Saved JSON: review/0517/disambig/roi_psnr/V6_NOISE_last/roi_psnr_summary.json
+Saved CSV: review/0517/disambig/roi_psnr/V6_NOISE_last/roi_psnr_per_slice.csv
+===== V6_NOISE_last done 2026-05-17 01:37:02 CST =====
+[all_done] 2026-05-17 01:37:02 CST

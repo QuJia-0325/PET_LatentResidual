@@ -346,3 +346,12 @@ V13 (true image_aux ablation) 与 V14 (true d_pure) 的 yaml 已在 [review/0516
 - 修改 `review/0516/REVIEW_INTEGRATION_20260516.md` 或其他 review 文档（这些是讨论结果，需 claude 同步）
 
 完成 §0/§1/§2 后，请 codex 在本文档末尾追加一段简短执行记录（运行时间、判定结论一句话），然后 commit。我会基于结果决定 V13/V14/V15 的下一步。
+
+---
+
+## §6 — Codex execution record (2026-05-17)
+
+- §0 Lipschitz gate completed on GPU1. Outputs: `review/0517/disambig/lipschitz/`, report: `review/0517/disambig/lipschitz/LIPSCHITZ_REPORT.md`, commit `49312b4`. Decision: measured per-hop `L_i` are all close to 1 (`max L <= 1.0091`), so the Gronwall/closed-form step-weight assumption is acceptable for V7/V9-style reasoning.
+- §1 per-hop single-step full-val completed on GPU1. Outputs: `review/0517/disambig/per_hop_singlestep/`, report: `review/0517/disambig/per_hop_singlestep/SINGLESTEP_REPORT.md`, commit `5190659`. Decision: V7-V8 gain is concentrated in hop0 (`D50->D20 +0.2260 dB`); hop1-hop3 single-step deltas are near zero or negative. Channel A / chain coherence is the dominant interpretation, not a uniform shared-backbone direct gain.
+- §2 ROI/high-SUV full-val completed on GPU1. Outputs: `review/0517/disambig/roi_psnr/`, report: `review/0517/disambig/roi_psnr/ROI_REPORT.md`. Decision: high-SUV/top1 regions are the clear failure mode, but D20 top1 SUV does not improve under V7 vs V8; SUVmax underestimation is largest at D20 and decreases toward NORMAL. This does not support NORMAL-only or multi-hop image_aux as the immediate primary move.
+- Practical next step recommendation: do not launch V9/V11/V15 solely from the old V7-V8 NORMAL delta. Prefer either true single-variable controls (V13/V14-style) or a D20/top-SUV ROI-weighted hop0 experiment, with `PSNR_clip3 + top5/top1 SUV PSNR + SUVmax error` as required reporting metrics.
