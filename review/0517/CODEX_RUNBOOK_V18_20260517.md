@@ -10,6 +10,8 @@
 
 > **20260517 下午更新**：claude 在写本 runbook 后读了 [RAE/RAE/src](../../RAE/RAE/src)，验证了 decoder 结构、复用了 RAE 自带 `LinearWithLoRA`。完整发现见 [RAE_ARCHITECTURE_FINDING_20260517.md](./V18_decoder_lora/RAE_ARCHITECTURE_FINDING_20260517.md)。**Day 0 依赖 inspection 变 < 5 分钟**，其余部分（§3 Phase B/C 与 §4 Day 1）仍有效。
 
+> **20260517 晚 更新（Round 4 integration）**：3 位独立 reviewer 共识指出 V18 设计有 5 处问题，最关键的是 "11.2 dB gap" 是 round-trip ceiling 不是 V18 可吃的 gap，且 KL λ=0.5 会**冻死** V18 decoder LoRA。详见 [REVIEW_INTEGRATION_round4_20260517.md](./REVIEW_INTEGRATION_round4_20260517.md)。已立即修：(1) yaml KL block λ=0.05 / use_pred_latent=true / warmup=2000；(2) 写 `tools/probe_v18_gap_decomposition.py`。**Day 0 新增 Phase 0**（必跑）：probe 决定 launch V18 (rank=8/32) 还是 V21 (conv head)。Day 2 launch 截止时间不变。
+
 ---
 
 ## §1 — 项目当前 decision state

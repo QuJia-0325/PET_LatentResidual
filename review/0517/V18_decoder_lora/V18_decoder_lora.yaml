@@ -442,9 +442,31 @@ loss:
     seam_patch_size: 14
   decoder_kl_pullback:
     enabled: true
-    lambda_kl: 0.5
-    use_pred_latent: false
-    warmup_steps: 0
+    # *** ROUND 4 CALIBRATION FIX ***
+    # Round 4 agent1: lambda_kl=0.5 produces grad_kl/grad_image_aux ≈ 12.5x. With
+    # image_aux at lambda_max=0.04, KL would dominate and freeze the decoder.
+    # Recalibrated to 0.05 (ratio ≈ 1.25x), giving image_aux room to drive V18 LoRA.
+    lambda_kl: 0.05
+    # Round 4 agent3: KL on GT-latent decode protects the encode-manifold (where
+    # decoder was already fully PET-tuned), but V18's whole point is to adapt the
+    # PREDICTED-latent decode path. Switching use_pred_latent=true makes KL act as
+    # a stability guard on the path V18 actively wants to change — penalizing only
+    # *runaway* drift, not adaptation itself.
+    use_pred_latent: true
+    # Add ramp from 0 to lambda_kl over 2K steps so V18 can warm up before KL bites.
+    warmup_steps: 2000
+
+    # KILL-switch thresholds (pre-registered, read by training loop watchdog):
+    #   - at step 5K: if kl_loss change < 5% AND image_aux loss not improved ≥ 10%
+    #     over V7 trajectory at 5K → KL is too tight → kill V18
+    #   - if kl_loss > 3× the value at step (warmup_steps + 1000) → KL drifted →
+    #     warn, do not kill
+    kill_switch:
+      check_step: 5000
+      min_kl_change_pct: 5.0
+      min_image_aux_improvement_pct: 10.0
+      v7_image_aux_at_5k: 0.007893   # from V7 train log at step ~5000 [val_full] val_hop0_img_total
+      kl_drift_warn_ratio: 3.0
 
   regularizer:
     enabled: false
