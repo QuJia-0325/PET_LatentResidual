@@ -219,7 +219,7 @@ training:
     # ViTMAELayer 内部 Linear 命名：attention.attention.{query,key,value} / attention.output.dense
     #                                          / intermediate.dense / output.dense
     target_root: "rae.decoder.decoder_layers"
-    last_n_blocks: 2   # 后两层 (ViTB decoder 总 12 层 → 取 layer 10, 11)
+    last_n_blocks: 2   # 后两层 (实测 RAE decoder 共 8 层 → 取 layer 6, 7; 详 AUDIT_LORA_PARAM_COUNT_20260517.md)
     # Full-val gap probe 2026-05-17:
     # attackable_gap mean=11.200 dB >= 5 dB -> pre-registered decision
     # V18_LAUNCH_RANK32_KLFIX.

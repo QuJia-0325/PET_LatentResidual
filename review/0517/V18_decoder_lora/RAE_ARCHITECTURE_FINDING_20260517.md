@@ -19,9 +19,12 @@ RAE (nn.Module)
 │   └── (PET_LatentResidual V7 cfg.rae.use_lora=true → 已 LoRA-tuned)
 │   └── 在 V18 中：保持 frozen，不变
 ├── decoder        = GeneralDecoder
-│   ├── decoder_embed         nn.Linear(hidden=384 → decoder_hidden=768)
+│   ├── decoder_embed         nn.Linear(hidden=384 → decoder_hidden=512)
 │   ├── decoder_pos_embed     nn.Parameter (fixed sin-cos, requires_grad=False)
-│   ├── decoder_layers        nn.ModuleList[ViTMAELayer, 12 层 for ViTB]   ← V18 LoRA 注入点
+│   ├── decoder_layers        nn.ModuleList[ViTMAELayer, **实测 8 层**]   ← V18 LoRA 注入点
+│   │                          (注: claude 先前假设 ViTB 默认 12 层错误；RAE 项目使用自定义 decoder config
+│   │                           hidden=512 mlp=2048 depth=8，不是 HF ViTB 标准。详 codex audit
+│   │                           AUDIT_LORA_PARAM_COUNT_20260517.md)
 │   ├── decoder_norm          nn.LayerNorm
 │   └── decoder_pred          nn.Linear(decoder_hidden → patch²·channels)
 └── encoder_mean / encoder_std (buffers)
@@ -111,7 +114,7 @@ decoder_lora:
 decoder_lora:
   enabled: true
   target_root: "rae.decoder.decoder_layers"   # 验证过的 nn.ModuleList[ViTMAELayer]
-  last_n_blocks: 2                            # 12 层中的 layer 10, 11
+  last_n_blocks: 2                            # 8 层中的 layer 6, 7 (实测后校正；原估 12 层错误)
   rank: 8
   alpha: 16
   dropout: 0.0
@@ -125,7 +128,10 @@ decoder_lora:
     - "output.dense"           # ViTMAEOutput.dense       ≡ fc2
 ```
 
-每 layer 6 个 Linear，last 2 layers = 12 个 Linear；rank=8 → trainable params 约 `12 × 2 × 8 × 768 ≈ 150K`（< RAE decoder 总 params 的 0.2%）。
+每 layer 6 个 Linear，last 2 layers = 12 个 Linear；**实测** decoder dim=512/2048 (不是 ViTB 的 768/3072)，
+rank=32 → trainable params = **589,824**（不是原误估的 884,736。详 [AUDIT_LORA_PARAM_COUNT_20260517.md](./AUDIT_LORA_PARAM_COUNT_20260517.md)）。
+RAE decoder 总 params 约 25M（不是原误估的 85.5M），LoRA 增量占 ≈20% backbone；但 V18 optimizer 仍同时训
+backbone 207M params + first_hop 1.25M params + decoder LoRA 590K params = **209.5M trainable**。
 
 ### 4.2 V18 decoder_lora.py 改造（已更新）
 
@@ -183,7 +189,7 @@ RAE encoder LoRA 与 V18 decoder LoRA 都会用相同的 `lora_A` / `lora_B` 参
 | KL pull-back loss 数学 | ✅ MSE on 同一 GT latent |
 | 第二份 frozen RAE 构建 | ✅ `load_rae_model(cfg, device)` 再调一次 |
 | Resume from V7 best.pt 处理 | ✅ strict=False + 检查 missing 全是 lora_A/lora_B |
-| ViTB 12 层假设 | ⚠️ V7 yaml `rae.decoder_config_path: /home/qujiaxiang/project/RAE/vit-mae` 没明说 ViTB/L/XL；Codex Day 0 `print(len(rae.decoder.decoder_layers))` 验证（30 秒），把数字写到 logs 里。如果是 24 层 (ViTL) 或 28 层 (ViTXL) 也没关系，last_n_blocks=2 仍 valid |
+| ViTB 12 层假设 | ❌ **已被实测证伪** (20260517 深夜陆 audit)：RAE 项目使用自定义 decoder config hidden=512 mlp=2048 depth=8，不是 HF ViTB 标准。`last_n_blocks=2` 是 layer 6, 7（不是 10, 11）。trainable LoRA = 589,824 不是 884,736。 |
 
 ---
 
