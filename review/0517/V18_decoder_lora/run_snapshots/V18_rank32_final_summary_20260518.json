@@ -1,0 +1,66 @@
+{
+  "run_dir": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora",
+  "train_status": "completed",
+  "warm_start_step": 160000,
+  "max_steps": 200000,
+  "best_checkpoint": {
+    "name": "best.pt",
+    "step": 165000,
+    "best_val": 0.0009037493852408773,
+    "val_select_score": 0.0009037493852408773,
+    "val_pair_total": 0.00011310829821969236,
+    "val_rollout_total": 0.0007831536440681834,
+    "val_hop0_img_total": 0.0075349056686846785,
+    "val_chain_d20_mse": 0.0003304456302737126,
+    "val_chain_d10_mse": 0.0002966659882599162,
+    "val_chain_d4_mse": 0.00026309424350887974,
+    "val_chain_normal_mse": 0.0002454947041527113,
+    "val_chain_tail_mse": 0.00026841831197383574,
+    "canonical_fullval_psnr_clip3": {
+      "d20": 35.43820899057498,
+      "d10": 35.834611419920954,
+      "d4": 36.39444845411627,
+      "normal": 36.811167021208675
+    }
+  },
+  "best_normal_checkpoint": {
+    "name": "step_175000",
+    "step": 175000,
+    "val_select_score": 0.000904345925061459,
+    "val_pair_total": 0.00011421653533881156,
+    "val_rollout_total": 0.0007961236504113152,
+    "val_hop0_img_total": 0.007545531325407405,
+    "val_chain_d20_mse": 0.0003310518630994743,
+    "val_chain_d10_mse": 0.0002971476440382529,
+    "val_chain_d4_mse": 0.0002633800193038772,
+    "val_chain_normal_mse": 0.0002453743575473458,
+    "val_chain_tail_mse": 0.00026863400696315864,
+    "mse_only_record": true
+  },
+  "last_checkpoint": {
+    "name": "last.pt",
+    "step": 200000,
+    "val_select_score": 0.00090535337875151,
+    "val_pair_total": 0.00011698490318593471,
+    "val_rollout_total": 0.000824408485678813,
+    "val_hop0_img_total": 0.00756023575548962,
+    "val_chain_d20_mse": 0.00033179921837840355,
+    "val_chain_d10_mse": 0.0002976324984604366,
+    "val_chain_d4_mse": 0.0002638202947701549,
+    "val_chain_normal_mse": 0.0002453872533079816,
+    "val_chain_tail_mse": 0.00026894668217952435,
+    "canonical_fullval_psnr_clip3": {
+      "d20": 35.421183163453385,
+      "d10": 35.8439150002137,
+      "d4": 36.41239957849383,
+      "normal": 36.84264474364047
+    }
+  },
+  "full_val_count": 8,
+  "full_val_steps": [165000, 170000, 175000, 180000, 185000, 190000, 195000, 200000],
+  "notes": [
+    "best and last are effectively tied",
+    "latest round5 integration in the repo flags B9/B10, so interpret causal claims cautiously",
+    "the previous 45 dB values were removed because they came from an invalid training-MSE to PSNR post-hoc conversion and were not canonical calc_psnr_clip3 full-val results"
+  ]
+}
