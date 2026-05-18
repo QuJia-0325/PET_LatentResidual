@@ -6,7 +6,7 @@
 - status: **READY TO PUSH after user 过一眼 + 阶段 A 完成后另行起 codex 代码深审 task**
 - 设计来源: v2 + [REVIEW_INTEGRATION_round9_20260517.md](./REVIEW_INTEGRATION_round9_20260517.md) 修订选 C (2 hard fix + 5 should-fix)
 - 与 v2 的差异: 仅 9 处局部修订 (Round 9 修 7 + Round 10 增 2; ~47 行 markdown), 文档主结构、§4 D / §5 E / §6 NOT-DO / §7 决策树 不变
-- 硬约束: 内存 max 3 任务. Slot 1 = V18 在跑 (不可动). 本 task 最多新增 slot 2 = V13. Slot 3 永远 0.
+- 硬约束: 内存 max 3 任务. Slot 1 = V18 在跑 (不可动). 本 task 最多新增 slot 2 = V13. ~~Slot 3 永远 0~~ **[R15 B56 SUPERSEDED 2026-05-18]**: 原意是 v3 task 范围内不启用 slot 3; R13 user 决策 A 含 V14 (slot 3), V14 launch 由单独 [CODEX_TASK_STAGE_C_V14_DPURE_20260518.md](./CODEX_TASK_STAGE_C_V14_DPURE_20260518.md) staggered launch (§4 补 R15 B58 staggered launch +30min IO health check)
 
 ---
 
@@ -374,7 +374,19 @@ echo "PASS_5: elapsed ${ELAPSED_MIN} min (${ELAPSED_SEC}s) ≤ 15 min"
 
 ---
 
-## §4 — Task D 不变 (沿用 v2)
+## §4 — Task D 不变 (沿用 v2) + [R15 staggered launch 补充]
+
+[R15 B58 fix] V13 launch 后, **slot 3 = V14** 由 [CODEX_TASK_STAGE_C_V14_DPURE_20260518.md](./CODEX_TASK_STAGE_C_V14_DPURE_20260518.md) 接手. staggered launch protocol:
+
+```
+T=0       : V13 launch (Task D, slot 2) + A3 launch (slot 1, by CODEX_TASK_STAGE_C_A3 独立 task)
+T=+5min   : V13/A3 alive 检查 (ps -p, nvidia-smi)
+T=+30min  : IO health check: iostat -x 1 5 (%util < 80%) + nvidia-smi memory.free > 12GB on slot 3 GPU
+T=+30min (健康): V14 launch (slot 3, by V14 task md)
+T=+35min  : V14 alive 检查
+```
+
+R15 4 reviewer 共识 staggered launch + IO health check 是 3-slot 并发防御 (V13/V14 共享 latent_dir, num_workers=0 必要不充分).
 
 (launch / 5 min 验证 / pass 准则 / fail 处理 完全不变.)
 

@@ -173,9 +173,19 @@ V18 加进来后的卖点（如果 ΔPSNR ≥ +0.30 dB）：
 - bash 变量比较前必须 `-z` 空值守 (避免 vacuous pass)
 - 总在末尾报告 ERR 计数, ERR > 0 → exit 1
 
-#### Enforcement honesty: cultural vs mechanical (Round 14 reviewer 2+3 共识, B52 fix)
+**B58 — Multi-task IO contention defensive launch** (Round 15 Reviewer C):
+- ≥ 2 训练任务共享 `latent_dir` / 同 dataloader 路径时, 必须 staggered launch (T=0 launch 第 1+2 个, T=+30min IO health check `iostat -x 1 5` + `nvidia-smi memory.free` 通过后再 launch 第 3 个)
+- `num_workers=0` 是必要但不充分; 多任务累积 IO 历史未压测
 
-B43-B47 全部依赖 claude / reviewer / user 主动 honor, **无 CI / template / pre-commit 机械级执行**. 为诚实披露, 分类如下:
+**B60 — Prompt 引用 prior-round user 决策必须 grep verify** (Round 15 共识, 3/3 reviewer A/B/C 独立 catch):
+- 任何 prompt / task md 中 "user 在 Round N 决策 X" / "user 明确说 Y" 等引用, 起草者**必须先 grep R/N integration / chat artifact / commit**, 贴 verbatim quote + 文件路径 + 行号
+- 无 verify 原文的 user 引用降级为 "claude 推测 user 倾向", 不作为 prompt anchor / 不作为决策约束
+- **实证 (R15 B55)**: claude 起 R15 prompt 凭记忆引用 user 早期口语 "不考虑 multi-seed", 但 R13 整合 §6 user 决策实际是 "A 选项 3 slot 含 V14". 3 reviewer grep verify 全 repo 无此 user quote 原文, 反驳 claude anchor. 浪费 30+ min reviewer 独立 grep 时间.
+- 修法: 起 prompt 前完成 grep, 引用配文件路径:行号; reviewer 应主动质疑无 grep verify 的 user quote
+
+#### Enforcement honesty: cultural vs mechanical (Round 14 reviewer 2+3 共识, B52 fix; Round 15 B58/B60 加入)
+
+B43-B47 + B58 + B60 全部依赖 claude / reviewer / user 主动 honor, **无 CI / template / pre-commit 机械级执行**. 为诚实披露, 分类如下:
 
 | rule | enforcement mode | 实际执行者 |
 |---|---|---|
@@ -184,8 +194,10 @@ B43-B47 全部依赖 claude / reviewer / user 主动 honor, **无 CI / template 
 | B45 (substrate reviewer 必介入) | **CULTURAL** | user 主动起 reviewer; 无 gate 检查 substrate 阶段是否跳过 |
 | B46 (4×2 ΔPSNR 标签) | **CULTURAL-with-protocol** | Round 12/13 已 enforced 一次 (reviewer 手动 verify); 无模板生成器 |
 | B47 (mechanical script assert) | **PROTOCOL** (最接近机械) | 明确协议 (exit 1 / -z 守 / ERR 计数); 但仍依赖 user/codex 执行 script |
+| **B58 (IO contention staggered launch)** | **PROTOCOL** | task md 显式 staggered + IO check; 无 multi-task launcher script |
+| **B60 (引用 user 决策必 grep verify)** | **CULTURAL** | claude 起 prompt 前自查; 无 lint script |
 
-真 mechanical enforcement (CI hook / template generator / pre-commit lint) 是 future 增强, **不在本提交**. 读者不应错识这 5 条为硬门 (hard gate).
+真 mechanical enforcement (CI hook / template generator / pre-commit lint) 是 future 增强, **不在本提交**. 读者不应错识这 7 条为硬门 (hard gate).
 
 ---
 
