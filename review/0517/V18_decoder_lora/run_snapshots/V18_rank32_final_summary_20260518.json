@@ -16,12 +16,11 @@
     "val_chain_d4_mse": 0.00026309424350887974,
     "val_chain_normal_mse": 0.0002454947041527113,
     "val_chain_tail_mse": 0.00026841831197383574,
-    "psnr_clip3": {
-      "d20": 44.351424961911505,
-      "d10": 44.81974750644339,
-      "d4": 45.341311635948934,
-      "normal": 45.642003815427074,
-      "tail": 45.25430368591004
+    "canonical_fullval_psnr_clip3": {
+      "d20": 35.43820899057498,
+      "d10": 35.834611419920954,
+      "d4": 36.39444845411627,
+      "normal": 36.811167021208675
     }
   },
   "best_normal_checkpoint": {
@@ -36,13 +35,7 @@
     "val_chain_d4_mse": 0.0002633800193038772,
     "val_chain_normal_mse": 0.0002453743575473458,
     "val_chain_tail_mse": 0.00026863400696315864,
-    "psnr_clip3": {
-      "d20": 44.34346473085018,
-      "d10": 44.81270218174198,
-      "d4": 45.33659684277537,
-      "normal": 45.644133339235005,
-      "tail": 45.2508151934347
-    }
+    "mse_only_record": true
   },
   "last_checkpoint": {
     "name": "last.pt",
@@ -56,18 +49,18 @@
     "val_chain_d4_mse": 0.0002638202947701549,
     "val_chain_normal_mse": 0.0002453872533079816,
     "val_chain_tail_mse": 0.00026894668217952435,
-    "psnr_clip3": {
-      "d20": 44.33367150820139,
-      "d10": 44.80562159408689,
-      "d4": 45.329343081923234,
-      "normal": 45.64390509979812,
-      "tail": 45.24576318397264
+    "canonical_fullval_psnr_clip3": {
+      "d20": 35.421183163453385,
+      "d10": 35.8439150002137,
+      "d4": 36.41239957849383,
+      "normal": 36.84264474364047
     }
   },
   "full_val_count": 8,
   "full_val_steps": [165000, 170000, 175000, 180000, 185000, 190000, 195000, 200000],
   "notes": [
     "best and last are effectively tied",
-    "latest round5 integration in the repo flags B9/B10, so interpret causal claims cautiously"
+    "latest round5 integration in the repo flags B9/B10, so interpret causal claims cautiously",
+    "the previous 45 dB values were removed because they came from an invalid training-MSE to PSNR post-hoc conversion and were not canonical calc_psnr_clip3 full-val results"
   ]
 }

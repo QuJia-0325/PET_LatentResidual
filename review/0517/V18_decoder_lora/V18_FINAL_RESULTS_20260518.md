@@ -72,22 +72,27 @@ Full-val sample count at step `200000`:
 | `val_chain_normal_mse` | `0.0002453872533079816` |
 | `val_chain_tail_mse` | `0.00026894668217952435` |
 
-## PSNR_clip3 Conversion
+## Canonical Full-Val PSNR_clip3
 
-Using `PSNR = 10 * log10(9 / MSE)`:
+The earlier `45.6 dB` numbers were not canonical full-val `PSNR_clip3`. They came from an invalid post-hoc conversion of training-time `val_full` chain MSE and should not be compared to the project's historical `~36 dB` full-val results.
+
+Canonical full-val `PSNR_clip3` was recomputed on 2026-05-18 with the standard evaluator:
+
+- script: `review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py`
+- metric: `src.utils.metrics.calc_psnr_clip3`
+- split: full `val`, `n=7403`
 
 | checkpoint | D20 | D10 | D4 | NORMAL |
 |---|---:|---:|---:|---:|
-| best.pt @ 165000 | 44.3514 dB | 44.8197 dB | 45.3413 dB | 45.6420 dB |
-| best-normal @ 175000 | 44.3435 dB | 44.8127 dB | 45.3366 dB | 45.6441 dB |
-| last.pt @ 200000 | 44.3337 dB | 44.8056 dB | 45.3293 dB | 45.6439 dB |
+| best.pt @ 165000 | 35.4382 dB | 35.8346 dB | 36.3944 dB | 36.8112 dB |
+| last.pt @ 200000 | 35.4212 dB | 35.8439 dB | 36.4124 dB | 36.8426 dB |
 
 ## Interpretation
 
 - Training is stable and reaches the configured end without early stop.
-- `best.pt` and `last.pt` are effectively tied. The final checkpoint is only marginally different from the best-selected checkpoint.
+- `best.pt` and `last.pt` are effectively tied under the canonical evaluator. `last.pt` is only `+0.0315 dB` better than `best.pt` on `NORMAL`.
 - The final step does **not** show a meaningful late-stage gain over the best checkpoint. The curve is essentially plateaued by about `165k-175k`.
-- If a single checkpoint is needed for downstream comparison, keep `best.pt` as the selection checkpoint and treat `last.pt` as a tie.
+- If a single checkpoint is needed for downstream comparison, keep `best.pt` as the training-selected checkpoint and treat `last.pt` as a near-tie that is slightly better on canonical `NORMAL PSNR_clip3`.
 - Because the latest review round also flags B9/B10, claims about transport-side causal gain should remain conservative until those issues are rechecked.
 
 ## Artifacts
@@ -95,3 +100,4 @@ Using `PSNR = 10 * log10(9 / MSE)`:
 - Training log: [V18_rank32_train_gpu1_20260517_045325.log](/home/qujiaxiang/project/PET_LatentResidual/review/0517/V18_decoder_lora/logs/V18_rank32_train_gpu1_20260517_045325.log)
 - Run directory: `/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora`
 - Launch report: [V18_EXECUTION_REPORT_20260517.md](/home/qujiaxiang/project/PET_LatentResidual/review/0517/V18_decoder_lora/V18_EXECUTION_REPORT_20260517.md)
+- Canonical full-val eval: [V18_FULLVAL_EVAL_20260518.md](/home/qujiaxiang/project/PET_LatentResidual/review/0517/V18_decoder_lora/fullval_eval_20260518/V18_FULLVAL_EVAL_20260518.md)
