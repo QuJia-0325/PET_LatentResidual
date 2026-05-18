@@ -128,10 +128,64 @@ V18 加进来后的卖点（如果 ΔPSNR ≥ +0.30 dB）：
 
 ## §5 — 不可逾越的红线
 
+### 5.1 launch-time 原始红线 (Round 1 写)
+
 1. **V18 init 必须可被 sanity-check**。Day 1 完成检查必须包括 "V18 step 0 输出 = V7 best.pt 输出"（zero-init LoRA 保证）。如果不成立，绝对不要 launch。
 2. **预注册阈值不可事后改**。§2.3 的 4 个 outcome 写死，不允许在 Day 9 看到结果后调整。
-3. **不允许再发 peer review**。Round 1/2/3 共 3 千行 markdown 已经够，再发就是 [DIAGNOSTIC_FINDING_20260517.md §5](../DIAGNOSTIC_FINDING_20260517.md) 描述的 review-meta-review 永动机。
+3. ~~**不允许再发 peer review**~~ **[SUPERSEDED 2026-05-18 by §5.2 B45]**. 原意是防 Round 1-4 review-meta-review 永动机 ([DIAGNOSTIC_FINDING_20260517.md §5](../DIAGNOSTIC_FINDING_20260517.md)). Round 5-13 反例: substrate 阶段反复证明 reviewer 介入是必要 (Round 12 best vs last label / Round 13 B42 mechanism). 新规 (见 §5.2 B45): **战略转折点 + substrate 解读必须起 reviewer**, 战术细节 user+claude 直接.
 4. **Day 9 评估是 binary**。SUCCESS → 进 V18 variants；PARTIAL/NULL → 改 sweep；REGRESSION → 完全撤回。中间不允许"或许我们再训一个看看"。
+
+### 5.2 Round 5-13 standing rules (后续累积, 永久生效)
+
+下列 standing rules 编号 B43-B47 (作为新增条目在偏差序列中顺位插入); 来源偏差范围 B8-B42 见 Round 5-13 integration docs. **B43/B44 同时是源偏差编号和 rule 编号** — 读者必须区分 "作为发现偏差的 B43/B44" vs "作为 standing rule 的 B43/B44" (两者下文同定义):
+
+**B43 — V18 use_pred_latent=true 是 buggy KL config** (Round 5 已 flag, V18 launch 时未撤改):
+- V18 yaml `loss.decoder_kl_pullback.use_pred_latent: true` (V18_decoder_lora.yaml line 458)
+- 含义: KL pullback z_kl 走 `main_out["z_pred"]` 而非 `main_batch["z_dst"]` (train_first_hop.py:2230)
+- 这让 KL 与 image_aux 在同一 z_pred 路径上潜在梯度对抗 (Round 5 B9 担忧)
+- **任何 V18 实测数字必须 prefix "in V18 buggy KL config" qualifier**, 不当作 "intended V18 design" 的 outcome 解读
+- V18-clean / V19 等后续 LoRA 变体设计必须显式标 "use_pred_latent=false" 作为修复
+
+**B44 — V18 KL pullback 与 decode(z_GT) 无直接路径, 仅间接耦合** (Round 13 reviewer3 B42 grep 实证 + Round 14 本轮措辞修订):
+- `train_first_hop.py:2230 z_kl = main_out["z_pred"] if use_pred_latent else ...`
+- V18 yaml use_pred_latent=true → KL pullback **直接只在 decode(z_pred) 路径上算 loss, 从不将 z_GT 作为 input**
+- 但 KL gradient 仍更新共享 LoRA 参数 → eval 时 decode(z_GT) 用同一组 LoRA 权重 → **KL 间接影响 z_GT manifold decoding 仍可能** (通过共享参数耦合)
+- V18 在 GT manifold 上的现象 (e.g. Round 12 KL drift +0.10 dB) 的解读必须区分:
+  - (a) "KL 间接耦合贡献" (KL gradient 塑造的 LoRA 权重顺便帮了 z_GT 路径)
+  - (b) "capacity 副产品" (rank=32 本身的表达能力, 与 KL 无关)
+- 禁止简化为 "KL 设计正面效果" (必须跟 disambig 控制) 也禁止简化为 "机制上不可能" (共享参数间接耦合是真机制)
+- 必要 disambig 手段: V18-r32-capacity-only control (lambda_kl=0, 其他全同 V18) — 见 [CODEX_TASK_STAGE_C_A3_V18_CAPACITY_ONLY_20260518.md](../CODEX_TASK_STAGE_C_A3_V18_CAPACITY_ONLY_20260518.md). 主判决阈值使用 **V18-cap.last(170K) vs V18@step_170000.pt** (同步矩 bit-equivalent 训练阶段), 避免 V18.best(165K)/V18.last(200K) 中间阈值模糊
+
+**B45 — Substrate 阶段 reviewer 必须介入** (Round 12/13 元教训):
+- 数字解读阶段 (PSNR / Δ / 决策矩阵 lookup) 比文档起草阶段 cognitive load 高
+- claude 自纠在 Round 12 (best-vs-best vs last-vs-best 标签错) + Round 13 (B42 机制不可能当 default 解读) 均**第一次失败**, reviewer 才 catch
+- standing rule: substrate review 必须强制 reviewer 介入, 不依赖 claude self-discipline
+- 战略转折点 (e.g. project ceiling 信号 / 反预期发现) 必须起 reviewer; 战术细节 (e.g. yaml 字段拼写) 由 user + claude 直接
+
+**B46 — Comparison-label mismatch** (Round 12 B36):
+- 任何 V18-family ΔPSNR 报告必须同时列 (best-vs-best, last-vs-best) × (D20, D10, D4, NORMAL) 4×2 = 8 数字
+- 每个数字配独立 band 标签
+- 禁止单写一个 ΔPSNR 不标比较口径
+- 禁止把 X 口径的数字配 Y 口径的标签
+
+**B47 — Mechanical script must assert-on-fail** (Round 11 B33b):
+- user 验收 grep verify script 必须 exit 1 on any ✗, 不能仅 echo
+- bash 变量比较前必须 `-z` 空值守 (避免 vacuous pass)
+- 总在末尾报告 ERR 计数, ERR > 0 → exit 1
+
+#### Enforcement honesty: cultural vs mechanical (Round 14 reviewer 2+3 共识, B52 fix)
+
+B43-B47 全部依赖 claude / reviewer / user 主动 honor, **无 CI / template / pre-commit 机械级执行**. 为诚实披露, 分类如下:
+
+| rule | enforcement mode | 实际执行者 |
+|---|---|---|
+| B43 (V18 buggy KL prefix) | **CULTURAL** | claude/reviewer 起草 V18 文档时手动加 prefix; 无 lint script |
+| B44 (KL 机制隔离 decode(z_GT)) | **CULTURAL + capacity-only 控制实验 backed** | 描述机制事实; capacity-only outcome 会验证或考例 |
+| B45 (substrate reviewer 必介入) | **CULTURAL** | user 主动起 reviewer; 无 gate 检查 substrate 阶段是否跳过 |
+| B46 (4×2 ΔPSNR 标签) | **CULTURAL-with-protocol** | Round 12/13 已 enforced 一次 (reviewer 手动 verify); 无模板生成器 |
+| B47 (mechanical script assert) | **PROTOCOL** (最接近机械) | 明确协议 (exit 1 / -z 守 / ERR 计数); 但仍依赖 user/codex 执行 script |
+
+真 mechanical enforcement (CI hook / template generator / pre-commit lint) 是 future 增强, **不在本提交**. 读者不应错识这 5 条为硬门 (hard gate).
 
 ---
 
