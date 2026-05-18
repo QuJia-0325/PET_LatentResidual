@@ -1,0 +1,139 @@
+{
+  "meta": {
+    "config_v7": "review/0511/log_snapshots_20260516_163900/configs/V7_config.resolved.yaml",
+    "config_v18": "review/0517/V18_decoder_lora/V18_decoder_lora.yaml",
+    "split": "val",
+    "num_eval_slices": 7403,
+    "num_rows": 88836,
+    "batch_size": 8,
+    "device": "cuda:0",
+    "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
+    "definition": "PSNR_clip3(decode_crop(z_GT), x_target) with transport rollout skipped",
+    "runtime_sec": 271.6134147644043
+  },
+  "checkpoints": {
+    "V7.best": {
+      "name": "V7.best",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt",
+      "step": 160000,
+      "psnr_clip3": {
+        "D20": {
+          "n": 7403,
+          "mean": 46.63562884066894,
+          "std": 6.388329987924731,
+          "min": 34.37130968027364,
+          "max": 72.0680976902673
+        },
+        "D10": {
+          "n": 7403,
+          "mean": 48.74357689297035,
+          "std": 6.0239640379699875,
+          "min": 34.752004718460725,
+          "max": 72.06735321185754
+        },
+        "D4": {
+          "n": 7403,
+          "mean": 50.831937650139594,
+          "std": 5.790242049804266,
+          "min": 35.08126562422609,
+          "max": 72.06741546761755
+        },
+        "NORMAL": {
+          "n": 7403,
+          "mean": 52.634067282154575,
+          "std": 5.797232599802485,
+          "min": 35.230395399094164,
+          "max": 72.06778990406262
+        }
+      }
+    },
+    "V18.best": {
+      "name": "V18.best",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora/best.pt",
+      "step": 165000,
+      "psnr_clip3": {
+        "D20": {
+          "n": 7403,
+          "mean": 46.684975556192725,
+          "std": 6.522313189873814,
+          "min": 34.38196699988374,
+          "max": 73.24515300355425
+        },
+        "D10": {
+          "n": 7403,
+          "mean": 48.799289142448636,
+          "std": 6.141847237723695,
+          "min": 34.7638113205646,
+          "max": 73.24460291400584
+        },
+        "D4": {
+          "n": 7403,
+          "mean": 50.90116592101473,
+          "std": 5.895838916218106,
+          "min": 35.094865513867205,
+          "max": 73.24481367692533
+        },
+        "NORMAL": {
+          "n": 7403,
+          "mean": 52.731357105283344,
+          "std": 5.926265267095172,
+          "min": 35.244638430543304,
+          "max": 73.24519961960782
+        }
+      }
+    },
+    "V18.last": {
+      "name": "V18.last",
+      "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora/last.pt",
+      "step": 200000,
+      "psnr_clip3": {
+        "D20": {
+          "n": 7403,
+          "mean": 46.7481894388298,
+          "std": 6.689805962686,
+          "min": 34.485111291281854,
+          "max": 74.74071143205951
+        },
+        "D10": {
+          "n": 7403,
+          "mean": 48.86296173090185,
+          "std": 6.287873817793275,
+          "min": 34.87382522188855,
+          "max": 74.74100642735326
+        },
+        "D4": {
+          "n": 7403,
+          "mean": 50.96346787707148,
+          "std": 6.023863716328909,
+          "min": 35.21474356459042,
+          "max": 74.74136682275773
+        },
+        "NORMAL": {
+          "n": 7403,
+          "mean": 52.79798824199812,
+          "std": 6.088909620274912,
+          "min": 35.37182032543192,
+          "max": 74.74170150241447
+        }
+      }
+    }
+  },
+  "kl_drift_v7_minus_v18_best": {
+    "D20": -0.049346715523782336,
+    "D10": -0.05571224947828313,
+    "D4": -0.06922827087513639,
+    "NORMAL": -0.09728982312876866
+  },
+  "kl_drift_v7_minus_v18_last": {
+    "D20": -0.1125605981608544,
+    "D10": -0.11938483793149857,
+    "D4": -0.13153022693188632,
+    "NORMAL": -0.16392095984354427
+  },
+  "verdict": {
+    "v18_best_normal_abs_drift": 0.09728982312876866,
+    "v18_best_normal_verdict": "MODERATE",
+    "v18_last_normal_abs_drift": 0.16392095984354427,
+    "v18_last_normal_verdict": "MODERATE"
+  }
+}
