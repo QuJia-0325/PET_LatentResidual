@@ -44,9 +44,12 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="V18 decoder KL drift probe on GT latents.")
     p.add_argument("--config", required=True)
     p.add_argument("--v18-config", default="review/0517/V18_decoder_lora/V18_decoder_lora.yaml")
+    p.add_argument("--v18-cap-config", default=None, help="Defaults to --v18-config when omitted")
     p.add_argument("--v7-ckpt", required=True)
     p.add_argument("--v18-best-ckpt", required=True)
+    p.add_argument("--v18-step170k-ckpt", default=None)
     p.add_argument("--v18-last-ckpt", required=True)
+    p.add_argument("--v18-cap-ckpt", default=None)
     p.add_argument("--out-dir", required=True)
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--max-slices", type=int, default=0, help="0 = all val slices")
@@ -204,25 +207,13 @@ def evaluate_ckpt(
 
 def make_report(summary: Dict, out_dir: Path, elapsed: float) -> str:
     ckpts = summary["checkpoints"]
-    v7 = ckpts["V7.best"]["psnr_clip3"]
-    v18_best = ckpts["V18.best"]["psnr_clip3"]
-    v18_last = ckpts["V18.last"]["psnr_clip3"]
+    ckpt_order = summary.get("meta", {}).get("ckpt_order") or list(ckpts.keys())
 
     def mean(name: str, tp: str) -> float:
         return float(ckpts[name]["psnr_clip3"][tp]["mean"])
 
-    def drift(name: str, tp: str) -> float:
-        return mean("V7.best", tp) - mean(name, tp)
-
-    normal_best_drift = drift("V18.best", "NORMAL")
-    normal_last_drift = drift("V18.last", "NORMAL")
-    verdict_best = verdict_from_drift(abs(normal_best_drift))
-    verdict_last = verdict_from_drift(abs(normal_last_drift))
-    all_signed = [
-        drift("V18.best", tp) for tp in TARGET_TIMEPOINTS
-    ] + [
-        drift("V18.last", tp) for tp in TARGET_TIMEPOINTS
-    ]
+    def diff(lhs: str, rhs: str, tp: str) -> float:
+        return mean(lhs, tp) - mean(rhs, tp)
 
     lines = []
     lines.append("# V18 KL Drift Probe Report")
@@ -238,34 +229,73 @@ def make_report(summary: Dict, out_dir: Path, elapsed: float) -> str:
     lines.append("")
     lines.append("| ckpt | step | D20 | D10 | D4 | NORMAL |")
     lines.append("|---|---:|---:|---:|---:|---:|")
-    for name in ["V7.best", "V18.best", "V18.last"]:
+    for name in ckpt_order:
+        if name not in ckpts:
+            continue
         step = ckpts[name].get("step")
         step_s = "" if step is None else str(step)
         vals = [mean(name, tp) for tp in TARGET_TIMEPOINTS]
         lines.append(f"| {name} | {step_s} | {vals[0]:.4f} | {vals[1]:.4f} | {vals[2]:.4f} | {vals[3]:.4f} |")
     lines.append("")
-    lines.append("## KL Drift: V7.best - V18")
-    lines.append("")
-    lines.append("Positive values mean V18 decoder underperforms V7 decoder on GT latents.")
-    lines.append("")
-    lines.append("| comparison | D20 | D10 | D4 | NORMAL |")
-    lines.append("|---|---:|---:|---:|---:|")
-    for name in ["V18.best", "V18.last"]:
-        vals = [drift(name, tp) for tp in TARGET_TIMEPOINTS]
-        lines.append(f"| V7.best - {name} | {vals[0]:+.4f} | {vals[1]:+.4f} | {vals[2]:+.4f} | {vals[3]:+.4f} |")
-    lines.append("")
+
+    if "V7.best" in ckpts:
+        lines.append("## KL Drift: V7.best - Checkpoint")
+        lines.append("")
+        lines.append("Positive values mean the compared checkpoint underperforms V7 on GT latents.")
+        lines.append("")
+        lines.append("| comparison | D20 | D10 | D4 | NORMAL |")
+        lines.append("|---|---:|---:|---:|---:|")
+        for name in ckpt_order:
+            if name == "V7.best" or name not in ckpts:
+                continue
+            vals = [diff("V7.best", name, tp) for tp in TARGET_TIMEPOINTS]
+            lines.append(f"| V7.best - {name} | {vals[0]:+.4f} | {vals[1]:+.4f} | {vals[2]:+.4f} | {vals[3]:+.4f} |")
+        lines.append("")
+
+    if "V18.step170k" in ckpts and "V18-cap.last" in ckpts:
+        vals = [diff("V18-cap.last", "V18.step170k", tp) for tp in TARGET_TIMEPOINTS]
+        normal_delta = vals[-1]
+        if abs(normal_delta) < 0.02:
+            a3_verdict = "capacity-only ~= V18.step170k on NORMAL; LoRA capacity is sufficient for the GT-manifold gain."
+        elif normal_delta < -0.05:
+            a3_verdict = "capacity-only is clearly lower than V18.step170k on NORMAL; KL-dependent optimization effects remain plausible."
+        elif normal_delta > 0.05:
+            a3_verdict = "capacity-only is clearly higher than V18.step170k on NORMAL; KL may be unnecessary or mildly harmful for GT-manifold decode."
+        else:
+            a3_verdict = "capacity-only differs from V18.step170k by an intermediate amount; interpret as mixed or marginal."
+        lines.append("## A3 Capacity-Only Matched-Step Delta")
+        lines.append("")
+        lines.append("Primary delta is `V18-cap.last(170K) - V18.step170k` on direct `decode(z_GT)` PSNR_clip3.")
+        lines.append("")
+        lines.append("| comparison | D20 | D10 | D4 | NORMAL |")
+        lines.append("|---|---:|---:|---:|---:|")
+        lines.append(f"| V18-cap.last - V18.step170k | {vals[0]:+.4f} | {vals[1]:+.4f} | {vals[2]:+.4f} | {vals[3]:+.4f} |")
+        lines.append("")
+        lines.append(f"- A3 primary verdict: {a3_verdict}")
+        lines.append("")
+
     lines.append("## Verdict")
     lines.append("")
-    lines.append(f"- V18.best NORMAL KL drift: `{normal_best_drift:+.4f} dB` -> `{verdict_best}` by abs drift")
-    lines.append(f"- V18.last NORMAL KL drift: `{normal_last_drift:+.4f} dB` -> `{verdict_last}` by abs drift")
+    if "V18.best" in ckpts:
+        normal_best_drift = diff("V7.best", "V18.best", "NORMAL")
+        verdict_best = verdict_from_drift(abs(normal_best_drift))
+        lines.append(f"- V18.best NORMAL KL drift: `{normal_best_drift:+.4f} dB` -> `{verdict_best}` by abs drift")
+    if "V18.last" in ckpts:
+        normal_last_drift = diff("V7.best", "V18.last", "NORMAL")
+        verdict_last = verdict_from_drift(abs(normal_last_drift))
+        lines.append(f"- V18.last NORMAL KL drift: `{normal_last_drift:+.4f} dB` -> `{verdict_last}` by abs drift")
     lines.append("")
-    if all(v < 0.0 for v in all_signed):
+    signed_v18 = []
+    for name in ("V18.best", "V18.last"):
+        if name in ckpts and "V7.best" in ckpts:
+            signed_v18.extend(diff("V7.best", name, tp) for tp in TARGET_TIMEPOINTS)
+    if signed_v18 and all(v < 0.0 for v in signed_v18):
         interp = (
             "All signed drifts are negative: `decode_V18(z_GT)` scores higher PSNR than `decode_V7(z_GT)` "
             "on every reported timepoint. The magnitude is non-negligible, but the direction is an "
             "improvement relative to V7 on the GT latent manifold, not a harmful degradation."
         )
-    elif verdict_best == "NEGLIGIBLE" and verdict_last == "NEGLIGIBLE":
+    elif signed_v18 and all(verdict_from_drift(abs(v)) == "NEGLIGIBLE" for v in signed_v18):
         interp = (
             "KL drift is negligible. V18 decoder remains close to the V7 decoder on the GT latent manifold; "
             "the weak V18 transport result is therefore unlikely to be caused by decoder drift."
@@ -298,10 +328,13 @@ def main() -> None:
 
     cfg_v7 = load_yaml(args.config)
     cfg_v18 = load_yaml(args.v18_config)
+    cfg_v18_cap = load_yaml(args.v18_cap_config) if args.v18_cap_config else cfg_v18
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(f"[kl_drift] device={device}", flush=True)
     print(f"[kl_drift] config_v7={args.config}", flush=True)
     print(f"[kl_drift] config_v18={args.v18_config}", flush=True)
+    if args.v18_cap_ckpt:
+        print(f"[kl_drift] config_v18_cap={args.v18_cap_config or args.v18_config}", flush=True)
 
     ds = maybe_subset_dataset(build_dataset(cfg_v7, args.split), args.max_slices)
     image_size = int(cfg_v7["data"].get("image_size", 224))
@@ -318,8 +351,12 @@ def main() -> None:
     ckpt_specs = [
         ("V7.best", cfg_v7, args.v7_ckpt),
         ("V18.best", cfg_v18, args.v18_best_ckpt),
-        ("V18.last", cfg_v18, args.v18_last_ckpt),
     ]
+    if args.v18_step170k_ckpt:
+        ckpt_specs.append(("V18.step170k", cfg_v18, args.v18_step170k_ckpt))
+    ckpt_specs.append(("V18.last", cfg_v18, args.v18_last_ckpt))
+    if args.v18_cap_ckpt:
+        ckpt_specs.append(("V18-cap.last", cfg_v18_cap, args.v18_cap_ckpt))
 
     t0 = time.time()
     summaries: Dict[str, Dict] = {}
@@ -339,7 +376,11 @@ def main() -> None:
 
     csv_path = out_dir / "KL_DRIFT_PER_SLICE.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["ckpt", "step", "slice_idx", "timepoint", "psnr_clip3"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["ckpt", "step", "slice_idx", "timepoint", "psnr_clip3"],
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(all_rows)
 
@@ -352,25 +393,41 @@ def main() -> None:
     meta = {
         "config_v7": args.config,
         "config_v18": args.v18_config,
+        "config_v18_cap": args.v18_cap_config or args.v18_config,
         "split": args.split,
         "num_eval_slices": len(ds),
         "num_rows": len(all_rows),
         "batch_size": args.batch_size,
         "device": str(device),
+        "ckpt_order": [name for name, _, _ in ckpt_specs],
         "psnr_metric": "src.utils.metrics.calc_psnr_clip3",
         "definition": "PSNR_clip3(decode_crop(z_GT), x_target) with transport rollout skipped",
         "runtime_sec": elapsed,
     }
+    drift_v7_minus = {
+        name: drift_payload("V7.best", name)
+        for name in summaries
+        if name != "V7.best"
+    }
+    a3_delta = None
+    if "V18.step170k" in summaries and "V18-cap.last" in summaries:
+        a3_delta = {
+            tp: float(summaries["V18-cap.last"]["psnr_clip3"][tp]["mean"] - summaries["V18.step170k"]["psnr_clip3"][tp]["mean"])
+            for tp in TARGET_TIMEPOINTS
+        }
     payload = {
         "meta": meta,
         "checkpoints": summaries,
+        "kl_drift_v7_minus": drift_v7_minus,
         "kl_drift_v7_minus_v18_best": drift_payload("V7.best", "V18.best"),
         "kl_drift_v7_minus_v18_last": drift_payload("V7.best", "V18.last"),
+        "a3_capacity_delta_cap_minus_v18_step170k": a3_delta,
         "verdict": {
             "v18_best_normal_abs_drift": abs(drift_payload("V7.best", "V18.best")["NORMAL"]),
             "v18_best_normal_verdict": verdict_from_drift(abs(drift_payload("V7.best", "V18.best")["NORMAL"])),
             "v18_last_normal_abs_drift": abs(drift_payload("V7.best", "V18.last")["NORMAL"]),
             "v18_last_normal_verdict": verdict_from_drift(abs(drift_payload("V7.best", "V18.last")["NORMAL"])),
+            "a3_capacity_normal_delta_cap_minus_v18_step170k": None if a3_delta is None else a3_delta["NORMAL"],
         },
     }
 

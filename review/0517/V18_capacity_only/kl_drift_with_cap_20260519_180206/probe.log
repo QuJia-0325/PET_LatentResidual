@@ -1,0 +1,61 @@
+[kl_drift] device=cuda:0
+[kl_drift] config_v7=review/0511/log_snapshots_20260516_163900/configs/V7_config.resolved.yaml
+[kl_drift] config_v18=review/0517/V18_decoder_lora/V18_decoder_lora.yaml
+[kl_drift] config_v18_cap=review/0517/V18_capacity_only/V18_capacity_only.yaml
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] still loading latents(val) (20.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] still loading latents(val) (40.0s): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] loaded latents(val) in 49.8s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 16.4s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 17.1s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 17.7s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 17.4s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.0s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[kl_drift] dataset split=val n=7403 batch_size=8
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[kl_drift] load /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt: missing=0 unexpected=0 step=160000
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] wrapped 12 Linear modules across last 2 decoder layers of rae.decoder.decoder_layers; trainable LoRA params (A+B per Linear) = 589,824; first 3 wrapped: ['decoder_layers[6].attention.attention.query', 'decoder_layers[6].attention.attention.key', 'decoder_layers[6].attention.attention.value']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] built frozen RAE reference for KL pull-back
+[kl_drift] load /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora/best.pt: missing=0 unexpected=0 step=165000
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] wrapped 12 Linear modules across last 2 decoder layers of rae.decoder.decoder_layers; trainable LoRA params (A+B per Linear) = 589,824; first 3 wrapped: ['decoder_layers[6].attention.attention.query', 'decoder_layers[6].attention.attention.key', 'decoder_layers[6].attention.attention.value']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] built frozen RAE reference for KL pull-back
+[kl_drift] load /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora/step_170000.pt: missing=0 unexpected=0 step=170000
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] wrapped 12 Linear modules across last 2 decoder layers of rae.decoder.decoder_layers; trainable LoRA params (A+B per Linear) = 589,824; first 3 wrapped: ['decoder_layers[6].attention.attention.query', 'decoder_layers[6].attention.attention.key', 'decoder_layers[6].attention.attention.value']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] built frozen RAE reference for KL pull-back
+[kl_drift] load /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_decoder_lora/run/first_hop_224_v18_decoder_lora/last.pt: missing=0 unexpected=0 step=200000
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] wrapped 12 Linear modules across last 2 decoder layers of rae.decoder.decoder_layers; trainable LoRA params (A+B per Linear) = 589,824; first 3 wrapped: ['decoder_layers[6].attention.attention.query', 'decoder_layers[6].attention.attention.key', 'decoder_layers[6].attention.attention.value']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[decoder_lora] built frozen RAE reference for KL pull-back
+[kl_drift] load /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0517_runs/V18_capacity_only/run/first_hop_224_v18_capacity_only/last.pt: missing=0 unexpected=0 step=170000
+[kl_drift] wrote review/0517/V18_capacity_only/kl_drift_with_cap_20260519_180206/KL_DRIFT_PER_SLICE.csv
+[kl_drift] wrote review/0517/V18_capacity_only/kl_drift_with_cap_20260519_180206/KL_DRIFT_SUMMARY.json
+[kl_drift] wrote review/0517/V18_capacity_only/kl_drift_with_cap_20260519_180206/KL_DRIFT_REPORT.md
+{
+  "v18_best_normal_abs_drift": 0.09728982312876866,
+  "v18_best_normal_verdict": "MODERATE",
+  "v18_last_normal_abs_drift": 0.16392095984354427,
+  "v18_last_normal_verdict": "MODERATE",
+  "a3_capacity_normal_delta_cap_minus_v18_step170k": 0.002005510376484665
+}
