@@ -5,14 +5,14 @@
 - status: **READY FOR CODEX EXECUTION**
 - 上游: Round 17 集成 ([REVIEW_INTEGRATION_round17_20260522.md](./REVIEW_INTEGRATION_round17_20260522.md)) 4/4 共识 = Hybrid B + F0 + A4-light
 - 触发: V13/V14 已完成, image_aux 已确认为 +0.287 dB 主线收益, V18 信号显著性需 paired-t 验证, image_aux schedule 调优是唯一仍有 EV 的新 GPU 实验
-- 硬约束: ≤ 3 并行训练任务; F0 是分析任务(0 GPU); A4 是 1 个新训练任务 (slot 1); paper draft 同时进行 (与 codex 无关)
+- 硬约束: ≤ 3 并行训练任务; F0 不跑训练, 但若 V13/V14 per-slice CSV 缺失需先用 1 个空闲 GPU 生成 canonical eval CSV; A4 是 1 个新训练任务 (slot 1); paper draft 同时进行 (与 codex 无关)
 
 ---
 
 ## §0 — 给 codex 的 5 句话总览
 
-1. **本 task 含 2 个独立子任务**: F0 (paired-t 分析, **0 GPU**, 必做) + A4 (image_aux schedule probe, 1 训练任务, **GPU 空闲时做**).
-2. F0 用已有 per-slice 数据做 paired-t, 输出 V18 vs V7 / V18-cap vs V7 / V13 vs V7 / V14 vs V7 的 t 统计量和 p 值. **完全不跑训练**.
+1. **本 task 含 2 个独立子任务**: F0 (slice-level 统计分析; 必要时先用 1 个空闲 GPU 生成 V13/V14 per-slice eval, 不训练, 必做) + A4 (image_aux schedule probe, 1 训练任务, **GPU 空闲时做**).
+2. F0 使用/生成 canonical chain per-slice CSV, 输出 V18.best/last vs V7 / V13 vs V7 / V14 vs V7 的 mean Δ、win-rate、bootstrap CI 和 paired-t. V18-cap 只做 F0b direct-decode substrate, 不和 chain rollout 混算. **不跑训练**.
 3. A4 = 在 V7 yaml 基础上**仅改 1 个变量** (image_aux `lambda_max: 0.04 → 0.08`), 其它一切保持 V7 完全一致, from-scratch 训到 step 160000, ~7 天.
 4. **绝对不**改 train_first_hop.py / V7 yaml / V18 已有 ckpt / V13 V14 已有 ckpt. **绝对不**复活 V18-clean / V19 / decoder rank sweep.
 5. 完成后用 canonical full-val eval 脚本评 A4 best.pt + last.pt, 与 V7 / V13 / V14 一起放进同一张 PSNR 表.
@@ -44,7 +44,7 @@ Round 17 prompt §2 给的 "V18 +0.06 dB SNR=75-150× noise" 是**方法论错�
 
 这种方法已有先例: `review/0516/PLANF_FINAL_ANALYSIS_20260516.md` 在 V7 vs V8 上算过 paired t = 74.6 over 7403 slices. F0 = 复用同型方法套 V18 vs V7.
 
-F0 是**0 GPU**, 完全在 CPU 上用已有的 per-slice CSV / JSON, 预计 < 30 分钟. F0 是 V18 进入 paper 作 ablation 的**前置 gate**.
+F0 分两步: 若 V13/V14 per-slice CSV 缺失, 先用 canonical eval 脚本在 1 个空闲 GPU 上生成 CSV; 之后统计分析在 CPU 上完成. 全程不训练. F0 是 V18 进入 paper 作 ablation 的**前置 gate**.
 
 ### 1.3 A4 为什么是唯一仍有 EV 的新训练实验
 
@@ -69,7 +69,7 @@ H2 / H3 都 paper-useful. H1 也 paper-useful (饱和证据). 所以 A4 是 win-
 
 ---
 
-## §2 — F0: Paired-t Significance Analysis (必做, 0 GPU)
+## §2 — F0: Slice-Level Paired Statistics (必做, 不训练)
 
 ### F0.0 输入资源 (Round 17-Prep 修订: B75-B79 fix)
 
@@ -96,7 +96,7 @@ slice_idx, mse_D10, mse_D20, mse_D4, mse_D50, mse_NORMAL, mse_raw_D10, ..., psnr
 
 ```bash
 cd /home/qujiaxiang/project/PET_LatentResidual
-git pull --ff-only gitee foc_lite_hop0
+git pull --ff-only origin foc_lite_hop0
 
 # verify CLI flag (B30 standing rule)
 SUPPORTED=$(grep "add_argument" train_first_hop.py | grep -oE "['\"]--[a-z_-]+['\"]" | sort -u | tr -d "'\"" | tr '\n' ' ' | sed 's/ $//')
@@ -109,7 +109,11 @@ grep -q -- '--out-dir' review/0505/operator/scripts/eval_first_hop_fullval_psnr_
 V13_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0516_runs/V13_true_image_aux_ablation/run/first_hop_224_v13_true_image_aux_off
 V14_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0516_runs/V14_true_d_pure/run/first_hop_224_v14_v7_seed1337
 
-mkdir -p review/0521/v13_v14_per_slice
+# eval script enforces --out-dir under /data_2 via pet_lr.path_guard.
+# Write raw eval outputs to /data_2, then copy JSON/CSV/log snapshots into repo.
+F0_EVAL_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_f0_v13_v14_per_slice
+REPO_F0_DIR=review/0521/v13_v14_per_slice
+mkdir -p "$F0_EVAL_OUT" "$REPO_F0_DIR/artifacts" "$REPO_F0_DIR/logs"
 
 # pick a free GPU (Round 17-Prep B80 fix)
 FREE_GPU=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | nl -v0 | sort -k2 -rn | head -1 | awk '{print $1}')
@@ -126,12 +130,18 @@ for name in v13 v14; do
     --max-slices 0 \
     --batch-size 8 \
     --decode-mode both \
-    --out-dir review/0521/v13_v14_per_slice \
-    2>&1 | tee review/0521/v13_v14_per_slice/${name}_eval_$(date +%Y%m%d_%H%M%S).log
+    --out-dir "$F0_EVAL_OUT" \
+    2>&1 | tee "$REPO_F0_DIR/logs/${name}_eval_$(date +%Y%m%d_%H%M%S).log"
   # canonical sanity: V13 NORMAL ≈ 36.4943, V14 NORMAL ≈ 36.7806 (must match Round 17 §1.2)
 done
 
-# Verify per-slice CSVs produced under artifacts/
+# Copy JSON/CSV artifacts back into repo for reproducibility and review.
+cp "$F0_EVAL_OUT"/v13_best_fullval_psnr_chain_mse.json "$REPO_F0_DIR/artifacts/"
+cp "$F0_EVAL_OUT"/v13_best_fullval_psnr_chain_mse_per_slice.csv "$REPO_F0_DIR/artifacts/"
+cp "$F0_EVAL_OUT"/v14_best_fullval_psnr_chain_mse.json "$REPO_F0_DIR/artifacts/"
+cp "$F0_EVAL_OUT"/v14_best_fullval_psnr_chain_mse_per_slice.csv "$REPO_F0_DIR/artifacts/"
+
+# Verify per-slice CSVs copied under repo artifacts/
 ls -la review/0521/v13_v14_per_slice/artifacts/v13_best_fullval_psnr_chain_mse_per_slice.csv
 ls -la review/0521/v13_v14_per_slice/artifacts/v14_best_fullval_psnr_chain_mse_per_slice.csv
 
@@ -156,7 +166,7 @@ PY
 
 ```python
 #!/usr/bin/env python3
-"""Round 17 F0 — paired-t analysis on per-slice canonical PSNR_clip3.
+"""Round 17 F0 — slice-level paired statistics on canonical PSNR_clip3.
 
 Compares each ckpt vs V7.best on per-slice basis, computes:
   - mean Δ (dB)
@@ -164,6 +174,8 @@ Compares each ckpt vs V7.best on per-slice basis, computes:
   - paired t = mean Δ / paired SEM
   - two-sided p (scipy.stats.ttest_rel)
   - effect size (Cohen's d = mean Δ / std(Δ))
+  - slice win-rate
+  - slice-bootstrap 95% CI for mean Δ
 
 Output: review/0521/F0_paired_t_report.md + review/0521/F0_paired_t_summary.json
 """
@@ -190,6 +202,22 @@ DATA = {
 
 TIMEPOINTS = ['D20', 'D10', 'D4', 'NORMAL']
 PSNR_COL = lambda tp: f'psnr_{tp}'   # canonical clip3 column, NOT psnr_raw_*
+BOOTSTRAP_N = 5000
+BOOTSTRAP_SEED = 20260522
+
+def bootstrap_ci(delta: np.ndarray, *, seed: int, n_boot: int = BOOTSTRAP_N) -> tuple[float, float]:
+    """Slice-level nonparametric bootstrap CI for mean Δ.
+    This is not patient-level resampling because patient/volume IDs are not
+    available in the current artifacts.
+    """
+    rng = np.random.default_rng(seed)
+    n = int(delta.shape[0])
+    means = np.empty(n_boot, dtype=np.float64)
+    for i in range(n_boot):
+        sample = rng.choice(delta, size=n, replace=True)
+        means[i] = float(sample.mean())
+    lo, hi = np.percentile(means, [2.5, 97.5])
+    return float(lo), float(hi)
 
 def load_per_slice(path: str, timepoint: str) -> np.ndarray:
     """Load per-slice canonical PSNR_clip3 column for given timepoint.
@@ -222,8 +250,6 @@ def main():
         for name, path in DATA.items():
             if name == 'V7.best':
                 continue
-            if 'V18-cap' in name and tp != 'NORMAL':
-                continue  # cap CSV 仅 direct decode; 不与 chain PSNR 同 substrate
             arr = load_per_slice(path, tp)
             assert len(arr) == n_ref, f"{name}@{tp}: n={len(arr)} != {n_ref}"
             delta = arr - ref_tp
@@ -232,14 +258,20 @@ def main():
             sem  = std / np.sqrt(n_ref)
             t, p = ttest_rel(arr, ref_tp)
             d    = mean / std if std > 0 else float('inf')
+            win_rate = float((delta > 0).mean())
+            seed = BOOTSTRAP_SEED + sum(ord(c) for c in f'{tp}:{name}')
+            ci_lo, ci_hi = bootstrap_ci(delta, seed=seed)
             out[tp][name] = {
                 'n':        n_ref,
                 'mean_dB':  mean,
                 'std_dB':   std,
                 'sem_dB':   sem,
+                'bootstrap_ci95_low_dB': ci_lo,
+                'bootstrap_ci95_high_dB': ci_hi,
                 't':        float(t),
                 'p_value':  float(p),
                 'cohen_d':  d,
+                'win_rate': win_rate,
                 'sig_5pct': bool(p < 0.05),
                 'sig_1pct': bool(p < 0.01),
             }
@@ -253,14 +285,24 @@ def main():
     print(f"Saved {out_md}")
 
 def write_markdown(out: dict, path: Path):
-    lines = ['# F0 Paired-t Significance Report', '', '- date: 2026-05-22', '- ref: V7.best', '- n=7403 slices', '']
+    lines = [
+        '# F0 Slice-Level Paired Statistics Report',
+        '',
+        '- date: 2026-05-22',
+        '- ref: V7.best',
+        '- n=7403 validation slices',
+        '- metric: canonical PSNR_clip3 (`psnr_<timepoint>` columns)',
+        '- caveat: patient/volume IDs are unavailable, so t/p/bootstrap are slice-level statistics, not patient-level independent inference.',
+        '',
+    ]
     for tp, comps in out.items():
         lines.append(f'## {tp}')
         lines.append('')
-        lines.append('| ckpt | mean Δ (dB) | SEM (dB) | t | p | Cohen d | sig 5% | sig 1% |')
-        lines.append('|---|---:|---:|---:|---:|---:|:---:|:---:|')
+        lines.append('| ckpt | mean Δ (dB) | bootstrap 95% CI (dB) | SEM (dB) | t | p | Cohen d | win-rate | sig 5% | sig 1% |')
+        lines.append('|---|---:|---:|---:|---:|---:|---:|---:|:---:|:---:|')
         for name, r in comps.items():
-            lines.append(f"| {name} | {r['mean_dB']:+.4f} | {r['sem_dB']:.5f} | {r['t']:+.2f} | {r['p_value']:.3e} | {r['cohen_d']:+.4f} | {'✓' if r['sig_5pct'] else '✗'} | {'✓' if r['sig_1pct'] else '✗'} |")
+            ci = f"[{r['bootstrap_ci95_low_dB']:+.4f}, {r['bootstrap_ci95_high_dB']:+.4f}]"
+            lines.append(f"| {name} | {r['mean_dB']:+.4f} | {ci} | {r['sem_dB']:.5f} | {r['t']:+.2f} | {r['p_value']:.3e} | {r['cohen_d']:+.4f} | {100.0*r['win_rate']:.1f}% | {'✓' if r['sig_5pct'] else '✗'} | {'✓' if r['sig_1pct'] else '✗'} |")
         lines.append('')
     path.write_text('\n'.join(lines))
 
@@ -272,17 +314,18 @@ if __name__ == '__main__':
 
 - `review/0521/F0_paired_t_report.md` 存在并含 4 timepoint × ≥4 ckpt 对比表
 - `review/0521/F0_paired_t_summary.json` 存在
-- 每个 paired-t 行含 mean Δ, paired SEM, t, p, Cohen d, 显著性 flag
+- 每个 slice-level paired 行含 mean Δ, bootstrap CI, paired SEM, t, p, Cohen d, win-rate, 显著性 flag
+- 报告必须明确声明: patient/volume IDs 不可用, 因此这是 slice-level evidence, 不是 patient-level independent inference
 - 任何 `assert n == 7403` 失败 → 立即停止, 不写 report
 
 ### F0.4 F0 输出解读 (留给 user 整合)
 
-F0 完成后, user 会看 4 个数字决定 V18 paper 命运:
+F0 完成后, user 会看 mean Δ / win-rate / bootstrap CI / slice-level p-value 决定 V18 paper 命运:
 
-- 若 V18.best vs V7 p < 0.01 → V18 信号显著, 可入 paper ablation 表
-- 若 V18.best vs V7 p > 0.05 → V18 信号不显著, paper 只写 V18 capacity 解耦, 不写 "+0.03 dB"
-- V14 vs V7 (期望 p > 0.5, mean ≈ 0) 是 sanity check, 验证 paired-t 协议本身
-- V13 vs V7 (期望 p < 1e-50, mean ≈ -0.29) 是 sanity check, 验证 image_aux 主效应
+- 若 V18.best vs V7 mean Δ > 0, bootstrap CI 不跨 0, win-rate > 50%, 且 slice-level p < 0.01 → V18 可入 paper ablation 表, 但 wording 限定为 slice-level evidence
+- 若 V18.best vs V7 bootstrap CI 跨 0 或 win-rate ≈ 50% → V18 不写 "+0.03 dB" 正向 claim, 只写 capacity/transport decoupling
+- V14 vs V7 (期望 mean ≈ 0, win-rate ≈ 50%) 是 sanity check, 验证 paired protocol 本身
+- V13 vs V7 (期望 mean ≈ -0.29, win-rate < 50%) 是 sanity check, 验证 image_aux 主效应
 
 ---
 
@@ -292,7 +335,7 @@ F0 完成后, user 会看 4 个数字决定 V18 paper 命运:
 
 ```bash
 cd /home/qujiaxiang/project/PET_LatentResidual
-git pull --ff-only gitee foc_lite_hop0
+git pull --ff-only origin foc_lite_hop0
 
 # GPU 状态 — 必须 ≥ 1 个全 free GPU
 nvidia-smi --query-gpu=index,memory.used,memory.free --format=csv
@@ -424,21 +467,26 @@ grep -E "lambda_img=0\.0800" "$LAUNCH_LOG" | head -1 || echo "WARN: lambda_img=0
 ### A4.4 训练完成后的 canonical full-val eval
 
 ```bash
-A4_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08/run/first_hop_224_a4_image_aux_lambda_08
+A4_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08/first_hop_224_a4_image_aux_lambda_08
+A4_EVAL_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08/fullval_eval
+REPO_A4_EVAL=review/0521/A4_image_aux_lambda_08/fullval_eval
 
-mkdir -p review/0521/A4_image_aux_lambda_08/fullval_eval
+mkdir -p "$A4_EVAL_OUT" "$REPO_A4_EVAL/artifacts" "$REPO_A4_EVAL/logs"
 
 for tag in best last; do
     python review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
         --config $A4_OUT/config.yaml \
         --checkpoint $A4_OUT/${tag}.pt \
-        --out-dir review/0521/A4_image_aux_lambda_08/fullval_eval \
+        --out-dir "$A4_EVAL_OUT" \
         --tag a4_image_aux_lambda_08_${tag} \
         --split val \
         --max-slices 0 \
         --batch-size 8 \
         --decode-mode both \
-        2>&1 | tee review/0521/A4_image_aux_lambda_08/fullval_eval/a4_${tag}_eval_$(date +%Y%m%d_%H%M%S).log
+        2>&1 | tee "$REPO_A4_EVAL/logs/a4_${tag}_eval_$(date +%Y%m%d_%H%M%S).log"
+
+    cp "$A4_EVAL_OUT"/a4_image_aux_lambda_08_${tag}_fullval_psnr_chain_mse.json "$REPO_A4_EVAL/artifacts/"
+    cp "$A4_EVAL_OUT"/a4_image_aux_lambda_08_${tag}_fullval_psnr_chain_mse_per_slice.csv "$REPO_A4_EVAL/artifacts/"
 done
 ```
 
@@ -453,7 +501,7 @@ done
 |---|---:|---:|---:|---:|---:|---:|
 | A4.best | ? | ? | ? | ? | ? | +/- ? dB |
 | A4.last | 160000 | ? | ? | ? | ? | +/- ? dB |
-| V7.best | 160000 | 35.4253 | 35.8105 | 36.3680 | **36.7810** | (ref) |
+| V7.best | 160000 | 35.4354 | 35.8194 | 36.3736 | **36.7810** | (ref) |
 
 ## Verdict
 
@@ -472,17 +520,18 @@ done
 - yaml: `review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml`
 - launch log: `review/0521/A4_image_aux_lambda_08/A4_train_<TS>.log`
 - metrics 快照: `review/0521/A4_image_aux_lambda_08/A4_metrics_<TS>.jsonl`
-- full-val JSON: `review/0521/A4_image_aux_lambda_08/fullval_eval/a4_*_fullval_psnr_chain_mse.json`
+- full-val JSON: `review/0521/A4_image_aux_lambda_08/fullval_eval/artifacts/a4_*_fullval_psnr_chain_mse.json`
+- full-val logs: `review/0521/A4_image_aux_lambda_08/fullval_eval/logs/a4_*_eval_*.log`
 - F0 报告: `review/0521/F0_paired_t_report.md` + `review/0521/F0_paired_t_summary.json`
 - F0 脚本: `tools/paired_t_v18_vs_v7.py`
 
 ### 4.2 Commit 顺序 (atomic)
 
 ```bash
-# Commit 1: F0 脚本 + V7 per-slice 数据 (若需要)
+# Commit 1: F0 脚本 + V13/V14 per-slice 数据 (若需要)
 git add tools/paired_t_v18_vs_v7.py
-git add review/0521/v7_per_slice/ 2>/dev/null  # 若 codex 跑了 V7 per-slice eval
-git commit -m "Round 17 F0: paired-t script + V7 per-slice canonical eval"
+git add review/0521/v13_v14_per_slice/ 2>/dev/null  # 若 codex 跑了 V13/V14 per-slice eval
+git commit -m "Round 17 F0: paired-t script + V13/V14 per-slice canonical eval"
 
 # Commit 2: F0 报告
 git add review/0521/F0_paired_t_report.md review/0521/F0_paired_t_summary.json
@@ -504,7 +553,7 @@ git add review/0521/A4_image_aux_lambda_08/A4_REPORT.md
 git commit -m "Round 17 A4: canonical full-val eval + verdict report"
 
 # 全部 commit 后 push
-git push gitee foc_lite_hop0
+git push origin foc_lite_hop0
 ```
 
 ### 4.3 中间状态汇报 (建议 codex 在 push 后给 user 一条简短摘要)
@@ -622,8 +671,8 @@ echo "SELF-CHECK PASSED"
 ## §8 — 完成后的预期 push 状态
 
 ```
-gitee/foc_lite_hop0 latest commits (in order):
-  <hash> Round 17 F0: paired-t script + V7 per-slice canonical eval
+origin/foc_lite_hop0 (gitee) latest commits (in order):
+  <hash> Round 17 F0: paired-t script + V13/V14 per-slice canonical eval
   <hash> Round 17 F0: paired-t significance report (V13/V14/V18 vs V7)
   <hash> Round 17 A4: image_aux lambda 0.04 → 0.08 schedule probe yaml
   <hash> Round 17 A4: training log + metrics snapshot (step=160000 done)  [若 A4 完成]
