@@ -56,7 +56,7 @@ V13/V14 已经把 image_aux 锁定为项目最大单变量收益 (+0.287 dB). �
 
 H2 / H3 都 paper-useful. H1 也 paper-useful (饱和证据). 所以 A4 是 win-win-win.
 
-**A4 stop rule (Round 17 共识)**: 如果 A4 best.pt NORMAL < V7 + 0.05 dB, **不再 relaunch v2 / v3**. 出 1 个数据点入 paper, 项目进入写作期.
+**A4 stop rule (Round 17 + Round 17-Slots 修订 2026-05-22, 3/4 共识)**: A4-bracket = pre-registered 集合 `{λ=0.02, λ=0.08}`, **恭恒 2 点**. 两点跑完后不论 outcome, **不再追加**任何 image_aux 变体 (不追 0.06 / 0.10 / 0.12 / v3 / v4). 未来 stop-rule 重访必须基于内容证据 (新 substrate / 新分析洞见), 不接受仅凭资源 (slot 空) 作为设立理由.
 
 ### 1.4 不做什么 (Round 17 拒绝清单)
 
@@ -65,7 +65,7 @@ H2 / H3 都 paper-useful. H1 也 paper-useful (饱和证据). 所以 A4 是 win-
 - ❌ V14b / V14c (多 seed) — F0 更便宜地回答显著性
 - ❌ Architecture pivot (DiT → flow matching) — 出 Round 17 范围
 - ❌ Data pivot — 出 Round 17 范围
-- ❌ A4-v2 (在 A4 出来前提前设计第二个 schedule) — 防止 scope creep (B74)
+- ❌ A4 变体 λ 在 {0.02, 0.08} 集外 (e.g. 0.06 / 0.10 / 0.12 / v3 / v4) — Round 17-Slots 修订 stop rule, bracket 闭合即停 (防 scope creep B74 + B86)
 
 ---
 
@@ -331,7 +331,17 @@ F0 完成后, user 会看 mean Δ / win-rate / bootstrap CI / slice-level p-valu
 
 ---
 
-## §3 — A4: Image_aux Schedule Probe (GPU 空闲时做)
+## §3 — A4-bracket: Image_aux Schedule 2-Point Probe (GPU 空闲时做)
+
+**Round 17-Slots 修订 (2026-05-22, 3/4 共识, 详 [REVIEW_INTEGRATION_round17_slots_20260522.md](./REVIEW_INTEGRATION_round17_slots_20260522.md))**:
+
+A4 从 "1 点探针" (原 Round 17 A4-light) 扩为 "2 点 pre-registered bracket" = `{λ=0.02, λ=0.08}`. Slot 3 保留 buffer, **不**补 V14b / V13b / A4-high (λ=0.12).
+
+两个训练任务:
+- **A4-mid** (λ=0.08): 原 A4-light, 可能已启动 (verify via `nvidia-smi`)
+- **A4-low** (λ=0.02): 新增, staggered launch 在 A4-mid health check +30min 之后 (Round 15 B58 protocol)
+
+四点 image_aux response curve = `{V13 λ=0, A4-low λ=0.02, V7 λ=0.04, A4-mid λ=0.08}` 进入 paper 主图.
 
 ### A4.0 前置确认
 
@@ -354,50 +364,54 @@ fi
 echo "CLI flags OK ✓"
 ```
 
-### A4.1 yaml 创建 (机械步骤)
+### A4.1 yaml 创建 (机械步骤, **A4-bracket 2 个 yaml**)
 
-**A4 = V7 yaml 完全克隆, 仅改 4 个字段**:
+**A4-bracket = 2 个 yaml, 各自仅改 4 个字段 vs V7**:
 
-| 字段 | V7 原值 | A4 新值 | 含义 |
-|---|---|---|---|
-| `output_dir` | `<V7 output_dir>` | `/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08` | 隔离输出 |
-| `run_name` | `first_hop_224_v7_gronwall_raw` | `first_hop_224_a4_image_aux_lambda_08` | 区分 |
-| `training.image_aux.lambda_start` | `0.04` | `0.08` | **唯一功能变量** |
-| `training.image_aux.lambda_max` | `0.04` | `0.08` | **唯一功能变量 (与 lambda_start 同步)** |
+| 实验 | output_dir / run_name 后缀 | `training.image_aux.lambda_start` | `training.image_aux.lambda_max` |
+|---|---|---:|---:|
+| **A4-mid** (可能已存在) | `A4_image_aux_lambda_08` / `..._lambda_08` | **0.08** | **0.08** |
+| **A4-low** (新增) | `A4_image_aux_lambda_02` / `..._lambda_02` | **0.02** | **0.02** |
 
 **Round 17-Prep B75 fix**: image_aux schedule 真实位置是 `training.image_aux.*`, **不是** `transport.image_aux.*`. 后者在 V7 yaml 不存在, 用错命名空间会 KeyError. `loss.image_aux.*` 是另一组字段 (l1/ssim/seam/border weights), 不要改.
 
 **绝对不**改: seed (=42), max_steps (=160000), step_weights (Grönwall raw), best_select_full_eval_interval, hop0_coverage_target, lambda_kl (=0), backbone path, transport method, image_aux 内部 l1/ssim/seam/border weights, lr_schedule.
 
 ```bash
-# 创建 A4 目录
-mkdir -p review/0521/A4_image_aux_lambda_08
+# 若 A4-mid yaml 不存在则创建; 已存在则跳过 (codex 已跑了 smoke / 已可能 launch formal)
+if [ ! -f review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml ]; then
+  mkdir -p review/0521/A4_image_aux_lambda_08
+  cp review/0505/local/configs/V7_gronwall_raw.yaml review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
+fi
 
-# 克隆 V7 yaml
-cp review/0505/local/configs/V7_gronwall_raw.yaml review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
+# 创建 A4-low yaml (Round 17-Slots 新增)
+mkdir -p review/0521/A4_image_aux_lambda_02
+cp review/0505/local/configs/V7_gronwall_raw.yaml review/0521/A4_image_aux_lambda_02/A4_image_aux_lambda_02.yaml
 
-# 改 4 字段 (用 python 改 yaml, 不要手编辑, 防破坏注释外结构)
+# 用 python 改 yaml (两个 yaml 一起处理)
 "$PYTHON" << 'PY'
 from pathlib import Path
 import yaml
 
-p = Path('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')
-d = yaml.safe_load(p.read_text())
-
-d['output_dir'] = '/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08'
-d['run_name']   = 'first_hop_224_a4_image_aux_lambda_08'
-d['training']['image_aux']['lambda_start'] = 0.08
-d['training']['image_aux']['lambda_max']   = 0.08
-
-p.write_text(yaml.safe_dump(d, sort_keys=False, allow_unicode=True))
-print('A4 yaml updated.')
+variants = [
+    ('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml', 0.08, 'A4_image_aux_lambda_08', 'first_hop_224_a4_image_aux_lambda_08'),
+    ('review/0521/A4_image_aux_lambda_02/A4_image_aux_lambda_02.yaml', 0.02, 'A4_image_aux_lambda_02', 'first_hop_224_a4_image_aux_lambda_02'),
+]
+for path, lam, out_suffix, run_name in variants:
+    p = Path(path)
+    d = yaml.safe_load(p.read_text())
+    d['output_dir'] = f'/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/{out_suffix}'
+    d['run_name']   = run_name
+    d['training']['image_aux']['lambda_start'] = lam
+    d['training']['image_aux']['lambda_max']   = lam
+    p.write_text(yaml.safe_dump(d, sort_keys=False, allow_unicode=True))
+    print(f'updated {path} (lambda={lam})')
 PY
 
-# 验证只改了 4 个字段
+# 验证每个 yaml 都只改了允许的 4 字段
 "$PYTHON" << 'PY'
 import yaml
 v7 = yaml.safe_load(open('review/0505/local/configs/V7_gronwall_raw.yaml'))
-a4 = yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml'))
 
 def flatten(d, prefix=''):
     out = {}
@@ -409,18 +423,65 @@ def flatten(d, prefix=''):
             out[key] = v
     return out
 
-f7 = flatten(v7); f4 = flatten(a4)
-diff = {k: (f7.get(k), f4.get(k)) for k in set(f7) | set(f4) if f7.get(k) != f4.get(k)}
 ALLOWED = {'output_dir', 'run_name', 'training.image_aux.lambda_start', 'training.image_aux.lambda_max'}
-unexpected = set(diff) - ALLOWED
-if unexpected:
-    print(f'FAIL: unexpected diffs: {unexpected}'); raise SystemExit(1)
-print(f'A4 yaml diff verified ✓ (exactly {len(diff)} fields changed: {set(diff)})')
+for path in [
+    'review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml',
+    'review/0521/A4_image_aux_lambda_02/A4_image_aux_lambda_02.yaml',
+]:
+    a4 = yaml.safe_load(open(path))
+    f7 = flatten(v7); f4 = flatten(a4)
+    diff = {k: (f7.get(k), f4.get(k)) for k in set(f7) | set(f4) if f7.get(k) != f4.get(k)}
+    unexpected = set(diff) - ALLOWED
+    if unexpected:
+        print(f'FAIL {path}: unexpected diffs {unexpected}'); raise SystemExit(1)
+    print(f'OK {path}: {len(diff)} fields, all allowed: {sorted(diff.keys())}')
 PY
 
 # commit yaml
-git add review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
-git commit -m "Round 17 A4: image_aux lambda 0.04 → 0.08 schedule probe yaml"
+git add review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml review/0521/A4_image_aux_lambda_02/A4_image_aux_lambda_02.yaml
+git commit -m "Round 17-Slots A4-bracket: image_aux lambda {0.02, 0.08} schedule probe yaml"
+```
+
+### A4.1b A4-low staggered launch (Round 15 B58 protocol)
+
+**前提**: A4-mid 已 formal launch ≥ 30 min, alive check 通过 (PID 存在, log 有 `lambda_img=0.0800` train 行, no OOM, no NaN).
+
+```bash
+# A4-mid health check
+A4_MID_LOG=$(ls -t review/0521/A4_image_aux_lambda_08/A4_train_*.log | head -1)
+if [ ! -f "$A4_MID_LOG" ]; then echo "FAIL: A4-mid not launched"; exit 1; fi
+
+MID_PID=$(grep -oE 'PID=[0-9]+' "$A4_MID_LOG" | head -1 | cut -d= -f2)
+if ! ps -p "$MID_PID" > /dev/null; then echo "FAIL: A4-mid PID $MID_PID dead"; exit 1; fi
+
+# A4-mid log 必须有 lambda_img=0.0800
+grep -q 'lambda_img=0\.0800' "$A4_MID_LOG" || { echo "FAIL: A4-mid lambda not 0.08"; exit 1; }
+grep -q 'OOM\|out of memory\|NaN' "$A4_MID_LOG" && { echo "FAIL: A4-mid has OOM/NaN"; exit 1; }
+echo "A4-mid health OK at +30min ✓"
+
+# 选另一个 free GPU
+FREE_GPU=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | nl -v0 | sort -k2 -rn | head -1 | awk '{print $1}')
+if [ -z "$FREE_GPU" ]; then echo "FAIL: no free GPU for A4-low"; exit 1; fi
+export CUDA_VISIBLE_DEVICES=$FREE_GPU
+
+TS=$(date +%Y%m%d_%H%M%S)
+A4_LOW_LOG=review/0521/A4_image_aux_lambda_02/A4_train_${TS}.log
+
+echo "A4-low launch on GPU=$FREE_GPU, log=$A4_LOW_LOG"
+
+nohup "$PYTHON" train_first_hop.py \
+  --config review/0521/A4_image_aux_lambda_02/A4_image_aux_lambda_02.yaml \
+  > "$A4_LOW_LOG" 2>&1 &
+A4_LOW_PID=$!
+echo "A4-low PID=$A4_LOW_PID"
+
+# 5 分钟后存活检查
+sleep 300
+if ! ps -p $A4_LOW_PID > /dev/null; then
+    echo "FAIL: A4-low died within 5 min"; tail -100 "$A4_LOW_LOG"; exit 1
+fi
+grep -q 'lambda_img=0\.0200' "$A4_LOW_LOG" || echo "WARN: lambda_img=0.02 not yet in log (太早)"
+echo "A4-low alive at +5min ✓"
 ```
 
 ### A4.2 launch
@@ -494,25 +555,38 @@ for tag in best last; do
 done
 ```
 
-### A4.5 A4 pass / stop 准则
+### A4.5 A4-bracket pass / stop 准则
 
-完成后写 `review/0521/A4_image_aux_lambda_08/A4_REPORT.md` 含:
+两点 (A4-low + A4-mid) 都完成后写一份统一报告 `review/0521/A4_bracket/A4_BRACKET_REPORT.md` 含:
 
 ```markdown
-# A4 Image_aux Lambda 0.08 Probe — Report
+# A4 Image_aux Bracket {0.02, 0.08} Probe — Report
 
-| ckpt | step | D20 | D10 | D4 | NORMAL | vs V7 (+0.04) baseline |
-|---|---:|---:|---:|---:|---:|---:|
-| A4.best | ? | ? | ? | ? | ? | +/- ? dB |
-| A4.last | 160000 | ? | ? | ? | ? | +/- ? dB |
-| V7.best | 160000 | 35.4354 | 35.8194 | 36.3736 | **36.7810** | (ref) |
+| ckpt | image_aux λ | step | D20 | D10 | D4 | NORMAL | vs V7 (+0.04) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| V13.best | 0.00 | 160000 | 35.2172 | 35.5971 | 36.1122 | 36.4943 | -0.2867 |
+| A4-low.best | 0.02 | ? | ? | ? | ? | ? | +/- ? |
+| V7.best | 0.04 | 160000 | 35.4354 | 35.8194 | 36.3736 | **36.7810** | (ref) |
+| A4-mid.best | 0.08 | ? | ? | ? | ? | ? | +/- ? |
 
-## Verdict
+## Per-Point Verdict (each 点独立判定)
 
-- 若 A4.best NORMAL ≥ 36.831 (V7 + 0.05) → SUCCESS, image_aux 未饱和, 加入 paper headline
-- 若 36.781 ≤ A4.best NORMAL < 36.831 → MARGINAL, image_aux 接近饱和, paper 提一笔
-- 若 A4.best NORMAL < 36.781 (低于 V7) → REGRESSION, 0.04 已是 sweet spot, paper 作 negative ablation
-- **无论 outcome, 不 relaunch A4-v2 / v3** (Round 17 stop rule, 防 scope creep B74)
+- 若 NORMAL ≥ 36.831 (V7 + 0.05) → SUCCESS, image_aux 未饱和
+- 若 36.781 ≤ NORMAL < 36.831 → MARGINAL
+- 若 NORMAL < 36.781 (< V7) → REGRESSION, 该 λ 低于平衡点
+
+## Bracket-Level Verdict (曲线形状判定)
+
+- 若 V13 < A4-low < V7 < A4-mid → 单调变化, image_aux 仍未饱和, paper 推送到 0.08
+- 若 V13 < A4-low ≈ V7 ≈ A4-mid → 在 [0.02, 0.08] 区间饱和, paper 写饱和 plateau
+- 若 V13 < A4-low > V7 > A4-mid → sweet spot 在起始区间 (λ 过量伤害), paper 写 non-monotonic
+- 若 V13 ≈ A4-low < V7 < A4-mid → sweet spot 近 V7, A4-low 已过低
+
+## Stop Rule
+
+- **两点跑完后不追加 λ=0.06 / 0.10 / 0.12 / v3 / v4** (Round 17-Slots stop rule 冻结)
+- 未来如需调整 image_aux, 需新 substrate / 分析洞见 + 新一轮 peer review, 不凭 slot 空设立
+- paper 主图 = V13 + A4-low + V7 + A4-mid 四点 image_aux response curve
 ```
 
 ---
@@ -611,7 +685,9 @@ fi
 # Row 4: 没有意外文件
 anti_check "no V19 yaml" test -f review/0521/V19_decoder_lora.yaml
 anti_check "no V18-clean yaml" find review/0521 -name '*v18*clean*.yaml' 2>/dev/null | grep -q .
-anti_check "no extra A4 variant" bash -c "[[ \$(find review/0521 -name 'A4_image_aux_lambda_*.yaml' 2>/dev/null | wc -l) -gt 1 ]]"
+anti_check "no extra A4 variant (bracket = {0.02, 0.08}, exactly 2)" bash -c "[[ \$(find review/0521 -name 'A4_image_aux_lambda_*.yaml' -not -name '*_smoke.yaml' 2>/dev/null | wc -l) -gt 2 ]]"
+# Allowed exactly: A4_image_aux_lambda_02.yaml + A4_image_aux_lambda_08.yaml (smoke variants OK).
+# Forbidden: A4_image_aux_lambda_06.yaml, _10.yaml, _12.yaml, _v2.yaml, _v3.yaml, etc.
 
 # Row 5: CLI flag 没被改
 SUP=$(grep "add_argument" train_first_hop.py | grep -oE "['\"]--[a-z_-]+['\"]" | sort -u | tr -d "'\"" | tr '\n' ' ' | sed 's/ $//')
@@ -651,7 +727,7 @@ echo "SELF-CHECK PASSED"
 | 改 V18 / V13 / V14 已有 ckpt 或 yaml | 它们是已 published 的实验基线 |
 | 启 V19 / V18-clean / V18-rank-sweep | Round 16 已签 KL direct-decoder 死, decoder 不是 chain bottleneck |
 | 启 V14b / V14c (多 seed) | F0 paired-t 更便宜地回答显著性 |
-| 启 A4-v2 / A4-v3 / 其它 image_aux variant | Round 17 stop rule, 防 scope creep (B74) |
+| 启 A4 变体 λ 在 {0.02, 0.08} 集外 (e.g. 0.06 / 0.10 / 0.12 / v3 / v4) | Round 17-Slots stop rule, 允许唯 2 点 pre-registered bracket (防 scope creep B74 + B86) |
 | 启 architecture pivot / data pivot 类实验 | 出 Round 17 范围 |
 | F0 跳过 V14 vs V7 / V13 vs V7 sanity check | sanity check 是 F0 协议本身的验证 |
 | F0 把 V18-cap (direct decode) 与 V7 chain PSNR 混算 paired-t | substrate 不一致 (direct decode vs chain rollout) |
