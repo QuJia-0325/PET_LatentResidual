@@ -71,56 +71,84 @@ H2 / H3 都 paper-useful. H1 也 paper-useful (饱和证据). 所以 A4 是 win-
 
 ## §2 — F0: Paired-t Significance Analysis (必做, 0 GPU)
 
-### F0.0 输入资源
+### F0.0 输入资源 (Round 17-Prep 修订: B75-B79 fix)
 
-| 文件 | 含义 |
-|---|---|
-| `review/0517/V18_decoder_lora/fullval_eval_20260518/v18_decoder_lora_best_fullval_psnr_chain_mse.json` | V18.best @165K canonical eval (含 summary, 但 per-slice 在 JSON 里) |
-| `review/0517/V18_decoder_lora/fullval_eval_20260518/v18_decoder_lora_last_fullval_psnr_chain_mse.json` | V18.last @200K canonical eval |
-| `review/0517/V18_capacity_only/kl_drift_with_cap_20260519_180206/KL_DRIFT_PER_SLICE.csv` | A3 + V7 + V18 在 direct decode(z_GT) 上 per-slice PSNR (148060 行, 5 ckpt × 4 timepoint × 7403 slice) |
-| `review/0516/full_eval_json/v13_true_image_aux_off_best_fullval_psnr_chain_mse.json` | V13 canonical eval |
-| `review/0516/full_eval_json/v14_true_d_pure_best_fullval_psnr_chain_mse.json` | V14 canonical eval |
-| (待定位) V7 canonical eval per-slice CSV / JSON | 需 codex `find` 定位; 在 0505 或 0511 目录下 |
+**重要事实** (Round 17-Prep review B77 verify):
+- V18 / V7 per-slice CSV **已存在** (canonical eval 脚本默认就输出 `*_per_slice.csv` 在 `artifacts/` 子目录)
+- V13 / V14 per-slice CSV **不存在**, JSON 是 summary-only — 需 §F0.0a 重跑
+- V18-cap CSV 是 direct `decode(z_GT)` substrate, **不能**和 chain rollout PSNR 做 paired-t
 
-### F0.1 前置 — 定位 V7 per-slice 数据
+| ckpt | 文件 | 状态 |
+|---|---|---|
+| V7.best | `review/0511/fullval_psnr_clip3_20260516_173941/artifacts/planf_v7_best_fullval_psnr_chain_mse_per_slice.csv` | ✓ 已存在 (7404 rows incl header, 21 cols) |
+| V18.best | `review/0517/V18_decoder_lora/fullval_eval_20260518/artifacts/v18_best_fullval_psnr_chain_mse_per_slice.csv` | ✓ 已存在 |
+| V18.last | `review/0517/V18_decoder_lora/fullval_eval_20260518/artifacts/v18_last_fullval_psnr_chain_mse_per_slice.csv` | ✓ 已存在 |
+| V13.best | (需重跑 §F0.0a 生成) | ✗ summary-only JSON |
+| V14.best | (需重跑 §F0.0a 生成) | ✗ summary-only JSON |
+| V18-cap.last | `review/0517/V18_capacity_only/kl_drift_with_cap_20260519_180206/KL_DRIFT_PER_SLICE.csv` | ✓ 已存在 (direct decode substrate, **F0b only**) |
+
+CSV 列名 (canonical schema, F0 用 `psnr_NORMAL` 即 clip3, 不是 `psnr_raw_NORMAL`):
+```
+slice_idx, mse_D10, mse_D20, mse_D4, mse_D50, mse_NORMAL, mse_raw_D10, ..., psnr_D10, psnr_D20, psnr_D4, psnr_D50, psnr_NORMAL, psnr_raw_D10, ..., psnr_raw_NORMAL
+```
+
+### F0.0a — 重跑 V13 / V14 canonical eval 生成 per-slice CSV (必做)
 
 ```bash
 cd /home/qujiaxiang/project/PET_LatentResidual
 git pull --ff-only gitee foc_lite_hop0
 
-# 找 V7 canonical full-val per-slice 数据
-find review -name '*v7*' -name '*per_slice*' 2>/dev/null
-find review -name '*v7*' -name '*fullval*' 2>/dev/null
-find review -name '*v7*' -name '*.csv' 2>/dev/null
+# verify CLI flag (B30 standing rule)
+SUPPORTED=$(grep "add_argument" train_first_hop.py | grep -oE "['\"]--[a-z_-]+['\"]" | sort -u | tr -d "'\"" | tr '\n' ' ' | sed 's/ $//')
+EXPECTED="--config --resume"
+if [ "$SUPPORTED" != "$EXPECTED" ]; then echo "FAIL: trainer CLI changed: $SUPPORTED"; exit 1; fi
 
-# 若仅有 JSON summary 而无 per-slice, 需要先跑 V7 canonical eval 出 per-slice
-# 用同一脚本: review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py
-# 加 --save-per-slice 或类似 flag (具体看脚本)
-head -50 review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py
+# verify eval script flag is --out-dir (NOT --output-dir; Round 17-Prep B76 fix)
+grep -q -- '--out-dir' review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py || { echo "FAIL: --out-dir not in eval script"; exit 1; }
+
+V13_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0516_runs/V13_true_image_aux_ablation/run/first_hop_224_v13_true_image_aux_off
+V14_OUT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0516_runs/V14_true_d_pure/run/first_hop_224_v14_v7_seed1337
+
+mkdir -p review/0521/v13_v14_per_slice
+
+# pick a free GPU (Round 17-Prep B80 fix)
+FREE_GPU=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | nl -v0 | sort -k2 -rn | head -1 | awk '{print $1}')
+if [ -z "$FREE_GPU" ]; then echo "FAIL: no free GPU"; exit 1; fi
+export CUDA_VISIBLE_DEVICES=$FREE_GPU
+
+for name in v13 v14; do
+  if [ "$name" = "v13" ]; then OUT=$V13_OUT; else OUT=$V14_OUT; fi
+  python review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
+    --config $OUT/config.yaml \
+    --checkpoint $OUT/best.pt \
+    --tag ${name}_best \
+    --split val \
+    --max-slices 0 \
+    --batch-size 8 \
+    --decode-mode both \
+    --out-dir review/0521/v13_v14_per_slice \
+    2>&1 | tee review/0521/v13_v14_per_slice/${name}_eval_$(date +%Y%m%d_%H%M%S).log
+  # canonical sanity: V13 NORMAL ≈ 36.4943, V14 NORMAL ≈ 36.7806 (must match Round 17 §1.2)
+done
+
+# Verify per-slice CSVs produced under artifacts/
+ls -la review/0521/v13_v14_per_slice/artifacts/v13_best_fullval_psnr_chain_mse_per_slice.csv
+ls -la review/0521/v13_v14_per_slice/artifacts/v14_best_fullval_psnr_chain_mse_per_slice.csv
+
+# Sanity-check NORMAL means against canonical
+python3 - <<'PY'
+import csv, statistics
+for name, expect in [('v13', 36.4943), ('v14', 36.7806)]:
+    path = f'review/0521/v13_v14_per_slice/artifacts/{name}_best_fullval_psnr_chain_mse_per_slice.csv'
+    rows = list(csv.DictReader(open(path)))
+    mean = statistics.fmean(float(r['psnr_NORMAL']) for r in rows)
+    print(f'{name} per-slice n={len(rows)} mean psnr_NORMAL={mean:.4f} (expect {expect})')
+    assert abs(mean - expect) < 0.01, f'{name} mean drift: got {mean}, expect {expect}'
+print('V13/V14 per-slice sanity OK')
+PY
 ```
 
-如果 V7 per-slice 不存在:
-
-```bash
-# V7 best.pt path (与 V18 resume_from 同)
-V7_CKPT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt
-
-# 跑 V7 canonical full-val eval (canonical 脚本, 与 V13/V14 同)
-# 输出目录: review/0521/v7_per_slice/
-mkdir -p review/0521/v7_per_slice
-python review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
-  --config /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/config.yaml \
-  --checkpoint "$V7_CKPT" \
-  --output-dir review/0521/v7_per_slice \
-  --tag v7_best \
-  --split val \
-  --max-slices 0 \
-  --batch-size 8 \
-  --decode-mode both
-  # 注: 如脚本不支持 --save-per-slice, 检查脚本是否默认输出 per-slice CSV.
-  # 若都没有, 抓取 summary_psnr_clip3 之外的 per-slice 数据需要小补丁:
-  # 在 eval 脚本里把每个 slice 的 PSNR 写到 CSV. 这是 ≤ 20 行改动. 写完后 commit.
-```
+**cost**: ~12-15 min total on 1 GPU. **必须**在 F0.2 之前完成.
 
 ### F0.2 paired-t 实施
 
@@ -147,26 +175,41 @@ from scipy.stats import ttest_rel
 
 REPO = Path(__file__).resolve().parents[1]
 
-# 数据源 (per-slice, n=7403, NORMAL timepoint)
-# codex 需根据 §F0.1 实际定位填入下列路径
+# 数据源 (per-slice CSV, n=7403, canonical chain PSNR_clip3)
+# Round 17-Prep B75-B78 fix: 全部用 per-slice CSV; V18-cap 是不同 substrate 必须排除
 DATA = {
-    'V7.best':       '<V7 per-slice CSV/JSON>',
-    'V13.best':      'review/0516/full_eval_json/v13_true_image_aux_off_best_fullval_psnr_chain_mse.json',
-    'V14.best':      'review/0516/full_eval_json/v14_true_d_pure_best_fullval_psnr_chain_mse.json',
-    'V18.best':      'review/0517/V18_decoder_lora/fullval_eval_20260518/v18_decoder_lora_best_fullval_psnr_chain_mse.json',
-    'V18.last':      'review/0517/V18_decoder_lora/fullval_eval_20260518/v18_decoder_lora_last_fullval_psnr_chain_mse.json',
-    'V18-cap.last':  'review/0517/V18_capacity_only/kl_drift_with_cap_20260519_180206/KL_DRIFT_PER_SLICE.csv',
-    # 注意: V18-cap 用的是 direct decode(z_GT) 的 per-slice, 与 V7/V13/V14 的 chain rollout PSNR 不同 substrate.
-    # 这意味着 V18-cap 不能直接和 V7 chain PSNR 做 paired-t — substrate 不一致.
-    # F0 主任务是 V13/V14/V18.best/V18.last vs V7 (全是 chain PSNR_clip3). V18-cap 用 separate Stage F0b.
+    'V7.best':       'review/0511/fullval_psnr_clip3_20260516_173941/artifacts/planf_v7_best_fullval_psnr_chain_mse_per_slice.csv',
+    'V13.best':      'review/0521/v13_v14_per_slice/artifacts/v13_best_fullval_psnr_chain_mse_per_slice.csv',
+    'V14.best':      'review/0521/v13_v14_per_slice/artifacts/v14_best_fullval_psnr_chain_mse_per_slice.csv',
+    'V18.best':      'review/0517/V18_decoder_lora/fullval_eval_20260518/artifacts/v18_best_fullval_psnr_chain_mse_per_slice.csv',
+    'V18.last':      'review/0517/V18_decoder_lora/fullval_eval_20260518/artifacts/v18_last_fullval_psnr_chain_mse_per_slice.csv',
+    # 注意: V18-cap 在 KL_DRIFT_PER_SLICE.csv 是 direct decode(z_GT) substrate,
+    # 跟上面所有 chain rollout PSNR 完全不可比 (~16 dB 绝对量级差距).
+    # F0 chain paired-t **完全不**包括 V18-cap. 它走 Stage F0b 单独跑.
 }
 
 TIMEPOINTS = ['D20', 'D10', 'D4', 'NORMAL']
+PSNR_COL = lambda tp: f'psnr_{tp}'   # canonical clip3 column, NOT psnr_raw_*
 
 def load_per_slice(path: str, timepoint: str) -> np.ndarray:
-    """根据文件类型 (json / csv) 加载 per-slice PSNR_clip3 for given timepoint.
-    实现细节: codex 看 eval 脚本输出 schema 后填."""
-    raise NotImplementedError("Codex implement based on actual file schema")
+    """Load per-slice canonical PSNR_clip3 column for given timepoint.
+    Schema: CSV with header line, columns include 'slice_idx', 'psnr_D20',
+    'psnr_D10', 'psnr_D4', 'psnr_NORMAL' (clip3) and 'psnr_raw_*' (raw).
+    We use 'psnr_<tp>' which is the clip3 metric (canonical per Round 16).
+    """
+    import csv
+    col = PSNR_COL(timepoint)
+    vals = []
+    with open(path) as f:
+        rdr = csv.DictReader(f)
+        if col not in rdr.fieldnames:
+            raise ValueError(f'{path}: missing column {col}; have {rdr.fieldnames}')
+        for row in rdr:
+            vals.append(float(row[col]))
+    arr = np.asarray(vals, dtype=np.float64)
+    if len(arr) != 7403:
+        raise ValueError(f'{path}: expected 7403 slices, got {len(arr)}')
+    return arr
 
 def main():
     out = {}
@@ -272,8 +315,10 @@ echo "CLI flags OK ✓"
 |---|---|---|---|
 | `output_dir` | `<V7 output_dir>` | `/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08` | 隔离输出 |
 | `run_name` | `first_hop_224_v7_gronwall_raw` | `first_hop_224_a4_image_aux_lambda_08` | 区分 |
-| `transport.image_aux.lambda_start` | `0.04` | `0.08` | **唯一功能变量** |
-| `transport.image_aux.lambda_max` | `0.04` | `0.08` | **唯一功能变量 (与 lambda_start 同步)** |
+| `training.image_aux.lambda_start` | `0.04` | `0.08` | **唯一功能变量** |
+| `training.image_aux.lambda_max` | `0.04` | `0.08` | **唯一功能变量 (与 lambda_start 同步)** |
+
+**Round 17-Prep B75 fix**: image_aux schedule 真实位置是 `training.image_aux.*`, **不是** `transport.image_aux.*`. 后者在 V7 yaml 不存在, 用错命名空间会 KeyError. `loss.image_aux.*` 是另一组字段 (l1/ssim/seam/border weights), 不要改.
 
 **绝对不**改: seed (=42), max_steps (=160000), step_weights (Grönwall raw), best_select_full_eval_interval, hop0_coverage_target, lambda_kl (=0), backbone path, transport method, image_aux 内部 l1/ssim/seam/border weights, lr_schedule.
 
@@ -294,8 +339,8 @@ d = yaml.safe_load(p.read_text())
 
 d['output_dir'] = '/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08'
 d['run_name']   = 'first_hop_224_a4_image_aux_lambda_08'
-d['transport']['image_aux']['lambda_start'] = 0.08
-d['transport']['image_aux']['lambda_max']   = 0.08
+d['training']['image_aux']['lambda_start'] = 0.08
+d['training']['image_aux']['lambda_max']   = 0.08
 
 p.write_text(yaml.safe_dump(d, sort_keys=False, allow_unicode=True))
 print('A4 yaml updated.')
@@ -319,7 +364,7 @@ def flatten(d, prefix=''):
 
 f7 = flatten(v7); f4 = flatten(a4)
 diff = {k: (f7.get(k), f4.get(k)) for k in set(f7) | set(f4) if f7.get(k) != f4.get(k)}
-ALLOWED = {'output_dir', 'run_name', 'transport.image_aux.lambda_start', 'transport.image_aux.lambda_max'}
+ALLOWED = {'output_dir', 'run_name', 'training.image_aux.lambda_start', 'training.image_aux.lambda_max'}
 unexpected = set(diff) - ALLOWED
 if unexpected:
     print(f'FAIL: unexpected diffs: {unexpected}'); raise SystemExit(1)
@@ -337,8 +382,9 @@ git commit -m "Round 17 A4: image_aux lambda 0.04 → 0.08 schedule probe yaml"
 TS=$(date +%Y%m%d_%H%M%S)
 LAUNCH_LOG=review/0521/A4_image_aux_lambda_08/A4_train_${TS}.log
 
-# 选择一个 free GPU
-FREE_GPU=<根据 nvidia-smi 填>
+# 选择 free GPU (Round 17-Prep B80 fix: fail-loud, 不用 <...> 占位符)
+FREE_GPU=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | nl -v0 | sort -k2 -rn | head -1 | awk '{print $1}')
+if [ -z "$FREE_GPU" ]; then echo "FAIL: no free GPU detected"; exit 1; fi
 export CUDA_VISIBLE_DEVICES=$FREE_GPU
 
 START_TS=$(date +%s)
@@ -386,7 +432,7 @@ for tag in best last; do
     python review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
         --config $A4_OUT/config.yaml \
         --checkpoint $A4_OUT/${tag}.pt \
-        --output-dir review/0521/A4_image_aux_lambda_08/fullval_eval \
+        --out-dir review/0521/A4_image_aux_lambda_08/fullval_eval \
         --tag a4_image_aux_lambda_08_${tag} \
         --split val \
         --max-slices 0 \
@@ -503,7 +549,7 @@ fi
 # Row 3: A4 yaml 存在 (若 A4 已起)
 if [ -d review/0521/A4_image_aux_lambda_08 ]; then
     check "A4 yaml present" test -f review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
-    check "A4 yaml lambda 0.08" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['transport']['image_aux']['lambda_max']==0.08, f'got {y[\"transport\"][\"image_aux\"][\"lambda_max\"]}'"
+    check "A4 yaml lambda 0.08" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['training']['image_aux']['lambda_max']==0.08, f'got {y[\"training\"][\"image_aux\"][\"lambda_max\"]}'"
     check "A4 yaml seed=42" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['seed']==42"
     check "A4 yaml max_steps=160000" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['training']['max_steps']==160000"
 fi
@@ -511,7 +557,7 @@ fi
 # Row 4: 没有意外文件
 anti_check "no V19 yaml" test -f review/0521/V19_decoder_lora.yaml
 anti_check "no V18-clean yaml" find review/0521 -name '*v18*clean*.yaml' 2>/dev/null | grep -q .
-anti_check "no A4-v2 yaml" find review/0521 -name '*A4*v2*.yaml' 2>/dev/null | grep -q .
+anti_check "no extra A4 variant" bash -c "[[ \$(find review/0521 -name 'A4_image_aux_lambda_*.yaml' 2>/dev/null | wc -l) -gt 1 ]]"
 
 # Row 5: CLI flag 没被改
 SUP=$(grep "add_argument" train_first_hop.py | grep -oE "['\"]--[a-z_-]+['\"]" | sort -u | tr -d "'\"" | tr '\n' ' ' | sed 's/ $//')
