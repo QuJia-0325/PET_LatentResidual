@@ -97,6 +97,8 @@ slice_idx, mse_D10, mse_D20, mse_D4, mse_D50, mse_NORMAL, mse_raw_D10, ..., psnr
 ```bash
 cd /home/qujiaxiang/project/PET_LatentResidual
 git pull --ff-only origin foc_lite_hop0
+PYTHON=/home/qujiaxiang/.conda/envs/rae/bin/python
+export PYTHONPATH=/home/qujiaxiang/project/PET_LatentResidual:${PYTHONPATH:-}
 
 # verify CLI flag (B30 standing rule)
 SUPPORTED=$(grep "add_argument" train_first_hop.py | grep -oE "['\"]--[a-z_-]+['\"]" | sort -u | tr -d "'\"" | tr '\n' ' ' | sed 's/ $//')
@@ -122,7 +124,7 @@ export CUDA_VISIBLE_DEVICES=$FREE_GPU
 
 for name in v13 v14; do
   if [ "$name" = "v13" ]; then OUT=$V13_OUT; else OUT=$V14_OUT; fi
-  python review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
+  "$PYTHON" review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
     --config $OUT/config.yaml \
     --checkpoint $OUT/best.pt \
     --tag ${name}_best \
@@ -146,7 +148,7 @@ ls -la review/0521/v13_v14_per_slice/artifacts/v13_best_fullval_psnr_chain_mse_p
 ls -la review/0521/v13_v14_per_slice/artifacts/v14_best_fullval_psnr_chain_mse_per_slice.csv
 
 # Sanity-check NORMAL means against canonical
-python3 - <<'PY'
+"$PYTHON" - <<'PY'
 import csv, statistics
 for name, expect in [('v13', 36.4943), ('v14', 36.7806)]:
     path = f'review/0521/v13_v14_per_slice/artifacts/{name}_best_fullval_psnr_chain_mse_per_slice.csv'
@@ -336,6 +338,8 @@ F0 完成后, user 会看 mean Δ / win-rate / bootstrap CI / slice-level p-valu
 ```bash
 cd /home/qujiaxiang/project/PET_LatentResidual
 git pull --ff-only origin foc_lite_hop0
+PYTHON=/home/qujiaxiang/.conda/envs/rae/bin/python
+export PYTHONPATH=/home/qujiaxiang/project/PET_LatentResidual:${PYTHONPATH:-}
 
 # GPU 状态 — 必须 ≥ 1 个全 free GPU
 nvidia-smi --query-gpu=index,memory.used,memory.free --format=csv
@@ -373,7 +377,7 @@ mkdir -p review/0521/A4_image_aux_lambda_08
 cp review/0505/local/configs/V7_gronwall_raw.yaml review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
 
 # 改 4 字段 (用 python 改 yaml, 不要手编辑, 防破坏注释外结构)
-python3 << 'PY'
+"$PYTHON" << 'PY'
 from pathlib import Path
 import yaml
 
@@ -390,7 +394,7 @@ print('A4 yaml updated.')
 PY
 
 # 验证只改了 4 个字段
-python3 << 'PY'
+"$PYTHON" << 'PY'
 import yaml
 v7 = yaml.safe_load(open('review/0505/local/configs/V7_gronwall_raw.yaml'))
 a4 = yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml'))
@@ -433,7 +437,7 @@ export CUDA_VISIBLE_DEVICES=$FREE_GPU
 START_TS=$(date +%s)
 echo "A4 launch START_TS=$START_TS GPU=$FREE_GPU"
 
-nohup python train_first_hop.py \
+nohup "$PYTHON" train_first_hop.py \
   --config review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml \
   > "$LAUNCH_LOG" 2>&1 &
 A4_PID=$!
@@ -457,9 +461,9 @@ grep -E "lambda_img=0\.0800" "$LAUNCH_LOG" | head -1 || echo "WARN: lambda_img=0
 
 | 时点 | 检查项 |
 |---|---|
-| +5 min | 进程存活 + 日志含 `lambda_img=0.0800` |
-| +1 h | 至少 1 条 `[val_full]` 行 (rolling val) |
-| +12 h | 至少 1 条 `step_5000` save (按 V7 schedule) |
+| +5 min | 进程存活; 若仍在加载 115GB train latents, 这是预期冷启动 IO, 不要误判为 hang |
+| +1 h | 至少已有训练 step 日志, 且首条 train line 含 `lambda_img=0.0800` |
+| +12 h | 期望接近或超过 step=5000, 并开始出现 full-val/best-selection 相关日志 (按 V7 schedule) |
 | +24 h | step ≥ 30000, 平均训练速度 ≈ V7 历史值 ±20% |
 | +5 days | step ≈ 120000 |
 | +7 days | step = 160000, `Training done.` |
@@ -474,7 +478,7 @@ REPO_A4_EVAL=review/0521/A4_image_aux_lambda_08/fullval_eval
 mkdir -p "$A4_EVAL_OUT" "$REPO_A4_EVAL/artifacts" "$REPO_A4_EVAL/logs"
 
 for tag in best last; do
-    python review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
+    "$PYTHON" review/0505/operator/scripts/eval_first_hop_fullval_psnr_chain_mse.py \
         --config $A4_OUT/config.yaml \
         --checkpoint $A4_OUT/${tag}.pt \
         --out-dir "$A4_EVAL_OUT" \
@@ -575,6 +579,7 @@ git push origin foc_lite_hop0
 ```bash
 #!/usr/bin/env bash
 set -u
+PYTHON=${PYTHON:-/home/qujiaxiang/.conda/envs/rae/bin/python}
 ERR=0
 check() {
     local label="$1"; shift
@@ -598,9 +603,9 @@ fi
 # Row 3: A4 yaml 存在 (若 A4 已起)
 if [ -d review/0521/A4_image_aux_lambda_08 ]; then
     check "A4 yaml present" test -f review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
-    check "A4 yaml lambda 0.08" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['training']['image_aux']['lambda_max']==0.08, f'got {y[\"training\"][\"image_aux\"][\"lambda_max\"]}'"
-    check "A4 yaml seed=42" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['seed']==42"
-    check "A4 yaml max_steps=160000" python3 -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['training']['max_steps']==160000"
+    check "A4 yaml lambda 0.08" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['training']['image_aux']['lambda_max']==0.08, f'got {y[\"training\"][\"image_aux\"][\"lambda_max\"]}'"
+    check "A4 yaml seed=42" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['seed']==42"
+    check "A4 yaml max_steps=160000" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml')); assert y['training']['max_steps']==160000"
 fi
 
 # Row 4: 没有意外文件

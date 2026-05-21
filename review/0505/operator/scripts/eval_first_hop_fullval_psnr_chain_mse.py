@@ -15,7 +15,14 @@ import torch
 import yaml
 from tqdm import tqdm
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+def _find_repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pet_lr").is_dir():
+            return parent
+    raise RuntimeError("Could not locate repository root containing pet_lr/")
+
+
+REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
