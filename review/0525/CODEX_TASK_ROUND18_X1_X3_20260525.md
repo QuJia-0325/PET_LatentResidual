@@ -154,24 +154,34 @@ nohup "$PYTHON" train_first_hop.py \
 X1_PID=$!
 echo "X1-lite launched: PID=$X1_PID GPU=$FREE_GPU log=$X1_LOG"
 
+# Round 18-Prep H2 fix: persist PID/GPU to sidecar files for X3 staggered launch.
+# (PID is shell-local; trainer log does NOT contain PID= line.)
+echo "$X1_PID" > review/0525/X1_lite_l1_only/X1_lite.pid
+echo "$FREE_GPU" > review/0525/X1_lite_l1_only/X1_lite.gpu
+
 # 5min 存活 + lambda_img / ssim_weight verify
 sleep 300
 ps -p $X1_PID > /dev/null || { echo "FAIL X1 dead"; tail -100 "$X1_LOG"; exit 1; }
 grep -q 'lambda_img=0\.0800' "$X1_LOG" || echo "WARN: lambda_img=0.08 not yet logged"
-# ssim_weight=0 verification: img_ssim 行应该为 0 或非常小 (numerical noise)
-grep -E 'img_ssim=[0-9.]+' "$X1_LOG" | head -3
+# Round 18-Prep M3 fix: ssim/seam loss is ALWAYS computed (just multiplied by 0 in total).
+# img_ssim log field shows RAW (unweighted) SSIM loss, NOT 0. Health check should verify
+# img ≈ img_l1 (total ≈ L1 component) instead of expecting img_ssim ≈ 0.
+grep -E 'img=[0-9.eE+-]+ img_l1=[0-9.eE+-]+' "$X1_LOG" | head -3
 echo "X1-lite alive at +5min"
 ```
 
 ### A.2 X1-lite 监控
 
-| 时点 | 检查项 |
-|---|---|
-| +5 min | 进程存活 + log 含 `lambda_img=0.0800` + `img_ssim` 极小 |
-| +1 h | ≥ 1 条 `[val]` 行 |
-| +12 h | step ≥ 5000, `step_5000.pt` 存在 |
-| +24 h | step ≥ 30000 |
-| +7 d | step = 160000, `Training done.` |
+| 时点 | 检查项 | 处理动作 |
+|---|---|---|
+| +5 min | 进程存活 + log 含 `lambda_img=0.0800` + `img ≈ img_l1` (SSIM/seam loss raw values 仍计算但 total 中权重为 0; img 总值 ≈ L1 分量) | 任何失败 → 立即停 |
+| +1 h | ≥ 1 条 `[val]` 行 | 记录 baseline rolling val |
+| +12 h | step ≥ 5000, `step_5000.pt` 存在 | 仅 log, 不 kill |
+| +24 h (step ≈ 30K) | 记录当前 rolling val_chain_normal_mse + img_frac | **仅诊断, 不 auto-kill**; 若 val_chain_normal_mse > 0.0015 (×≈50% V7 baseline) 请人工 review |
+| +48 h (step ≈ 50K) | 首个 full-val ckpt; 与 V7 step-50K 全验证 baseline 对比 | **仅诊断, 不 auto-kill**; 若 full-val NORMAL MSE 高于 V7 baseline > 10% 请人工 review |
+| +7 d | step = 160000, `Training done.` | 进入 eval 阶段 |
+
+**Round 18-Prep M4 fix**: 原提议的 "+24h step 30K 与 V7 rolling val 差 > 5e-5 → auto-kill" 被 3/3 reviewer 以阅证据否定 (V7 与 A4-mid 在 step 30K rolling val 本身几乎重合 ~0.00093). Rolling val 噪声太大, 单点阈值不能成为 auto-kill 依据. 仅保留 OOM / NaN / 进程死亡这三个 hard kill 条件.
 
 ---
 
@@ -179,16 +189,18 @@ echo "X1-lite alive at +5min"
 
 ### B.0 yaml 创建
 
-X3 = V18 yaml clone, 仅改 **6 个字段**:
+X3 = V18 yaml clone, 仅改 **8 个字段** (Round 18-Prep M1 + M2 fix 后 从 6 字段扩到 8):
 
 | 字段 | V18 原值 | X3 新值 | 含义 |
 |---|---|---|---|
 | `output_dir` | (V18) | `/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0525_runs/X3_image_aux_lora` | 隔离 |
 | `run_name` | `first_hop_224_v18_decoder_lora` | `first_hop_224_x3_image_aux_lora` | 区分 |
 | `training.max_steps` | 200000 | **170000** | 同 A3 协议, 10K LoRA 训练 |
+| `training.save_interval` | 10000 | **5000** | M2 fix: 与 A3 一致, 产出 `step_165000.pt` + `step_170000.pt` matched-step ckpt |
 | `training.image_aux.lambda_start` | 0.04 | **0.08** | 与 A4-mid 同强度 |
 | `training.image_aux.lambda_max` | 0.04 | **0.08** | 同上 |
 | `loss.decoder_kl_pullback.lambda_kl` | 0.05 | **0.0** | 杀 KL (Round 16 已签 KL 死) |
+| `loss.decoder_kl_pullback.enabled` | true | **false** | M1 fix: 避免在 model 构造期建立 frozen RAE reference (VRAM 低 + 语义更净) |
 
 **绝对不**改: seed (=42), resume_from (=V7.best), LoRA rank=32 / blocks=last-2, KL pullback `use_pred_latent` (moot 当 lambda_kl=0), image_aux 子项, lr_schedule, backbone, transport.
 
@@ -207,9 +219,11 @@ d = yaml.safe_load(p.read_text())
 d['output_dir'] = '/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0525_runs/X3_image_aux_lora'
 d['run_name']   = 'first_hop_224_x3_image_aux_lora'
 d['training']['max_steps'] = 170000
+d['training']['save_interval'] = 5000
 d['training']['image_aux']['lambda_start'] = 0.08
 d['training']['image_aux']['lambda_max']   = 0.08
 d['loss']['decoder_kl_pullback']['lambda_kl'] = 0.0
+d['loss']['decoder_kl_pullback']['enabled'] = False
 p.write_text(yaml.safe_dump(d, sort_keys=False, allow_unicode=True))
 print('X3 yaml updated.')
 PY
@@ -228,7 +242,7 @@ def flatten(d, prefix=''):
     return out
 fv = flatten(v18); fx = flatten(x3)
 diff = {k: (fv.get(k), fx.get(k)) for k in set(fv) | set(fx) if fv.get(k) != fx.get(k)}
-ALLOWED = {'output_dir', 'run_name', 'training.max_steps', 'training.image_aux.lambda_start', 'training.image_aux.lambda_max', 'loss.decoder_kl_pullback.lambda_kl'}
+ALLOWED = {'output_dir', 'run_name', 'training.max_steps', 'training.save_interval', 'training.image_aux.lambda_start', 'training.image_aux.lambda_max', 'loss.decoder_kl_pullback.lambda_kl', 'loss.decoder_kl_pullback.enabled'}
 unexpected = set(diff) - ALLOWED
 if unexpected: print(f'FAIL unexpected diff: {unexpected}'); raise SystemExit(1)
 print(f'X3 diff OK ({len(diff)} fields): {sorted(diff.keys())}')
@@ -238,36 +252,48 @@ PY
 ### B.2 staggered launch (等 X1-lite +30min health check 后)
 
 ```bash
-# X1-lite health check
+# X1-lite health check (Round 18-Prep H2 fix: read PID/GPU from sidecar, NOT trainer log)
+X1_PID=$(cat review/0525/X1_lite_l1_only/X1_lite.pid 2>/dev/null)
+X1_GPU=$(cat review/0525/X1_lite_l1_only/X1_lite.gpu 2>/dev/null)
+[ -z "$X1_PID" ] && { echo "FAIL X1_PID sidecar missing"; exit 1; }
+[ -z "$X1_GPU" ] && { echo "FAIL X1_GPU sidecar missing"; exit 1; }
 X1_LOG=$(ls -t review/0525/X1_lite_l1_only/X1_lite_train_*.log | head -1)
-X1_PID=$(grep -oE 'PID=[0-9]+' "$X1_LOG" | head -1 | cut -d= -f2)
-ps -p "$X1_PID" > /dev/null || { echo "FAIL X1-lite dead, abort X3"; exit 1; }
+ps -p "$X1_PID" > /dev/null || { echo "FAIL X1-lite dead (PID=$X1_PID), abort X3"; exit 1; }
 grep -q 'lambda_img=0\.0800' "$X1_LOG" || { echo "FAIL X1 lambda wrong"; exit 1; }
 grep -qE 'OOM|out of memory|NaN' "$X1_LOG" && { echo "FAIL X1 has OOM/NaN"; exit 1; }
-echo "X1-lite health OK at +30min"
+echo "X1-lite health OK at +30min (PID=$X1_PID GPU=$X1_GPU)"
 
-# 选另一个 free GPU
-FREE_GPU2=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | nl -v0 | sort -k2 -rn | head -1 | awk '{print $1}')
-[ -z "$FREE_GPU2" ] && { echo "FAIL no second free GPU"; exit 1; }
+# 选另一个 free GPU (Round 18-Prep H3 fix: 显式排除 X1 的 GPU)
+FREE_GPU2=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits \
+  | awk -v exclude=$X1_GPU -F',' '$1+0 != exclude {print $1, $2}' \
+  | sort -k2 -rn | head -1 | awk '{print $1}')
+[ -z "$FREE_GPU2" ] && { echo "FAIL no second free GPU (excluded X1 GPU $X1_GPU)"; exit 1; }
+[ "$FREE_GPU2" = "$X1_GPU" ] && { echo "FAIL GPU race: chose same GPU as X1 ($X1_GPU)"; exit 1; }
 export CUDA_VISIBLE_DEVICES=$FREE_GPU2
 
 TS=$(date +%Y%m%d_%H%M%S)
 X3_LOG=review/0525/X3_image_aux_lora/X3_train_${TS}.log
 
-# 用 V18 同 resume protocol
+# Round 18-Prep H1 fix: 显式传 --resume V7.best.pt (yaml training.resume_from 不被 trainer 读)
+V7_CKPT=/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/best.pt
+[ -f "$V7_CKPT" ] || { echo "FAIL V7.best.pt missing at $V7_CKPT"; exit 1; }
+
 nohup "$PYTHON" train_first_hop.py \
   --config review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml \
+  --resume "$V7_CKPT" \
   > "$X3_LOG" 2>&1 &
 X3_PID=$!
 echo "X3 launched: PID=$X3_PID GPU=$FREE_GPU2 log=$X3_LOG"
+echo "$X3_PID" > review/0525/X3_image_aux_lora/X3.pid
+echo "$FREE_GPU2" > review/0525/X3_image_aux_lora/X3.gpu
 
 # 5min 存活 + verify
 sleep 300
 ps -p $X3_PID > /dev/null || { echo "FAIL X3 dead"; tail -100 "$X3_LOG"; exit 1; }
+grep -q '\[startup\] resume from:' "$X3_LOG" || { echo "FAIL X3 not resumed (no [startup] resume from: line)"; exit 1; }
+grep -q '\[resume\] loaded step=160000' "$X3_LOG" || { echo "FAIL X3 resume wrong step (expected step=160000)"; exit 1; }
 grep -q 'lambda_img=0\.0800' "$X3_LOG" || echo "WARN: X3 lambda_img not yet logged"
-grep -q 'lambda_kl=0\.0000' "$X3_LOG" || echo "WARN: X3 lambda_kl not yet logged"
-grep -q '\[resume\] loaded step=160000' "$X3_LOG" || { echo "FAIL X3 resume failed"; exit 1; }
-echo "X3 alive + resumed at +5min"
+echo "X3 alive + resumed @ 160K at +5min"
 ```
 
 ### B.3 X3 监控
@@ -402,11 +428,13 @@ check "X1 seed=42" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525
 check "X1 max_steps=160000" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X1_lite_l1_only/X1_lite_l1_only.yaml')); assert y['training']['max_steps']==160000"
 check "X1 lambda_kl=0 (V7 默认)" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X1_lite_l1_only/X1_lite_l1_only.yaml')); assert y['loss'].get('decoder_kl_pullback', {}).get('lambda_kl', 0.0) == 0.0"
 
-# X3 关键字段
+# X3 关键字段 (Round 18-Prep M1 + M2 fix)
 check "X3 lambda_kl=0" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert y['loss']['decoder_kl_pullback']['lambda_kl']==0.0"
+check "X3 KL enabled=false (M1)" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert y['loss']['decoder_kl_pullback']['enabled'] is False"
+check "X3 save_interval=5000 (M2)" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert y['training']['save_interval']==5000"
 check "X3 lambda_max=0.08" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert y['training']['image_aux']['lambda_max']==0.08"
 check "X3 max_steps=170000" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert y['training']['max_steps']==170000"
-check "X3 resume_from=V7.best" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert 'V7' in y['training']['resume_from']"
+check "X3 resume_from=V7.best (yaml 记录, 但 trainer 从 CLI --resume 读)" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert 'V7' in y['training']['resume_from']"
 check "X3 LoRA rank=32" "$PYTHON" -c "import yaml; y=yaml.safe_load(open('review/0525/X3_image_aux_lora/X3_image_aux_lora.yaml')); assert y['training']['decoder_lora']['rank']==32"
 
 # CLI flag
@@ -425,10 +453,22 @@ for f in \
 done
 
 # 没有意外文件
+# Round 18-Prep H4 fix: anti_check_count 取代原 bash -c 模式 (子 shell 丢 exit code)
+anti_check_count() {
+    local label="$1"; local pattern="$2"; local maxn="$3"
+    local n=$(find review/0525 -name "$pattern" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$n" -gt "$maxn" ]; then echo "FAIL: $label (found $n, max $maxn)"; ERR=$((ERR+1)); else echo "PASS: $label (found $n, max $maxn)"; fi
+}
 anti_check "no X2 yaml" find review/0525 -name 'X2_*.yaml' 2>/dev/null | grep -q .
 anti_check "no V19 yaml" find review/0525 -name 'V19*.yaml' 2>/dev/null | grep -q .
 anti_check "no X3 v2" find review/0525 -name 'X3*v2*' 2>/dev/null | grep -q .
-anti_check "no extra A4 variant" bash -c "[[ \$(find review -name 'A4_image_aux_lambda_*.yaml' -not -name '*_smoke.yaml' 2>/dev/null | wc -l) -gt 2 ]]"
+anti_check_count "A4 variant count ≤ 2" 'A4_image_aux_lambda_*.yaml' 2
+
+# Round 18-Prep H2 fix: X1 PID/GPU sidecar files 存在 (if X1 已 launch)
+if [ -f review/0525/X1_lite_l1_only/X1_lite.pid ]; then
+    check "X1 PID sidecar present" test -s review/0525/X1_lite_l1_only/X1_lite.pid
+    check "X1 GPU sidecar present" test -s review/0525/X1_lite_l1_only/X1_lite.gpu
+fi
 
 echo "---"
 [ $ERR -gt 0 ] && { echo "SELF-CHECK FAILED ($ERR)"; exit 1; }
