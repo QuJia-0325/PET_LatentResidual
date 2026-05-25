@@ -2,8 +2,9 @@
 
 - date: 2026-05-25
 - branch: foc_lite_hop0
-- status: **READY FOR CODEX EXECUTION**
+- status: **READY FOR CODEX EXECUTION (commit a764742, after Round 18-Prep 4 HIGH + 6 MED fixes)**
 - 上游: Round 18 集成 ([REVIEW_INTEGRATION_round18_20260525.md](./REVIEW_INTEGRATION_round18_20260525.md)) 4/4 共识 = X1-lite + X3 并行
+- 上游 code review: Round 18-Prep 集成 ([REVIEW_INTEGRATION_round18_prep_20260525.md](./REVIEW_INTEGRATION_round18_prep_20260525.md)) 3/3 MODIFY-BEFORE-PUSH, 全部修复已 land
 - user 决策 2026-05-25: X5/X6 暂搁置 (无外部数据 / 无 clinical metadata), 仅做 X1-lite + X3
 - 硬约束: ≤ 3 并行训练; X1-lite + X3 = 2 slot, slot 3 留 buffer
 
