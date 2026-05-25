@@ -174,11 +174,12 @@ echo "X1-lite alive at +5min"
 
 | 时点 | 检查项 | 处理动作 |
 |---|---|---|
-| +5 min | 进程存活 + log 含 `lambda_img=0.0800` + `img ≈ img_l1` (SSIM/seam loss raw values 仍计算但 total 中权重为 0; img 总值 ≈ L1 分量) | 任何失败 → 立即停 |
+| +5 min | 进程存活 + log 含 `lambda_img=0.0800` + `img ≈ img_l1` (SSIM/seam loss raw values 仍计算但 total 中权重为 0; img 总值 ≈ L1 分量) | 任何失败 → 立即 kill, tail log, push status |
 | +1 h | ≥ 1 条 `[val]` 行 | 记录 baseline rolling val |
 | +12 h | step ≥ 5000, `step_5000.pt` 存在 | 仅 log, 不 kill |
-| +24 h (step ≈ 30K) | 记录当前 rolling val_chain_normal_mse + img_frac | **仅诊断, 不 auto-kill**; 若 val_chain_normal_mse > 0.0015 (×≈50% V7 baseline) 请人工 review |
-| +48 h (step ≈ 50K) | 首个 full-val ckpt; 与 V7 step-50K 全验证 baseline 对比 | **仅诊断, 不 auto-kill**; 若 full-val NORMAL MSE 高于 V7 baseline > 10% 请人工 review |
+| +24 h (step ≈ 30K) | 记录当前 rolling val_chain_normal_mse + img_frac | **仅诊断, 不 auto-kill**; 若 val_chain_normal_mse > 0.0015 → codex 在 task md 同目录写 `MANUAL_REVIEW_NEEDED_step30K.md` 含 5 行取样 + 当前 val_chain_normal_mse 值 + V7 baseline, **继续训练** |
+| +48 h (step ≈ 50K) | 首个 full-val ckpt; 与 V7 step-50K 全验证 baseline 对比 | **仅诊断, 不 auto-kill**; 若 full-val NORMAL MSE 高于 V7 baseline > 10% → 同上写 `MANUAL_REVIEW_NEEDED_step50K.md`, 继续训练 |
+| +7 d | step = 160000, `Training done.` | 进入 eval 阶段 |
 | +7 d | step = 160000, `Training done.` | 进入 eval 阶段 |
 
 **Round 18-Prep M4 fix**: 原提议的 "+24h step 30K 与 V7 rolling val 差 > 5e-5 → auto-kill" 被 3/3 reviewer 以阅证据否定 (V7 与 A4-mid 在 step 30K rolling val 本身几乎重合 ~0.00093). Rolling val 噪声太大, 单点阈值不能成为 auto-kill 依据. 仅保留 OOM / NaN / 进程死亡这三个 hard kill 条件.
@@ -453,16 +454,18 @@ for f in \
 done
 
 # 没有意外文件
-# Round 18-Prep H4 fix: anti_check_count 取代原 bash -c 模式 (子 shell 丢 exit code)
-anti_check_count() {
-    local label="$1"; local pattern="$2"; local maxn="$3"
-    local n=$(find review/0525 -name "$pattern" 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$n" -gt "$maxn" ]; then echo "FAIL: $label (found $n, max $maxn)"; ERR=$((ERR+1)); else echo "PASS: $label (found $n, max $maxn)"; fi
-}
+# Round 18-Prep H4 fix (v2): 改为 inline check, 避免函数抽象 + 路径 scope bug.
+# A4 yaml 实际在 review/0521 (不是 0525), 必须 search `review` 并排除 smoke variants.
+A4_COUNT=$(find review -name 'A4_image_aux_lambda_*.yaml' -not -name '*_smoke.yaml' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$A4_COUNT" -gt 2 ]; then
+    echo "FAIL: A4 variant count > 2 (found $A4_COUNT, allowed: 2 = lambda_02 + lambda_08)"; ERR=$((ERR+1))
+else
+    echo "PASS: A4 variant count ≤ 2 (found $A4_COUNT, allowed: 2)"
+fi
+
 anti_check "no X2 yaml" find review/0525 -name 'X2_*.yaml' 2>/dev/null | grep -q .
 anti_check "no V19 yaml" find review/0525 -name 'V19*.yaml' 2>/dev/null | grep -q .
 anti_check "no X3 v2" find review/0525 -name 'X3*v2*' 2>/dev/null | grep -q .
-anti_check_count "A4 variant count ≤ 2" 'A4_image_aux_lambda_*.yaml' 2
 
 # Round 18-Prep H2 fix: X1 PID/GPU sidecar files 存在 (if X1 已 launch)
 if [ -f review/0525/X1_lite_l1_only/X1_lite.pid ]; then
