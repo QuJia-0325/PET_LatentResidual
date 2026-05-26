@@ -12,9 +12,22 @@
 | run | GPU | session | 状态 | 预计完成 |
 |---|---|---|---|---|
 | X1-lite | GPU1 | round18_x1_gpu1_0525 | training (from-scratch to 160K) | T+7d ≈ 2026-06-01 |
-| X3 | GPU3 | round18_x3_gpu3_0525 | training (warmstart V7.best → 170K) | T+1-2d ≈ 2026-05-27 |
+| X3 | GPU3 | round18_x3_gpu3_0525 | **done + canonical full-val eval complete** | completed 2026-05-26 |
 
-健康状态: 两者已通过 +5min smoke check (λ_img=0.08 / λ_kl=0 / resume @160K 都已 verify, no OOM). 详 [codex_x1_x3_design_analysis_20260525.md](./server/codex_x1_x3_design_analysis_20260525.md).
+健康状态: X1-lite 已通过 +5min smoke check (λ_img=0.08 / λ_kl=0 / l1-only active, no OOM). X3 已完成且验证 resume @160K、λ_img=0.08、λ_kl=0. 详 [codex_x1_x3_design_analysis_20260525.md](./server/codex_x1_x3_design_analysis_20260525.md) 与 [X3_FULLVAL_EVAL_REPORT_20260526.md](./X3_image_aux_lora/fullval_eval/X3_FULLVAL_EVAL_REPORT_20260526.md).
+
+### X3 verdict (2026-05-26, locked)
+
+| run | NORMAL PSNR_clip3 | Δ vs V7 | Δ vs A4-mid |
+|---|---:|---:|---:|
+| X3.best @165K | 36.8104 | +0.0295 | -0.0835 |
+| X3.last @170K | 36.8288 | +0.0478 | -0.0651 |
+| A4-mid.best | 36.8939 | +0.1130 | 0 |
+| V18.last | 36.8426 | +0.0617 | -0.0513 |
+
+**Verdict**: X3 is **non-additive** in the A3-matched 10K warmstart window. It remains in the V18 range and does not move toward A4-mid. V18 / decoder LoRA remains secondary ablation only.
+
+**Hard stop**: no X3-extend, no X3-v2, no V19/V18-clean/rank-sweep unless user explicitly overturns Round 18 stop rule after Round 19. Slot freed by X3 completion should **not** automatically go to V18-family work.
 
 ---
 
@@ -22,18 +35,36 @@
 
 ### TODO-1 (X3 完成后立即) — 写 X3 outcome 解读
 
-trigger: codex push `review/0525/X3_image_aux_lora/fullval_eval/artifacts/*.json`
+status: **DONE 2026-05-26**. codex pushed `review/0525/X3_image_aux_lora/fullval_eval/artifacts/*.json` and [X3_FULLVAL_EVAL_REPORT_20260526.md](./X3_image_aux_lora/fullval_eval/X3_FULLVAL_EVAL_REPORT_20260526.md).
 
-action:
-- 提取 X3.best/last NORMAL PSNR_clip3
-- 比较 X3 vs A4-mid (绝对值), X3 vs A3 (paired, 仅 λ_img 差), X3 vs V18.step170k (matched-step)
-- 按 codex 解读规则给 verdict: **clearly above A4-mid** (additive) / **≈ A4-mid** (redundant) / **< A4-mid** (conflict)
-- 若 verdict = redundant or conflict → paper 把 V18 family 完全降为 negative ablation, **取消任何 V19 / X3 v2 计划**
+locked action:
+- X3.last NORMAL = 36.8288, Δ vs V7 = +0.0478, Δ vs A4-mid = -0.0651
+- verdict = **below A4-mid / non-additive**
+- paper: V18/X3 family = secondary decoder-side ablation, not headline
+- any V18-family continuation requires new user decision + peer review
 
 decision rule (Round 18 stop rule + Round 18-Prep M2 confirmed):
 - X3 是 1 run hard-stop
 - 不允许 X3 extend to 200K, 不论 outcome
 - 不允许 X3 v2 (LoRA rank/blocks variant)
+
+### TODO-1b (X3 完成后空出 1 个训练 slot) — Next-slot 决策
+
+status: **OPEN**. X3 GPU slot is free while X1-lite continues. User asks whether to use the free slot for one additional experiment.
+
+candidate options for peer review:
+
+| option | experiment | question | cost | prior |
+|---|---|---|---|---|
+| A | **A4-mid-seed1337** (`λ_img=0.08`, seed=1337, no LoRA) | Is the paper headline A4-mid +0.113 robust to seed? | 7d × 1 GPU | high paper value |
+| B | **X1-v2-balanced** (`λ=0.08`, l1-only, `l1_weight=1.35`) | If X1-lite drops, is it component mechanism or gradient budget? | 7d × 1 GPU | only needed if X1-lite interior, but can run now |
+| C | **No new training** | Preserve stop rules, wait for X1-lite, start paper draft | 0 GPU | safest governance |
+| D | **X3-extend to 200K** | Long-window LoRA additivity | 5-7d × 1 GPU | low EV, violates X3 stop rule |
+
+Important constraints:
+- X5 / X6 are not available now (user confirmed no external data / no clinical metadata).
+- Patient grouping is unrecoverable, so main paper robustness must come from effect size, seed control, and mechanism evidence rather than patient-level p-values.
+- Any option must not delay X1-lite or paper outline.
 
 ### TODO-2 (X1-lite 完成后立即) — 写 X1-lite outcome 解读 + CL1 confound 判定
 
