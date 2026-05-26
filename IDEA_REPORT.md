@@ -5,7 +5,43 @@
 **Ideas evaluated**: 3 Gate-1 candidates → 2 primary recommendations
 **Review protocol**: 每个 idea 必须包含 novelty 量化评分 + 三方对抗审查（Proposer / Novelty Skeptic / Engineering Skeptic）。
 
+## Current Direction Update (2026-05-26)
+
+The original 2026-04 CCT / ΔB-aware / uncertainty-gated ideas below are **historical backlog**. The current paper direction is now **A4 / decoder-aware image auxiliary supervision**, established by Round 17-19 evidence.
+
+Current headline candidate:
+
+| run | NORMAL PSNR_clip3 | delta vs V7 | status |
+|---|---:|---:|---|
+| V7.best (`image_aux=0.04`) | 36.780951 | 0 | baseline |
+| **A4-mid.best (`image_aux=0.08`)** | **36.893917** | **+0.112966** | **current paper headline** |
+| X3.last (`image_aux=0.08` + decoder LoRA, KL off) | 36.828787 | +0.047836 | non-additive; V18 family secondary |
+
+Current active idea stack:
+
+1. **A4-mid / decoder-aware image auxiliary supervision** — PASS as current paper headline candidate.
+   - Hypothesis: stronger frozen-decoder image auxiliary supervision provides pixel-space gradient and decoder-manifold anchoring (M1+M4).
+   - Evidence: A4-mid `+0.112966 dB` vs V7; A4-low underperforms; V13 image_aux-off underperforms by `-0.286621 dB`.
+   - Current missing robustness: A4-mid-seed1337 replicate is active / approved.
+2. **X1-lite mechanism falsification** — ACTIVE.
+   - Hypothesis: L1 through frozen decoder is sufficient to explain most A4-mid gain; SSIM/seam may be secondary.
+   - Caveat: removes SSIM/seam and reduces nominal gradient budget (CL1); if interior outcome, write limitation unless user explicitly approves X1-v2-balanced.
+3. **X3 image_aux+LoRA additivity test** — DONE, non-additive.
+   - Result: X3.last `36.828787`, below A4-mid by `-0.065130 dB`; V18/LoRA remains secondary ablation.
+4. **CCT-224 / ΔB-aware / uncertainty-gated hop0** — DEFERRED backlog only.
+   - Do not restart before current paper outline and A4/X1 evidence are integrated.
+
+Current paper-facing framing:
+
+- Main idea: PET latent transport benefits most from decoder-aware pixel supervision through the frozen RAE decoder.
+- Related framing to use: representation alignment / decoder-aware latent learning (REPA-style framing), plus low-dose PET denoising baselines.
+- Do not present A4 as mere lambda tuning; present it as evidence that pure latent objectives are misaligned with decoded image quality.
+
+---
+
 ## Executive Summary
+> Historical note: this 2026-04 summary is superseded by the 2026-05-26 update above. It remains for provenance.
+
 当前最可发表且与现有实现最兼容的路线是：
 1) 先做 **CCT-224**（一致性训练，直接打分布偏移），
 2) 再叠加 **ΔB-aware Adaptive Reweighting**（把 A/B/C/D 诊断闭环到训练）。

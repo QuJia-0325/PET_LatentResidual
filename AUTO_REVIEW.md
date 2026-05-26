@@ -1,5 +1,36 @@
 # AUTO_REVIEW.md
 
+## Current Review State (2026-05-26)
+
+**Current paper headline candidate**: A4-mid (`image_aux.lambda_start=lambda_max=0.08`, full image_aux, seed=42).
+
+Canonical full-val `PSNR_clip3` anchors (val, n=7403):
+
+| run | NORMAL | delta vs V7 | role |
+|---|---:|---:|---|
+| V13.best (`image_aux=0`) | 36.494330 | -0.286621 | true image_aux-off control |
+| V7.best (`image_aux=0.04`) | 36.780951 | 0 | current baseline |
+| V14.best (`V7 seed=1337`) | 36.780632 | -0.000320 | seed perturbation at lambda=0.04 |
+| A4-low.best (`image_aux=0.02`) | 36.700958 | -0.079994 | weak image_aux bracket |
+| **A4-mid.best (`image_aux=0.08`)** | **36.893917** | **+0.112966** | **headline result** |
+| V18.last (LoRA + KL, lambda_img=0.04) | 36.842645 | +0.061693 | secondary decoder-side ablation |
+| X3.last (LoRA + lambda_img=0.08, KL off, 10K warmstart) | 36.828787 | +0.047836 | non-additive LoRA ablation |
+
+**Locked interpretation**:
+
+- `A4-mid` is the current main result; any `36.835 / +0.054` A4 number is obsolete and must not be reused.
+- V18/X3/decoder LoRA are secondary ablations only; do not headline them.
+- `A4-mid-seed1337` is the active robustness replicate; it is a single replicate, not a seed sweep.
+- Patient IDs are not recoverable from current preprocessed artifacts; do not claim patient-level p-values. Use effect size, seed replicate, slice-level bootstrap/win-rate, and explicit limitations.
+
+**Current review gates**:
+
+- Round 18 strategy review: `PASS` for X1-lite + X3 + paper-now, with V18 demoted.
+- Round 19 next-slot review: `PASS` for exactly one A4-mid seed=1337 robustness replicate.
+- F0 paired-slice/bootstrap artifact is still not closed in-repo; do not cite F0 as completed until `F0_paired_t_report` / summary artifacts exist.
+
+---
+
 ## Purpose
 对 **idea 本身**（不是只看单次实验结果）做多维度打分，并执行多模型对抗评审，专门审查：
 - 224 级联异常：`D50→NORMAL < baseline` 且 `D20→NORMAL > baseline`

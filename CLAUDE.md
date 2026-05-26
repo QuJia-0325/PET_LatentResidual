@@ -2,6 +2,48 @@
 
 This file provides guidance for engineering work in `/home/qujiaxiang/project/PET_LatentResidual`.
 
+## Current Canonical State (2026-05-26)
+
+**Read this section first. Several older sections below are historical and superseded.**
+
+Current project direction:
+
+- Paper headline: **A4-mid**, i.e. V7-style transport with `training.image_aux.lambda_start=lambda_max=0.08`, full image auxiliary loss, no LoRA, no KL.
+- Mechanism hypothesis: stronger frozen-decoder image auxiliary supervision supplies decoder-aware pixel-space gradient and anchors `z_pred` to a well-decodable manifold (M1+M4).
+- V18 / decoder LoRA / KL are **secondary ablations**, not the main story.
+- X1-lite is running to test whether L1-through-decoder alone explains A4-mid.
+- A4-mid-seed1337 is the current robustness replicate; it is exactly one seed replicate, not a seed sweep.
+
+Canonical full-val `PSNR_clip3` anchors (val, n=7403):
+
+| run | NORMAL | delta vs V7 | role |
+|---|---:|---:|---|
+| V13.best (`image_aux=0`) | 36.494330 | -0.286621 | true image_aux-off control |
+| V7.best (`image_aux=0.04`) | 36.780951 | 0 | baseline |
+| V14.best (`V7 seed=1337`) | 36.780632 | -0.000320 | seed perturbation at lambda=0.04 |
+| A4-low.best (`image_aux=0.02`) | 36.700958 | -0.079994 | weak image_aux bracket |
+| **A4-mid.best (`image_aux=0.08`)** | **36.893917** | **+0.112966** | **headline result** |
+| V18.last | 36.842645 | +0.061693 | secondary decoder LoRA/KL ablation |
+| X3.last (`image_aux=0.08` + LoRA, KL off) | 36.828787 | +0.047836 | non-additive LoRA result |
+
+Important current constraints:
+
+- Do **not** use stale A4 numbers such as `36.835 / +0.054`; canonical A4-mid is `36.893917 / +0.112966 vs V7`.
+- Do **not** launch V18-clean / V19 / decoder rank sweep / X3-extend unless a new user-signed review explicitly overturns the stop rule.
+- Do **not** launch extra A4 lambda points or seed sweeps. A4-mid-seed1337 is the only approved seed replicate.
+- Patient IDs are not recoverable from current preprocessed artifacts; do not write patient-level significance claims.
+- F0 paired-slice/bootstrap is not closed unless explicit F0 report artifacts exist.
+
+Current source-of-truth docs:
+
+- `review/0525/REVIEW_INTEGRATION_round18_20260525.md`
+- `review/0525/REVIEW_INTEGRATION_round18_prep_20260525.md`
+- `review/0525/REVIEW_INTEGRATION_round19_next_slot_after_X3_20260526.md`
+- `review/0525/Round19-TODO.md`
+- `review/0525/CODEX_TASK_ROUND19_A4_MID_SEED1337_20260526.md`
+
+---
+
 ## Rules
 
 **重要约束**：在计划和讨论模型架构时，没有用户明确批准，**不允许对代码进行任何修改**。必须先讨论方案，获得用户批准后再实施。
@@ -235,7 +277,7 @@ python review/0502/scripts/lock_effect_size_threshold.py \
    - 维持 clip3 统一评估与 JSON/CSV 固化输出。
 3. 保持不改主状态（latent-only），不引入 dual-state transport。
 
-## Current Status (as of 2026-05-03)
+## Current Status (as of 2026-05-03) — SUPERSEDED BY 2026-05-26 STATUS ABOVE
 
 **主线已切换**：`50k_formal_v3_chainstable` → `50k_foc_lite` / `v6_transport_first` / `v6_1_rollout_floor` 系列。Best-metric 已统一为 `val_select_score`（multi-objective），rolling window evaluation `max_val_batches=64, eval_interval=400, val_window_mode=rolling`。
 
