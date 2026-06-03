@@ -59,6 +59,12 @@ canonical anchors（val, n=7403, decode_mode=default）:
 
 新建独立脚本 `tools/analyze_pullback_metric.py`（仅前向 + autograd jvp/vjp，加载已有 frozen RAE decoder 与 A4/V13 模型，**不训练、不写 checkpoint、不改 train/model/RAE**）。
 
+### S2.0 — 逐跳证据：D50→D20 是否真是"最坏跳"（论文叙事的经验地基）
+重排后的 §1/§3.2 以"经验优先"开场，首句就断言 D50→D20 是信息损失最重、解码 seam 最重的跳。这个断言目前只有 `σ_0 ≈ 2跳倍阶` 一个间接依据，必须用逐跳数据坐实，否则是贤话。只读分析：
+- 对每个 hop k∈{D50→D20, D20→D10, D10→D4, D4→NORMAL}，在 val GT latent 上统计：（1）跳位移幅度 `‖z_{k+1}−z_k‖`（均值/分位数）与估计的 `σ_k`；（2）将该跳的 latent 残差（用 V13/A4 预测，或直接用 GT 跳差作为上界）过 frozen G 解码后的 **seam/ext-seam 幅度**。
+- 报告一张逐跳表：hop × {位移幅度, σ_k, 解码 seam%, ext-seam%}。
+- **判读**：若 D50→D20 同时在"位移幅度/σ"与"解码 seam"两轴上都明显领先（例如 ≥1 个量级）→ "最坏跳"叙事成立，§1/§3.2 可以理直气壮地"先经验"；若 seam 最重的并非首跳 → 叙事须改，不得把 image_aux 只挂在首跳的理由写成"seam 最重"。
+
 ### S2.a — decoder Jacobian 谱（M 是否真各向异性）
 - 在 val GT latents 中按 timepoint（至少 D20 与 NORMAL）随机抽 N≈64 个 latent `z*`（C×h×w=768×16×16）。
 - 对每个 `z*`，用 `torch.autograd.functional`（或手写 jvp/vjp）做 matrix-free 的 `M v = J_Gᵀ(J_G v)`，跑随机化/Lanczos 谱估计（不显式构造 J_G；image 维 224×224，latent 维 196608，必须 matrix-free）。
@@ -75,10 +81,20 @@ canonical anchors（val, n=7403, decode_mode=default）:
   - 像素域实测 `‖G(z_pred)−G(z_GT)‖²` 与 `δᵀ M δ` 的相关性（验证一阶近似是否成立）。
 - **判读（这是论文的命门）**: 若 A4 相对 V13 的误差下降**优先集中在高-M 方向**、且 `‖δ‖_M` 的下降幅度大于普通 `‖δ‖₂` → 机制被证实，M 从装饰变成证据，§3.2 可保留并引用该图表。若下降在高/低-M 方向无差别 → "decoder-aware 优先修高-M 方向"的说法证伪，必须改写为更弱的"像素域约束整体降低误差"，**不得保留 M 各向异性叙述**。
 
+### S2.c — M→seam 桥接测试（高-M 方向是否就是 patch 边界方向）
+**这是 §1/§3.2 重排后新增的关键断言**：重排后论文明确写"硬 unpatchify decoder 的高-M（高 Jacobian 增益）方向与 14px patch 格对齐，所以最坏跳误差被优先解码成 seam"。这是把 M（S2.a/b）与 seam（S2.0）两条证据缝合起来的唯一环节，必须直接测。
+- 在若干 `z*`（NORMAL 端）上，用 matrix-free 幂迭代 / Lanczos 取 M=J_GᵀJ_G 的 **top-r 本征向量** `u_i`（latent 空间，768×16×16）。
+- 把每个 `u_i` 通过 `J_G u_i`（jvp）映射到图像空间（224×224），得到该高增益方向的**像素空间响应图** `J_G u_i`。
+- 构造二值 **patch 格掩模** `P`：14px 格点阵的边界像素带（±1px）置 1，其余置 0（与 seam 损失用的边界掩模一致）。
+- 量化重合度：（1）seam 能量占比 `∑_{P} (J_G u_i)² / ∑ (J_G u_i)²`；（2）与随机单位方向（及底-M 本征向量）的 baseline 重合度对比；（3）`J_G u_i` 的空频谱是否在 14px 周期（及谐波）上出现能量峰。
+- **判读（决定 §1/§3.2 叙事是否成立）**：若 top-M 方向的像素响应显著集中在 patch 边界（seam 能量占比 ≫ 随机/底-M baseline，且空频在 14px 周期出峰）→ "高-M = patch 边界方向"被证实，M（几何）与 seam（现象）打通，§3.2 的"高-M 方向与 patch 格对齐"可保留为核心证据。若高-M 方向与 patch 格无相关 → 该句证伪，§1/§3.2 必须删除"高-M 与 patch 格对齐"，seam 只能作为纯经验观察保留，M 降级为未验证的 motivation。
+
 交付:
-- `review/0603/server/m_anisotropy_spectrum.{json,csv}` + 谱直方图 + 条件数分布图；
-- `review/0603/server/m_directional_gain.{json,csv}` + 高-M vs 低-M 误差下降对比图；
-- `review/0603/server/S2_pullback_metric_report_20260603.md`（含上述两个判读结论，明确写"支持 / 不支持 §3.2"）。
+- `review/0603/server/per_hop_seam_evidence.{json,csv}`（S2.0 逐跳表）;
+- `review/0603/server/m_anisotropy_spectrum.{json,csv}` + 谱直方图 + 条件数分布图;
+- `review/0603/server/m_directional_gain.{json,csv}` + 高-M vs 低-M 误差下降对比图;
+- `review/0603/server/m_seam_bridge.{json,csv}` + top-M 本征向量的像素响应图（叠 patch 格）+ seam 能量占比对比图;
+- `review/0603/server/S2_pullback_metric_report_20260603.md`（含 S2.0/a/b/c 四个判读结论，明确写"支持 / 不支持 §1 经验叙事"与"支持 / 不支持 §3.2 M 机制"）。
 
 ---
 
@@ -104,7 +120,7 @@ canonical anchors（val, n=7403, decode_mode=default）:
 ---
 
 ## 优先级与停机规则
-1. **S2 > S1 > S3**。S2 是唯一能把"理论从装饰变证据"的实验，最高优先。
-2. 若 S2.b 证伪"高-M 优先修正" → 立即停，回报本地 supervisor，§3.2 需重写。
+1. **S2 > S1 > S3**。S2 是唯一能把"理论从装饰变证据"的实验，最高优先。S2 内部顺序 **S2.0 → S2.a → S2.b → S2.c**：先用 S2.0 坐实"最坏跳 = 首跳"的经验叙事，再用 S2.a/b/c 验证 M 机制与 M→seam 桥接。
+2. 任一环节证伪即停、回报本地 supervisor：若 S2.0 证伪"首跳 seam 最重" → §1/§3.2 经验开场需重写；若 S2.b 证伪"高-M 优先修正"或 S2.c 证伪"高-M = patch 边界" → §3.2 M 叙事需降级或删除。
 3. 所有 eval 用 `eval_first_hop_224_clip3.py` + `calc_psnr_clip3`，full-val n=7403，decode_mode=default。
 4. 任何需要改模型/训练主干的需求，先回报、获明确批准再做（CLAUDE.md 硬约束）。
