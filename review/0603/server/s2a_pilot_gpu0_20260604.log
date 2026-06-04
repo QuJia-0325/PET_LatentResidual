@@ -1,0 +1,40 @@
+[io] loading latents(val) mmap=True: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 0.0s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.5s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.2s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[S2.a] 01/16 D20 slice=322 top1/tr=2.8000e-03 topk/tr=1.5675e-02 topk/uniform=385.2
+[S2.a] 02/16 D20 slice=1064 top1/tr=7.4487e-03 topk/tr=3.2285e-02 topk/uniform=793.4
+[S2.a] 03/16 D20 slice=2029 top1/tr=1.4034e-02 topk/tr=4.5392e-02 topk/uniform=1115.6
+[S2.a] 04/16 D20 slice=2833 top1/tr=1.8310e-02 topk/tr=5.9261e-02 topk/uniform=1456.4
+[S2.a] 05/16 D20 slice=4561 top1/tr=7.4401e-03 topk/tr=3.3261e-02 topk/uniform=817.4
+[S2.a] 06/16 D20 slice=5002 top1/tr=7.0096e-03 topk/tr=3.4537e-02 topk/uniform=848.8
+[S2.a] 07/16 D20 slice=7162 top1/tr=1.2131e-02 topk/tr=8.4356e-02 topk/uniform=2073.1
+[S2.a] 08/16 D20 slice=7368 top1/tr=2.7953e-03 topk/tr=1.5601e-02 topk/uniform=383.4
+[S2.a] 09/16 NORMAL slice=1003 top1/tr=9.0289e-03 topk/tr=4.2500e-02 topk/uniform=1044.5
+[S2.a] 10/16 NORMAL slice=1730 top1/tr=1.1117e-02 topk/tr=4.3363e-02 topk/uniform=1065.7
+[S2.a] 11/16 NORMAL slice=2103 top1/tr=5.9476e-03 topk/tr=3.1213e-02 topk/uniform=767.1
+[S2.a] 12/16 NORMAL slice=3587 top1/tr=1.5914e-02 topk/tr=9.9084e-02 topk/uniform=2435.1
+[S2.a] 13/16 NORMAL slice=5049 top1/tr=4.6558e-03 topk/tr=2.2013e-02 topk/uniform=541.0
+[S2.a] 14/16 NORMAL slice=5318 top1/tr=5.7824e-03 topk/tr=2.3018e-02 topk/uniform=565.7
+[S2.a] 15/16 NORMAL slice=6155 top1/tr=2.1158e-04 topk/tr=1.3958e-03 topk/uniform=34.3
+[S2.a] 16/16 NORMAL slice=6535 top1/tr=1.2250e-02 topk/tr=5.5204e-02 topk/uniform=1356.7
+{
+  "json": "review/0603/server/S2a_pilot_spectrum_20260604.json",
+  "csv": "review/0603/server/S2a_pilot_spectrum_20260604.csv",
+  "report": "review/0603/server/S2a_pilot_spectrum_20260604.md",
+  "verdict": "review/0603/server/S2_PILOT_VERDICT_20260604.md",
+  "gate": {
+    "stage": "S2.a-pilot",
+    "anisotropy_pass": true,
+    "decision": "continue_to_S2c",
+    "rule": "PASS if median top1/topk energy over uniform baseline are both >= 100x",
+    "median_top1_over_uniform": 1463.6243859775109,
+    "median_topk_over_uniform": 833.0965491215684,
+    "median_topk_energy_concentration": 0.03389878536464715
+  }
+}

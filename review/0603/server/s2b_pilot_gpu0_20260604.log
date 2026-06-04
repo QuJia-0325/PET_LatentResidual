@@ -1,0 +1,61 @@
+[io] loading latents(val) mmap=True: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 0.0s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.4s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.2s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[model] loading V13: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0516_runs/V13_true_image_aux_ablation/run/first_hop_224_v13_true_image_aux_off/best.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[model] loaded V13: step=160000
+[S2.b] V13 01/16 D20 slice=322 q=1.1760e-03 e=1.1725e-03 l=1.1175e-04
+[S2.b] V13 02/16 D20 slice=1064 q=6.0739e-04 e=6.3628e-04 l=2.4431e-04
+[S2.b] V13 03/16 D20 slice=2029 q=6.0324e-04 e=5.8414e-04 l=8.9960e-05
+[S2.b] V13 04/16 D20 slice=2833 q=1.4817e-03 e=1.4579e-03 l=2.6846e-04
+[S2.b] V13 05/16 D20 slice=4561 q=1.0553e-03 e=1.1036e-03 l=7.2037e-05
+[S2.b] V13 06/16 D20 slice=5002 q=3.4534e-04 e=3.5970e-04 l=2.0556e-04
+[S2.b] V13 07/16 D20 slice=7162 q=4.7980e-03 e=4.0052e-03 l=7.9747e-04
+[S2.b] V13 08/16 D20 slice=7368 q=4.8691e-03 e=4.9370e-03 l=6.7352e-04
+[S2.b] V13 09/16 NORMAL slice=1003 q=4.2386e-04 e=4.1731e-04 l=1.9107e-04
+[S2.b] V13 10/16 NORMAL slice=1730 q=1.0058e-04 e=9.8064e-05 l=6.2932e-05
+[S2.b] V13 11/16 NORMAL slice=2103 q=2.5029e-04 e=2.4809e-04 l=4.6264e-05
+[S2.b] V13 12/16 NORMAL slice=3587 q=4.5232e-04 e=4.2010e-04 l=1.5812e-04
+[S2.b] V13 13/16 NORMAL slice=5049 q=7.6291e-04 e=7.6238e-04 l=5.5312e-05
+[S2.b] V13 14/16 NORMAL slice=5318 q=8.5792e-04 e=8.6298e-04 l=1.4883e-04
+[S2.b] V13 15/16 NORMAL slice=6155 q=1.3383e-07 e=1.2322e-07 l=3.0144e-06
+[S2.b] V13 16/16 NORMAL slice=6535 q=2.0072e-04 e=1.9851e-04 l=1.0008e-04
+[model] loading A4: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08/first_hop_224_a4_image_aux_lambda_08/best.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[model] loaded A4: step=160000
+[S2.b] A4 01/16 D20 slice=322 q=1.1177e-03 e=1.0918e-03 l=1.0870e-04
+[S2.b] A4 02/16 D20 slice=1064 q=5.4173e-04 e=5.5336e-04 l=2.0403e-04
+[S2.b] A4 03/16 D20 slice=2029 q=5.7758e-04 e=5.5466e-04 l=1.6161e-04
+[S2.b] A4 04/16 D20 slice=2833 q=1.3964e-03 e=1.3481e-03 l=2.8304e-04
+[S2.b] A4 05/16 D20 slice=4561 q=9.9826e-04 e=1.0302e-03 l=6.7276e-05
+[S2.b] A4 06/16 D20 slice=5002 q=3.5372e-04 e=3.4859e-04 l=1.5081e-04
+[S2.b] A4 07/16 D20 slice=7162 q=4.0615e-03 e=3.3974e-03 l=6.5880e-04
+[S2.b] A4 08/16 D20 slice=7368 q=4.9843e-03 e=4.8344e-03 l=4.8848e-04
+[S2.b] A4 09/16 NORMAL slice=1003 q=4.2449e-04 e=4.1309e-04 l=2.0966e-04
+[S2.b] A4 10/16 NORMAL slice=1730 q=9.6981e-05 e=9.6557e-05 l=2.8619e-05
+[S2.b] A4 11/16 NORMAL slice=2103 q=2.5115e-04 e=2.4864e-04 l=6.1254e-05
+[S2.b] A4 12/16 NORMAL slice=3587 q=4.4528e-04 e=4.1136e-04 l=1.2933e-04
+[S2.b] A4 13/16 NORMAL slice=5049 q=7.4872e-04 e=7.4887e-04 l=4.8457e-05
+[S2.b] A4 14/16 NORMAL slice=5318 q=8.2609e-04 e=8.2884e-04 l=1.6443e-04
+[S2.b] A4 15/16 NORMAL slice=6155 q=8.5030e-08 e=7.8118e-08 l=1.9219e-06
+[S2.b] A4 16/16 NORMAL slice=6535 q=2.2446e-04 e=2.1965e-04 l=1.7412e-04
+{
+  "json": "review/0603/server/S2b_pilot_correlation_20260604.json",
+  "csv": "review/0603/server/S2b_pilot_correlation_20260604.csv",
+  "report": "review/0603/server/S2b_pilot_correlation_20260604.md",
+  "verdict": "review/0603/server/S2_PILOT_VERDICT_20260604.md",
+  "gate": {
+    "stage": "S2.b-pilot",
+    "pass_gate": true,
+    "decision": "continue_to_S2a",
+    "rule": "PASS if overall Spearman(q,e)-Spearman(l,e) >= 0.15 and log-log Pearson(q,e) > 0.5",
+    "spearman_advantage_q_minus_l": 0.39002932551319647,
+    "pearson_log_advantage_q_minus_l": 0.10491249577806427
+  }
+}
