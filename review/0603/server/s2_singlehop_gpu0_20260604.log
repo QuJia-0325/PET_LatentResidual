@@ -1,0 +1,30 @@
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 19.8s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20', 'D10', 'D4', 'NORMAL']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 5.3s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 5.2s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[io] loading raw(val,D10): /data_2/qujiaxiang/preprocessed_data_D10.pt (9.2GB)
+[io] loaded raw(val,D10) in 5.0s: /data_2/qujiaxiang/preprocessed_data_D10.pt
+[io] loading raw(val,D4): /data_2/qujiaxiang/preprocessed_data_D4.pt (9.2GB)
+[io] loaded raw(val,D4) in 5.1s: /data_2/qujiaxiang/preprocessed_data_D4.pt
+[io] loading raw(val,NORMAL_from_D50_x0): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,NORMAL_from_D50_x0) in 5.3s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+{
+  "csv": "review/0603/server/s2_singlehop_seam_evidence.csv",
+  "json": "review/0603/server/s2_singlehop_seam_evidence.json",
+  "report": "review/0603/server/S2_singlehop_seam_evidence_report_20260604.md",
+  "verdict": {
+    "first_hop_ratio_latent_rms": 2.062337478846816,
+    "first_hop_ratio_sigma_times_dt": 1.9621181262729124,
+    "first_hop_ratio_v13_singlehop_seam": 1.0836703453562502,
+    "first_hop_ratio_v13_singlehop_ext_seam": 1.4870628471544556,
+    "supports_strong_order_of_magnitude_worst_hop": false,
+    "supports_weak_ranked_worst_hop": true
+  }
+}

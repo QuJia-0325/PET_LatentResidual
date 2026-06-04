@@ -1,0 +1,4 @@
+[startup] loading config: review/0521/A4_image_aux_lambda_08/A4_image_aux_lambda_08.yaml
+[startup] run dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0521_runs/A4_image_aux_lambda_08/first_hop_224_a4_image_aux_lambda_08
+[startup] building datasets/dataloaders...
+[io] loading latents(train): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt (115.3GB)

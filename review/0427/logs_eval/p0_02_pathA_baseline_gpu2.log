@@ -1,0 +1,7 @@
+=== Experiment 2: Path A on V3 200K best ===
+获取 ExpoGap baseline (step 86800)
+
+Traceback (most recent call last):
+  File "/home/qujiaxiang/project/PET_LatentResidual/scripts/diagnose_tf_rollout_gap.py", line 70, in <module>
+    from pet_lr.data_first_hop import PETFirstHopAligned4HopDataset
+ModuleNotFoundError: No module named 'pet_lr'

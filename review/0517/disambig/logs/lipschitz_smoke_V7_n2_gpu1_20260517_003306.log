@@ -1,0 +1,91 @@
+[io] loading latents(val): /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 17.7s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 4.8s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 4.7s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+{
+  "checkpoint": "/data_2/qujiaxiang/outputs/PET_LatentResidual/review_0505_runs/V7/run/first_hop_224_v7_gronwall_raw/last.pt",
+  "config": "review/0511/log_snapshots_20260516_163900/configs/V7_config.resolved.yaml",
+  "n_samples": 2,
+  "actual_n_samples": 2,
+  "eps": 0.001,
+  "split": "val",
+  "seed": 20260517,
+  "beta": [
+    0.5,
+    0.45,
+    0.9,
+    1.5
+  ],
+  "sigma_dt": [
+    0.02889,
+    0.01475,
+    0.0117,
+    0.010575000000000001
+  ],
+  "L_per_hop": [
+    1.0057861804962158,
+    1.005600094795227,
+    1.0042331218719482,
+    1.0035487413406372
+  ],
+  "L_per_hop_stats": {
+    "hop0_D50_to_D20": {
+      "n": 2.0,
+      "mean": 1.0057861804962158,
+      "std": 0.0059524476528167725,
+      "min": 0.9998337626457214,
+      "max": 1.011738657951355
+    },
+    "hop1_D20_to_D10": {
+      "n": 2.0,
+      "mean": 1.005600094795227,
+      "std": 0.005665689706802368,
+      "min": 0.9999343752861023,
+      "max": 1.011265754699707
+    },
+    "hop2_D10_to_D4": {
+      "n": 2.0,
+      "mean": 1.0042331218719482,
+      "std": 0.0038190484046936035,
+      "min": 1.0004141330718994,
+      "max": 1.0080522298812866
+    },
+    "hop3_D4_to_NORMAL": {
+      "n": 2.0,
+      "mean": 1.0035487413406372,
+      "std": 0.0010066032409667969,
+      "min": 1.0025421380996704,
+      "max": 1.004555344581604
+    }
+  },
+  "deviation_pct": [
+    0.578618049621582,
+    0.5600094795227051,
+    0.4233121871948242,
+    0.3548741340637207
+  ],
+  "closed_form_w_with_measured_L": [
+    0.6176677845546239,
+    2.0,
+    2.65961155973837,
+    2.0257393262618697
+  ],
+  "current_step_weights": [
+    0.6106,
+    2.0,
+    2.7041,
+    2.0423
+  ],
+  "alignment_distance_pct": 0.3590683487144454,
+  "sample_slice_indices": [
+    0,
+    7402
+  ],
+  "checkpoint_step": 160000,
+  "checkpoint_best_val": 0.000903636957482411
+}

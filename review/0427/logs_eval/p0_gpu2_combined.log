@@ -1,0 +1,5 @@
+[P0] start 2026-04-27 17:25:07
+[P0] running 01_fullval_eval.sh gpu2
+[P0] fullval exit=0  time=2026-04-27 18:19:25
+[P0] running 02_pathA_baseline.sh gpu2
+[P0] pathA exit=1  time=2026-04-27 18:19:26

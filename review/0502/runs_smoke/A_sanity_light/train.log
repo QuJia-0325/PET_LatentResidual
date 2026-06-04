@@ -1,0 +1,46 @@
+[startup] loading config: review/0502/runs_smoke/A_sanity_light/config.resolved.yaml
+[startup] run dir: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0502_runs_light/smoke_20260502_050912/A_sanity_light/run/first_hop_224_sigma_norm_A_sanity_light_smoke_20260502_050912
+[startup] building datasets/dataloaders...
+[io] loading latents(train) mmap=True: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt (115.3GB)
+[io] loaded latents(train) in 0.0s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_train.pt
+[io] image timepoints(train)=['D50', 'D20']
+[io] loading raw(train,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(train,D50) in 11.6s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(train,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(train,D20) in 18.5s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[startup] train dataset ready: 104988 pair-samples
+[io] loading latents(val) mmap=True: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt (32.5GB)
+[io] loaded latents(val) in 0.1s: /data_2/qujiaxiang/lowdose_pet_ct/latents_224/latents_val.pt
+[io] image timepoints(val)=['D50', 'D20']
+[io] loading raw(val,D50): /data_2/qujiaxiang/preprocessed_data_D50.pt (9.2GB)
+[io] loaded raw(val,D50) in 9.2s: /data_2/qujiaxiang/preprocessed_data_D50.pt
+[io] loading raw(val,D20): /data_2/qujiaxiang/preprocessed_data_D20.pt (9.2GB)
+[io] loaded raw(val,D20) in 6.1s: /data_2/qujiaxiang/preprocessed_data_D20.pt
+[startup] val dataset ready: 29612 pair-samples
+[alignment][train] D50:matched=42.49dB,gap_roll1=21.56dB,n=256 | D20:matched=46.48dB,gap_roll1=24.74dB,n=256 | NORMAL:matched=52.65dB,gap_roll1=30.10dB,n=256
+[alignment][val] D50:matched=42.31dB,gap_roll1=21.88dB,n=256 | D20:matched=46.33dB,gap_roll1=25.10dB,n=256 | NORMAL:matched=52.35dB,gap_roll1=30.44dB,n=256
+[transport] pair_sample_probs(normalized)= [0.25, 0.25, 0.25, 0.25]
+[startup] dataloaders ready: main_bs=8, hop0_aux_bs=2, workers=0
+[rollout] path= ['D50', 'D20', 'D10', 'D4', 'NORMAL']
+encoder_config_path: /home/qujiaxiang/project/RAE/dinov2
+Loaded RAE checkpoint from /data_2/qujiaxiang/outputs/pet_lora_dinov2_pt_224/best_model.pt
+[startup] model initialized
+[startup] EMA enabled: decay=0.9999 warmup=0 update_every=1
+[config] loss.pair_weight = 15.0000
+[optimizer] AdamW base_lr=8.000e-05, wd_global=1.000e-02, wd_backbone=1.000e-02, wd_firsthop=0.000e+00, betas=(0.9, 0.95), backbone_lr_mult=0.40, first_hop_lr_mult=3.50
+[optimizer] params: backbone=207,667,412, first_hop=1,252,421
+[lr_schedule] warmup+cosine enabled: warmup_steps=0, min_lr=2.000e-06
+[schedule] rollout warmup=0 ramp=0; image warmup=0 ramp=0
+/home/qujiaxiang/.conda/envs/rae/lib/python3.10/site-packages/torch/nn/modules/linear.py:116: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  return F.linear(input, self.weight, self.bias)
+/home/qujiaxiang/project/RAE/code/RAE/src/stage1/decoders/decoder.py:368: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+/home/qujiaxiang/project/RAE/code/RAE/src/stage1/decoders/decoder.py:383: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  context_layer = torch.matmul(attention_probs, value_layer)
+/home/qujiaxiang/.conda/envs/rae/lib/python3.10/site-packages/torch/autograd/__init__.py:266: UserWarning: Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility (Triggered internally at ../aten/src/ATen/Context.cpp:164.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/home/qujiaxiang/.conda/envs/rae/lib/python3.10/site-packages/torch/autograd/__init__.py:266: UserWarning: Memory Efficient attention defaults to a non-deterministic algorithm. To explicitly enable determinism call torch.use_deterministic_algorithms(True, warn_only=False). (Triggered internally at ../aten/src/ATen/native/transformers/cuda/attention_backward.cu:449.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/home/qujiaxiang/.conda/envs/rae/lib/python3.10/site-packages/torch/autograd/__init__.py:266: UserWarning: adaptive_avg_pool2d_backward_cuda does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True, warn_only=True)'. You can file an issue at https://github.com/pytorch/pytorch/issues to help us prioritize adding deterministic support for this operation. (Triggered internally at ../aten/src/ATen/Context.cpp:79.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+Training done. Outputs at: /data_2/qujiaxiang/outputs/PET_LatentResidual/review_0502_runs_light/smoke_20260502_050912/A_sanity_light/run/first_hop_224_sigma_norm_A_sanity_light_smoke_20260502_050912
